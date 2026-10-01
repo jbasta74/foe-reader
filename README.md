@@ -1,4 +1,4 @@
-# FoE Reader 0.2.5
+# FoE Reader 0.3.0
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -21,8 +21,26 @@ Po každé úpravě kódu klikněte v `chrome://extensions` na ikonu obnovení u
 - **VB přátel**: po otevření cizí VB ukáže, kolik FP chybí, odměny s bonusem Archy, cenu zajištění místa a zisk.
 - **Produkce**: co se vyrábí, souhrn FP/mincí/zásob/medailí/zboží za aktuální cyklus a kdy bude hotovo.
 - **Bonusy**: útok a obrana útočníka i obránce podle oblasti (Všude, GBG, Expedice, QI) a ostatní bonusy.
-- **GBG**: cechy na mapě, postup v provinciích, žebříček členů.
-- **Hospody**, **Suroviny**, **Log**.
+- **GBG**: cechy na mapě, kde útočíme a kde útočí na nás, opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), provincie ostatních s časem odemknutí a ☆ pro sledování, žebříček členů.
+- **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
+- **Suroviny**, **Log**.
+- **🔔 Upozornění**: historie upozornění a nastavení.
+
+## Upozornění
+Při upozornění zapípá zvuk a tlačítko začne blikat s počtem nových zpráv. Zvuk prohlížeč povolí až po prvním kliknutí do stránky.
+
+| Upozornění | Kdy |
+|---|---|
+| ⚔️ Útok na naši provincii | někdo jiný začne dobývat naši provincii |
+| ⚔️ Provincie skoro ztracená | útočník přesáhne 75 % |
+| ⚔️ Ztráta / dobytí provincie | změní se majitel |
+| ⚔️ Sledovaná provincie | X minut před odemknutím (☆ v záložce GBG, výchozí 1 min) |
+| 🍺 Uvolněná židle | u přítele s plnou hospodou se uvolní místo |
+| 🍺 Znovu k návštěvě | uplyne čas od poslední návštěvy |
+| 🍺 Moje hospoda plná | lze vybrat stříbro |
+| 🏭 Hotová produkce | dokončí se najednou aspoň N budov (výchozí 20) |
+
+Vše jde vypnout v záložce 🔔. Nastavení a sledované provincie se ukládají v prohlížeči (`localStorage`).
 
 ## Jak přidat nový handler
 V `panel.js` doplňte do objektu `H` klíč ve tvaru `"Služba.metoda"`:

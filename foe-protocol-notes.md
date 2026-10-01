@@ -23,6 +23,14 @@ Ověřeno na datech svět zz1, 1. 10. 2026. Rozšíření `foe-reader` (v0.2.5) 
 | `CityProductionService.startProduction` | `updatedEntities[]` |
 | `GuildBattlegroundService.getBattleground` | `map.provinces[]` (id 0 chybí), `battlegroundParticipants[]`, `currentParticipantId`, `endsAt`, `currentPlayerParticipant.attrition` |
 
+## GBG – provincie a opotřebení
+- `map.provinces[]`: `lockedUntil` (čas odemknutí), `ownerId`, `gainAttritionChance` (100/60/20 %; u vlastních provincií chybí), `isAttackBattleType`, `victoryPoints`, `conquestProgress[]` (`participantId`, `progress`, `maxProgress`). **Názvy provincií v datech nejsou** – jen `id` (provincie 0 nemá `id`).
+- Změny provincií chodí přes WebSocket `GuildBattlegroundService.getProvinces` (jen změněná pole).
+- Opotřebení: `currentPlayerParticipant.attrition` = `{level, negotiationMultiplier, defendingArmyBonus}` (`__class__: GuildBattlegroundAttrition`). Čas resetu: `TimerService.getTimers` → `type: "battlegroundsAttrition"`.
+
+## Hospody – průběžně
+- WebSocket `FriendsTavernService.getSittingPlayersCount` = `[majitel, židlí, obsazeno]`. Chodí i pro vlastní hospodu (majitel = vy) a pro přátele.
+
 ## Produkce budov
 - Speciální budovy: `state.productionOption.products[]`: `ResourceProduct.playerResources`, `GuildResourceProduct.guildResources`, `GenericRewardProduct.reward` (`isRandom`), příznak `onlyWhenMotivated`.
 - VB a radnice: `state.current_product` (`products[]` s `product.resources` nebo `goods` = cechovní pokladna).

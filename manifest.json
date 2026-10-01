@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "FoE Reader",
+  "version": "0.2.5",
+  "description": "Pasivně čte komunikaci Forge of Empires (json?h + WebSocket) a zobrazuje přehled. Nic neodesílá.",
+  "content_scripts": [
+    {
+      "matches": ["https://*.forgeofempires.com/game/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://*.forgeofempires.com/game/*"],
+      "js": ["panel.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

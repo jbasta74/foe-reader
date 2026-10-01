@@ -1,0 +1,654 @@
+// FoE Reader – panel.js
+// Běží v izolovaném světě content scriptu. Přijímá zprávy z inject.js,
+// třídí je podle requestClass.requestMethod, drží stav a kreslí panel.
+(() => {
+  'use strict';
+  const SOURCE = 'foe-reader';
+  const RING_MAX = 400;
+
+  // ===================== Stav =====================
+  const S = {
+    player: null,            // user_data
+    entities: new Map(),     // id -> CityMapEntity
+    names: new Map(),        // cityentity_id -> název
+    gbInfo: new Map(),       // cityentity_id -> {name, max_level}
+    resources: {},           // id -> množství
+    goodsEra: new Map(),     // good_id -> era
+    goodsName: new Map(),    // good_id -> název
+    players: new Map(),      // player_id -> {name, ...}
+    taverns: [],             // OtherTavernState[]
+    log: new Map(),          // key -> {count, bytes, last, time}
+    ring: [],                // posledních N zpráv (pro export)
+    serverOffset: 0,         // serverTime - localTime (s)
+    boosts: [],              // Boost[] z BoostService.getAllBoosts
+    foreignGB: null,         // naposledy otevřená cizí VB (CityMapEntity)
+    gbRanking: null,         // pořadí přispěvatelů otevřené VB
+    otherGBs: null,          // {playerId, list} – přehled VB jiného hráče
+    gbg: null,               // GuildBattlegroundService.getBattleground
+    gbgLeaderboard: null,    // GuildBattlegroundService.getPlayerLeaderboard
+    gbgState: null,          // GuildBattlegroundStateService.getState
+  };
+  const myId = () => S.player?.player_id;
+
+  // ===================== Handlery =====================
+  // Klíč = "RequestClass.requestMethod". Odpovědi chodí v dávkách,
+  // proto se třídí podle odpovědi, ne podle toho, co klient poslal.
+  const H = {
+    'StartupService.getData'(d) {
+      S.player = d.user_data || S.player;
+      for (const e of d.city_map?.entities || []) S.entities.set(e.id, e);
+      for (const g of d.goodsList || []) { S.goodsEra.set(g.id, g.era); S.goodsName.set(g.id, g.name); }
+    },
+    'TimeService.updateTime'(d) {
+      if (d && d.time) S.serverOffset = d.time - Date.now() / 1000;
+    },
+    'ResourceService.getPlayerResourceBag'(d) {
+      Object.assign(S.resources, d?.resources?.resources || {});
+    },
+    'ResourceService.getPlayerResources'(d) {
+      Object.assign(S.resources, d?.resources || {});
+    },
+    'InventoryService.getGreatBuildings'(d) {
+      for (const g of d || []) S.gbInfo.set(g.cityentity_id, { name: g.name, max_level: g.max_level });
+    },
+    'OtherPlayerService.getSocialList'(d) {
+      for (const list of ['friends', 'guildMembers', 'neighbours']) {
+        for (const p of d?.[list] || []) {
+          const prev = S.players.get(p.player_id) || {};
+          S.players.set(p.player_id, { ...prev, name: p.name, score: p.score, [list]: true });
+        }
+      }
+    },
+    'FriendsTavernService.getOtherTavernStates'(d) {
+      if (Array.isArray(d)) S.taverns = d;
+    },
+    // FP v balíčcích v inventáři (přichází po otevření VB / vložení FP).
+    'GreatBuildingsService.getAvailablePackageForgePoints'(d) {
+      if (Array.isArray(d) && typeof d[0] === 'number') S.packageFP = d[0];
+    },
+    'BoostService.getAllBoosts'(d) {
+      if (Array.isArray(d)) S.boosts = d;
+    },
+    // --- VB jiných hráčů (struktura podle FoE Helperu, ověřit na logu) ---
+    'GreatBuildingsService.getConstruction'(d) {
+      if (d?.rankings) S.gbRanking = { rankings: d.rankings, time: Date.now() };
+    },
+    'GreatBuildingsService.getConstructionRanking'(d) {
+      const r = Array.isArray(d) ? d : d?.rankings;
+      if (r) S.gbRanking = { rankings: r, time: Date.now() };
+    },
+    'GreatBuildingsService.getOtherPlayerOverview'(d) {
+      if (Array.isArray(d)) S.otherGBs = { list: d, time: Date.now() };
+    },
+    // --- GBG (struktura podle FoE Helperu, ověřit na logu) ---
+    'GuildBattlegroundService.getBattleground'(d) { S.gbg = d; },
+    // Průběžné změny provincií chodí přes WebSocket (chybějící id = provincie 0).
+    'GuildBattlegroundService.getProvinces'(d) {
+      const provs = S.gbg?.map?.provinces;
+      if (!provs || !Array.isArray(d)) return;
+      for (const p of d) {
+        const id = p.id ?? 0;
+        const i = provs.findIndex((x) => (x.id ?? 0) === id);
+        if (i >= 0) provs[i] = { ...provs[i], ...p }; else provs.push(p);
+      }
+    },
+    'GuildBattlegroundService.getPlayerLeaderboard'(d) { if (Array.isArray(d)) S.gbgLeaderboard = d; },
+    'GuildBattlegroundStateService.getState'(d) { S.gbgState = d; },
+  };
+
+  // Obecné zachycení: kdekoli přijde CityMapEntity (např. po sbírání produkce
+  // nebo vložení FP), aktualizuje se mapa města. Cizí budovy jdou zvlášť.
+  function genericScan(d) {
+    let arr = null;
+    if (Array.isArray(d)) arr = d;
+    else if (d && Array.isArray(d.updatedEntities)) arr = d.updatedEntities;
+    else if (d && d.__class__ === 'CityMapEntity') arr = [d];
+    // Pořadí přispěvatelů VB a přehledy VB poznáme podle __class__, ať přijdou v jakékoli zprávě
+    // (např. odpověď po vložení FP).
+    const rows = Array.isArray(d) ? d : (d && Array.isArray(d.rankings) ? d.rankings : null);
+    if (rows && rows.length) {
+      const cls = rows[0]?.__class__;
+      if (cls === 'GreatBuildingRankingRow') {
+        S.gbRanking = { rankings: rows, time: Date.now() };
+        // Promítnout vlastní vklad a místo i do přehledu VB hráče.
+        const me = rows.find((r) => r.player?.is_self || r.player?.player_id === myId());
+        const row = S.foreignGB && S.otherGBs?.list?.find((g) => g.entity_id === S.foreignGB.id);
+        if (me && row) { row.rank = me.rank; row.forge_points = me.forge_points; }
+      }
+      else if (cls === 'GreatBuildingContributionRow') S.otherGBs = { list: rows, time: Date.now() };
+    }
+    if (!arr) return;
+    for (const x of arr) {
+      if (!x || x.__class__ !== 'CityMapEntity' || x.id == null) continue;
+      if (x.player_id != null && myId() != null && x.player_id !== myId()) {
+        if (x.type === 'greatbuilding') {
+          S.foreignGB = x;
+          const row = S.otherGBs?.list?.find((g) => g.entity_id === x.id);
+          if (row && x.state?.invested_forge_points != null) {
+            row.current_progress = x.state.invested_forge_points;
+            row.max_progress = x.state.forge_points_for_level_up ?? row.max_progress;
+            row.level = x.level ?? row.level;
+          }
+        }
+      } else {
+        S.entities.set(x.id, x);
+      }
+    }
+  }
+
+  function handleMessage(channel, r) {
+    if (!r || !r.requestClass) return;
+    const key = `${r.requestClass}.${r.requestMethod}`;
+    const d = r.responseData;
+    let bytes = 0;
+    try { bytes = JSON.stringify(d).length; } catch { /* ignore */ }
+
+    const l = S.log.get(key) || { count: 0, bytes: 0, channel };
+    l.count++; l.bytes = bytes; l.last = d; l.time = Date.now(); l.channel = channel;
+    S.log.set(key, l);
+
+    S.ring.push({ t: Date.now(), channel, key, data: d });
+    if (S.ring.length > RING_MAX) S.ring.shift();
+
+    try { H[key] && H[key](d); genericScan(d); }
+    catch (e) { console.warn('[FoE Reader] handler', key, e); }
+  }
+
+  function handleMetadata(m) {
+    const d = m.data;
+    const take = (o) => { if (o && typeof o === 'object' && o.id && o.name) S.names.set(o.id, o.name); };
+    if (Array.isArray(d)) d.forEach(take); else take(d);
+  }
+
+  window.addEventListener('message', (ev) => {
+    if (ev.source !== window) return;
+    const p = ev.data;
+    if (!p || p.source !== SOURCE) return;
+    if (p.channel === 'metadata') p.messages.forEach(handleMetadata);
+    else for (const r of p.messages) handleMessage(p.channel, r);
+    scheduleRender();
+  });
+
+  // ===================== Pomocné =====================
+  const nf = new Intl.NumberFormat('cs-CZ');
+  const fmt = (n) => (n == null ? '–' : nf.format(n));
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const nowServer = () => Date.now() / 1000 + S.serverOffset;
+  function dur(sec) {
+    if (sec <= 0) return 'teď';
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    return h ? `${h} h ${m} min` : `${m} min`;
+  }
+  const entName = (id) => S.gbInfo.get(id)?.name || S.names.get(id) || id;
+
+  // ===================== Pohledy =====================
+  function viewGB() {
+    const gbs = [...S.entities.values()].filter((e) => e.type === 'greatbuilding');
+    if (!gbs.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
+    const rows = gbs.map((e) => {
+      const max = e.max_level ?? S.gbInfo.get(e.cityentity_id)?.max_level;
+      const inv = e.state?.invested_forge_points || 0;
+      const need = e.state?.forge_points_for_level_up;
+      const atMax = max != null && e.level >= max;
+      const left = need != null ? need - inv : null;
+      return { name: entName(e.cityentity_id), level: e.level, max, inv, need, left, atMax };
+    }).sort((a, b) => (a.atMax - b.atMax) || ((a.left ?? 1e15) - (b.left ?? 1e15)));
+    return `<table><thead><tr><th>Velká budova</th><th>Úr.</th><th>Vloženo / potřeba</th><th>Chybí FP</th></tr></thead><tbody>${
+      rows.map((r) => `<tr class="${r.atMax ? 'muted' : ''}">
+        <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''}</td>
+        <td class="num">${r.atMax ? 'max' : `${fmt(r.inv)} / ${fmt(r.need)}`}</td>
+        <td class="num ${!r.atMax && r.left != null && r.left <= 100 ? 'hi' : ''}">${r.atMax ? '' : fmt(r.left)}</td></tr>`).join('')
+    }</tbody></table>`;
+  }
+
+  function viewTaverns() {
+    if (!S.taverns.length) return '<p class="muted">Zatím žádná data o hospodách.</p>';
+    // Stav bez "state" = volná židle; isSitting = už tam sedíte.
+    const LABEL = { undefined: 'volno', isSitting: 'sedíte tam', noChair: 'plno', alreadyVisited: 'navštíveno' };
+    const counts = {};
+    for (const t of S.taverns) { const k = LABEL[t.state] || t.state; counts[k] = (counts[k] || 0) + 1; }
+    const now = nowServer();
+    const name = (id) => S.players.get(id)?.name || `#${id}`;
+    const free = S.taverns.filter((t) => !['alreadyVisited', 'noChair', 'isSitting'].includes(t.state));
+    const soon = S.taverns.filter((t) => t.state === 'alreadyVisited' && t.nextVisitTime)
+      .sort((a, b) => a.nextVisitTime - b.nextVisitTime).slice(0, 15);
+    return `<p>${Object.entries(counts).map(([k, v]) => `<span class="chip">${esc(k)}: ${v}</span>`).join(' ')}</p>
+      <h4>Lze si přisednout (${free.length})</h4>
+      ${free.length ? `<ul>${free.map((t) => `<li>${esc(name(t.ownerId))} <span class="muted">${t.sittingPlayerCount ?? '?'}/${t.unlockedChairCount ?? '?'}</span></li>`).join('')}</ul>` : '<p class="muted">nikde</p>'}
+      <h4>Nejbližší znovu dostupné</h4>
+      <ul>${soon.map((t) => `<li>${esc(name(t.ownerId))} <span class="muted">za ${dur(t.nextVisitTime - now)}</span></li>`).join('')}</ul>`;
+  }
+
+  function viewResources() {
+    const r = S.resources;
+    if (!Object.keys(r).length) return '<p class="muted">Zatím žádná data.</p>';
+    const main = [['Forge body (FP)', 'strategy_points'], ['FP v balíčcích', '__packageFP'], ['Diamanty', 'premium'], ['Mince', 'money'],
+      ['Zásoby', 'supplies'], ['Medaile', 'medals'], ['Pokusy expedice', 'guild_expedition_attempt']];
+    const era = S.player?.era;
+    const goods = [...S.goodsEra].filter(([, e]) => e === era).map(([id]) => id);
+    return `${S.player ? `<p><b>${esc(S.player.user_name)}</b> · ${esc(era)} · ${esc(S.player.clan_name || '')}</p>` : ''}
+      <table><tbody>${main.map(([l, k]) => `<tr><td>${l}</td><td class="num">${fmt(k === '__packageFP' ? S.packageFP : r[k])}</td></tr>`).join('')}</tbody></table>
+      ${goods.length ? `<h4>Zboží aktuálního věku</h4><table><tbody>${goods.map((g) =>
+        `<tr><td>${esc(S.goodsName.get(g) || g)}</td><td class="num">${fmt(r[g])}</td></tr>`).join('')}</tbody></table>` : ''}`;
+  }
+
+  // ---------- Bonusy ----------
+  const BOOST_PARTS = {
+    att_boost_attacker: ['aa'], def_boost_attacker: ['ad'], att_boost_defender: ['da'], def_boost_defender: ['dd'],
+    att_def_boost_attacker: ['aa', 'ad'], att_def_boost_defender: ['da', 'dd'],
+    att_def_boost_attacker_defender: ['aa', 'ad', 'da', 'dd'],
+  };
+  // Bonusy Velkých budov NEJSOU v BoostService.getAllBoosts – jsou jen v entity.bonuses
+  // (bonusCategory = passiveBonus). Mapování ověřeno proti radnici.
+  const GB_BOOST_PARTS = {
+    military_boost: ['aa', 'ad'],            // Zeus, Saturn VI Gate CENTAURUS
+    advanced_tactics: ['aa', 'ad', 'da', 'dd'], // Space Carrier, HYDRA, Himeji
+    fierce_resistance: ['da', 'dd'],         // Observatory, PEGASUS
+    attacker_defense_boost: ['ad'],          // Château (Exp.), Himeji (GBG)
+    defender_attack_boost: ['da'],           // Archa (GBG), Blue Galaxy (Exp.)
+    defense_boost: ['dd'],                   // Observatory (GBG), Zeus (Exp.)
+    attacker_attack_boost: ['aa'], defender_defense_boost: ['dd'],
+  };
+  const FEATURE = { all: 'Všude', battleground: 'GBG', guild_expedition: 'Expedice', guild_raids: 'Kvantové invaze' };
+  const BOOST_NAME = {
+    forge_points_production: 'Produkce FP', coin_production: 'Produkce mincí', supply_production: 'Produkce zásob',
+    goods_production: 'Produkce zboží', guild_raids_action_points_collection: 'QI akce – sběr',
+    guild_raids_action_points_capacity: 'QI akce – kapacita', guild_raids_supplies_production: 'QI zásoby – produkce',
+    guild_raids_supplies_start: 'QI zásoby – start', guild_raids_coins_production: 'QI mince – produkce',
+    guild_raids_coins_start: 'QI mince – start', guild_raids_goods_start: 'QI zboží – start',
+    antiques_dealer_slot: 'Antikvář – sloty', army_scout_time: 'Čas průzkumu', construction_time: 'Čas stavby',
+    cop_playthrough_reward: 'Odměna za průchod CoP', item_exchange_gemstone_value: 'Výměna předmětů – drahokamy',
+    item_exchange_tradecoin_value: 'Výměna předmětů – obch. mince', outpost_cooldown_time: 'Základna – cooldown',
+    pvp_arena_attempt_refill_interval: 'PvP aréna – doplnění pokusů', recruitment_time: 'Čas rekrutace',
+    tavern_shop_price: 'Hospoda – sleva v obchodě', tavern_silver_collect_bonus: 'Hospoda – bonus stříbra',
+    tavern_visit_fp_drop: 'Hospoda – FP při návštěvě', tavern_visit_silver_drop: 'Hospoda – stříbro při návštěvě',
+  };
+
+  function viewBoosts() {
+    if (!S.boosts.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
+    const per = {};   // feature -> {aa,ad,da,dd}
+    const other = {}; // type|feature -> value
+    for (const b of S.boosts) {
+      const parts = BOOST_PARTS[b.type];
+      if (parts) {
+        const f = (per[b.targetedFeature] ||= { aa: 0, ad: 0, da: 0, dd: 0 });
+        for (const p of parts) f[p] += b.value;
+      } else {
+        const k = `${b.type}|${b.targetedFeature}`;
+        other[k] = (other[k] || 0) + b.value;
+      }
+    }
+    // Přičíst pasivní bonusy vlastních Velkých budov.
+    let gbSum = { aa: 0, ad: 0, da: 0, dd: 0 };
+    for (const e of S.entities.values()) {
+      if (e.type !== 'greatbuilding') continue;
+      for (const bo of e.bonuses || []) {
+        const parts = GB_BOOST_PARTS[bo.type];
+        if (!parts || bo.bonusCategory?.value !== 'passiveBonus') continue;
+        const feat = bo.targetedFeature || 'all';
+        const f = (per[feat] ||= { aa: 0, ad: 0, da: 0, dd: 0 });
+        for (const p of parts) { f[p] += bo.value; if (feat === 'all') gbSum[p] += bo.value; }
+      }
+    }
+    const base = per.all || { aa: 0, ad: 0, da: 0, dd: 0 };
+    const feats = ['all', ...Object.keys(per).filter((f) => f !== 'all')];
+    const row = (f) => {
+      // V Kvantových invazích platí jen bonusy určené pro QI, ne „Všude“.
+      const v = f === 'all' ? base : Object.fromEntries(['aa', 'ad', 'da', 'dd'].map((k) =>
+        [k, (f === 'guild_raids' ? 0 : base[k]) + (per[f]?.[k] || 0)]));
+      return `<tr><td>${esc(FEATURE[f] || f)}</td>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(v[k])} %</td>`).join('')}</tr>`;
+    };
+    const others = Object.entries(other).sort((a, b) => a[0].localeCompare(b[0]));
+    return `<h4>Armáda (oblast = „Všude“ + bonus pro oblast; QI jen vlastní)</h4>
+      <table><thead><tr><th>Oblast</th><th>Útok útočníka</th><th>Obrana útočníka</th><th>Útok obránce</th><th>Obrana obránce</th></tr></thead>
+      <tbody>${feats.map(row).join('')}</tbody></table>
+      <h4>Ostatní bonusy</h4>
+      <table><tbody>${others.map(([k, v]) => { const [t, f] = k.split('|');
+        return `<tr><td>${esc(BOOST_NAME[t] || t)}${f !== 'all' ? ` <span class="muted">(${esc(FEATURE[f] || f)})</span>` : ''}</td><td class="num">${fmt(v)}</td></tr>`; }).join('')}</tbody></table>
+      <p class="muted">${S.boosts.length} bonusů ze seznamu + Velké budovy (útočník ${fmt(gbSum.aa)} / ${fmt(gbSum.ad)}, obránce ${fmt(gbSum.da)} / ${fmt(gbSum.dd)} „Všude“).</p>`;
+  }
+
+  // ---------- Produkce ----------
+  // Vrátí produkty budovy: [{res:{id:n}, guild:bool, motivated:bool, random:bool, label}]
+  function entityProducts(e) {
+    const st = e.state || {}, out = [];
+    const po = st.productionOption;
+    if (po?.products) {
+      for (const p of po.products) {
+        const motivated = !!p.onlyWhenMotivated;
+        if (p.playerResources?.resources) out.push({ res: p.playerResources.resources, motivated });
+        else if (p.guildResources?.resources) out.push({ res: p.guildResources.resources, guild: true, motivated });
+        else if (p.reward) out.push({ label: p.reward.name, motivated, random: !!p.isRandom });
+      }
+    }
+    const cp = st.current_product;
+    if (cp) {
+      const list = cp.products || [cp];
+      for (const p of list) {
+        if (p.product?.resources) out.push({ res: p.product.resources });
+        else if (p.goods) out.push({ res: Object.fromEntries(p.goods.map((g) => [g.good_id, g.value])), guild: true });
+        else if (p.amount && p.name) out.push({ label: `${p.amount}× ${p.name}` });
+      }
+    }
+    return out;
+  }
+
+  function viewProduction() {
+    const ents = [...S.entities.values()];
+    if (!ents.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
+    const now = nowServer();
+    const sure = {}, extra = {}, guild = {};
+    const groups = new Map(); // čas dokončení (min) -> {count, fp}
+    let ready = 0;
+    for (const e of ents) {
+      const st = e.state || {};
+      if (/Finished/i.test(st.__class__ || '')) ready++;
+      if (st.__class__ !== 'ProducingState') continue;
+      const motivatedNow = st.socialInteractionId === 'motivate';
+      let fp = 0;
+      for (const p of entityProducts(e)) {
+        if (!p.res) continue;
+        const target = p.guild ? guild : (p.motivated && !motivatedNow ? extra : sure);
+        for (const [k, v] of Object.entries(p.res)) target[k] = (target[k] || 0) + v;
+        if (!p.guild && (!p.motivated || motivatedNow)) fp += p.res.strategy_points || 0;
+      }
+      const at = st.next_state_transition_at;
+      if (at) {
+        const key = Math.ceil(at / 60) * 60;
+        const g = groups.get(key) || { count: 0, fp: 0 };
+        g.count++; g.fp += fp; groups.set(key, g);
+      }
+    }
+    const goodsSum = (o) => Object.entries(o).filter(([k]) => S.goodsEra.has(k)).reduce((a, [, v]) => a + v, 0);
+    const line = (label, o) => `<tr><td>${label}</td>
+      <td class="num">${fmt(o.strategy_points || 0)}</td><td class="num">${fmt(o.money || 0)}</td>
+      <td class="num">${fmt(o.supplies || 0)}</td><td class="num">${fmt(o.medals || 0)}</td><td class="num">${fmt(goodsSum(o))}</td></tr>`;
+    const times = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+    return `<p>${ready ? `<span class="chip">k vybrání: ${ready}</span>` : ''}<span class="chip">vyrábí: ${[...groups.values()].reduce((a, g) => a + g.count, 0)}</span></p>
+      <h4>Aktuální cyklus (většinou 24 h)</h4>
+      <table><thead><tr><th></th><th>FP</th><th>Mince</th><th>Zásoby</th><th>Medaile</th><th>Zboží</th></tr></thead><tbody>
+      ${line('Jisté', sure)}${line('+ po motivaci', extra)}</tbody></table>
+      <p class="muted">Cechovní pokladna: ${fmt(goodsSum(guild) + Object.entries(guild).filter(([k]) => !S.goodsEra.has(k)).reduce((a, [, v]) => a + v, 0))} ks zboží/surovin.</p>
+      <h4>Kdy bude hotovo</h4>
+      <table><thead><tr><th>Čas</th><th>Za</th><th>Budov</th><th>FP</th></tr></thead><tbody>${
+      times.slice(0, 20).map(([t, g]) => `<tr><td>${new Date((t - S.serverOffset) * 1000).toLocaleString('cs-CZ', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>${dur(t - now)}</td><td class="num">${g.count}</td><td class="num">${g.fp ? fmt(g.fp) : ''}</td></tr>`).join('')
+    }</tbody></table>`;
+  }
+
+  // ---------- VB přátel (kalkulátor) ----------
+  function arcBonus() {
+    for (const e of S.entities.values()) {
+      if (e.cityentity_id !== 'X_FutureEra_Landmark1') continue;
+      const b = (e.bonuses || []).find((x) => x.type === 'contribution_boost');
+      if (b) return b.value;
+    }
+    return 0;
+  }
+
+  function viewForeignGB() {
+    let html = '';
+    const gb = S.foreignGB;
+    const rk = S.gbRanking?.rankings;
+    if (gb || rk) {
+      const arc = arcBonus();
+      const owner = gb ? (S.players.get(gb.player_id)?.name || `#${gb.player_id}`) : '?';
+      const inv = gb?.state?.invested_forge_points || 0;
+      const need = gb?.state?.forge_points_for_level_up;
+      const remaining = need != null ? need - inv : null;
+      const others = (rk || []).filter((r) => r.player?.player_id !== myId() && r.player?.player_id !== gb?.player_id);
+      const mine = (rk || []).find((r) => r.player?.player_id === myId())?.forge_points || 0;
+      const places = (rk || []).filter((r) => r.reward && (r.reward.strategy_point_amount || r.reward.blueprints || r.reward.resources))
+        .sort((a, b) => a.rank - b.rank);
+      html += `<p><b>${esc(gb ? entName(gb.cityentity_id) : 'Otevřená VB')}</b> · ${esc(owner)}${gb ? ` · úr. ${gb.level}` : ''}<br>
+        Chybí: <b>${remaining != null ? fmt(remaining) : '?'}</b> FP · bonus Archy ${fmt(arc)} % · váš vklad ${fmt(mine)}${S.packageFP != null ? ` · máte ${fmt((S.resources.strategy_points || 0) + S.packageFP)} FP` : ''}</p>`;
+      if (places.length) {
+        html += `<table><thead><tr><th>Místo</th><th>Drží (bez vás)</th><th>Odměna FP</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
+          places.map((p, i) => {
+            const holder = others[i]?.forge_points || 0;
+            const base = p.reward.strategy_point_amount || 0;
+            const withArc = Math.round(base * (1 + arc / 100));
+            const cost = remaining != null ? Math.max(0, Math.ceil((remaining + holder - mine) / 2)) : null;
+            const possible = cost != null && cost <= remaining;
+            const profit = possible ? withArc - cost - mine : null; // celý vklad vč. již vloženého
+            return `<tr class="${possible ? '' : 'muted'}"><td>${p.rank}.</td><td class="num">${fmt(holder)}</td>
+              <td class="num">${fmt(base)} → <b>${fmt(withArc)}</b></td>
+              <td class="num">${possible ? fmt(cost) : 'nelze'}</td>
+              <td class="num ${profit > 0 ? 'hi' : ''}">${profit != null ? (profit > 0 ? '+' : '') + fmt(profit) : ''}</td></tr>`;
+          }).join('')}</tbody></table>
+          <p class="muted">„Zajistit za“ = kolik FP ještě vložit, aby vás na daném místě už nikdo nepředběhl. Zisk počítá s celým vaším vkladem.</p>`;
+      } else if (rk) {
+        html += '<p class="muted">Pořadí přišlo, ale bez odměn – pošlete mi log, upravím čtení.</p>';
+      }
+    } else {
+      html += '<p class="muted">Otevřete ve hře Velkou budovu jiného hráče.</p>';
+    }
+    if (S.otherGBs?.list?.length) {
+      const list = S.otherGBs.list.map((g) => ({
+        name: g.name || entName(g.city_entity_id || g.cityentity_id),
+        level: g.level, max: g.maxLevel ?? g.max_level,
+        left: g.max_progress != null && g.current_progress != null ? g.max_progress - g.current_progress : null,
+        owner: g.player?.name, myRank: g.rank, myFp: g.forge_points,
+      })).sort((a, b) => (a.left ?? 1e15) - (b.left ?? 1e15));
+      html += `<h4>VB hráče ${esc(list[0].owner || '')}</h4><table><thead><tr><th>Budova</th><th>Úr.</th><th>Chybí FP</th><th>Vy</th></tr></thead><tbody>${
+        list.map((g) => `<tr><td>${esc(g.name)}</td><td>${g.level ?? ''}${g.max ? ' / ' + g.max : ''}</td><td class="num">${fmt(g.left)}</td>
+          <td class="num">${g.myRank ? `${g.myRank}. místo · ${fmt(g.myFp)} FP` : ''}</td></tr>`).join('')}</tbody></table>`;
+    }
+    return html;
+  }
+
+  // ---------- GBG ----------
+  function viewGBG() {
+    let html = '';
+    const lb = S.gbgLeaderboard;
+    const bg = S.gbg;
+    if (bg) {
+      const parts = bg.battlegroundParticipants || [];
+      const pname = (id) => parts.find((p) => p.participantId === id)?.clan?.name || `#${id}`;
+      const provs = bg.map?.provinces || [];
+      const owned = {};
+      for (const p of provs) if (p.ownerId != null) owned[p.ownerId] = (owned[p.ownerId] || 0) + 1;
+      const me = bg.currentParticipantId ?? bg.currentPlayerParticipantId;
+      const now = nowServer();
+      const att = bg.currentPlayerParticipant?.attrition;
+      html += `<p>${esc(bg.league?.name || '')}${bg.endsAt ? ` · konec za ${dur(bg.endsAt - now)}` : ''}${att ? ` · opotřebení ${att.level}` : ''}</p>`;
+      html += `<h4>Cechy na mapě</h4><table><thead><tr><th>Cech</th><th>Body vítězství</th><th>Provincie</th></tr></thead><tbody>${
+        parts.slice().sort((a, b) => (b.victoryPoints || 0) - (a.victoryPoints || 0)).map((p) =>
+          `<tr class="${p.participantId === me ? 'sel' : ''}"><td>${esc(p.clan?.name || p.participantId)}</td>
+           <td class="num">${fmt(p.victoryPoints || 0)}</td><td class="num">${owned[p.participantId] || 0}</td></tr>`).join('')}</tbody></table>`;
+      const prog = (p, pred) => (p.conquestProgress || []).filter(pred).filter((c) => c.progress > 0);
+      const attacking = provs.filter((p) => prog(p, (c) => c.participantId === me).length)
+        .map((p) => ({ p, c: prog(p, (c) => c.participantId === me)[0] }))
+        .sort((a, b) => b.c.progress / b.c.maxProgress - a.c.progress / a.c.maxProgress);
+      if (attacking.length) {
+        html += `<h4>Kde útočíme</h4><table><thead><tr><th>Provincie</th><th>Vlastník</th><th>Postup</th></tr></thead><tbody>${
+          attacking.map(({ p, c }) => `<tr><td>#${p.id ?? 0}</td><td>${esc(pname(p.ownerId))}</td><td class="num">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td></tr>`).join('')}</tbody></table>`;
+      }
+      const defending = provs.filter((p) => p.ownerId === me && prog(p, (c) => c.participantId !== me).length);
+      if (defending.length) {
+        html += `<h4>Kde útočí na nás</h4><table><thead><tr><th>Provincie</th><th>Útočník</th><th>Postup</th></tr></thead><tbody>${
+          defending.flatMap((p) => prog(p, (c) => c.participantId !== me).map((c) =>
+            `<tr><td>#${p.id ?? 0}</td><td>${esc(pname(c.participantId))}</td><td class="num hi">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td></tr>`)).join('')}</tbody></table>`;
+      }
+    }
+    if (lb?.length) {
+      const rows = lb.map((r) => ({ name: r.player?.name || r.name, b: r.battlesWon || 0, n: r.negotiationsWon || 0 }))
+        .map((r) => ({ ...r, total: r.b + 2 * r.n })).sort((a, b) => b.total - a.total);
+      html += `<h4>Členové cechu</h4><table><thead><tr><th>Hráč</th><th>Bitvy</th><th>Vyjednávání</th><th>Celkem*</th></tr></thead><tbody>${
+        rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="num">${fmt(r.b)}</td><td class="num">${fmt(r.n)}</td><td class="num">${fmt(r.total)}</td></tr>`).join('')}</tbody></table>
+        <p class="muted">* bitva = 1, vyjednávání = 2</p>`;
+    } else if (bg) {
+      html += '<p class="muted">Žebříček členů se objeví po otevření žebříčku v GBG.</p>';
+    }
+    if (!html) html = '<p class="muted">Otevřete ve hře mapu GBG.</p>';
+    return html;
+  }
+
+  let selectedKey = null;
+  function viewLog() {
+    const rows = [...S.log.entries()].sort((a, b) => b[1].time - a[1].time);
+    let detail = '';
+    if (selectedKey && S.log.has(selectedKey)) {
+      let txt = JSON.stringify(S.log.get(selectedKey).last, null, 2) || '';
+      if (txt.length > 20000) txt = txt.slice(0, 20000) + '\n… (zkráceno, celé ve stažení)';
+      detail = `<h4>${esc(selectedKey)}</h4><pre>${esc(txt)}</pre>`;
+    }
+    return `<p><button data-act="download">Stáhnout posledních ${S.ring.length} zpráv (JSON)</button></p>
+      <table class="log"><thead><tr><th>Zpráva</th><th>Kanál</th><th>×</th><th>Velikost</th></tr></thead><tbody>${
+      rows.map(([k, v]) => `<tr data-key="${esc(k)}" class="${k === selectedKey ? 'sel' : ''}">
+        <td>${esc(k)}</td><td>${v.channel}</td><td class="num">${v.count}</td><td class="num">${fmt(v.bytes)}</td></tr>`).join('')
+    }</tbody></table>${detail}`;
+  }
+
+  const TABS = [
+    ['gb', 'Moje VB', viewGB], ['fgb', 'VB přátel', viewForeignGB], ['prod', 'Produkce', viewProduction],
+    ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
+    ['res', 'Suroviny', viewResources], ['log', 'Log', viewLog],
+  ];
+  let tab = 'gb';
+  let open = false;
+
+  // ===================== UI =====================
+  let root, body, host;
+  function mount() {
+    host = document.createElement('div');
+    host.id = 'foe-reader-host';
+    // Plovoucí: pozice se dá přetáhnout a pamatuje si ji prohlížeč.
+    host.style.cssText = 'position:fixed;z-index:2147483647;width:max-content;';
+    const pos = loadPos();
+    host.style.left = pos.x + 'px';
+    host.style.top = pos.y + 'px';
+    root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = `<style>
+      :host{all:initial}
+      *{box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;font-size:12px}
+      .btn{background:#2b2116;color:#f3d9a4;border:1px solid #8a6a3a;border-radius:6px;padding:4px 10px;cursor:grab;font-weight:600;white-space:nowrap;touch-action:none;user-select:none;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+      .btn.drag{cursor:grabbing;opacity:.85}
+      .panel{display:none;position:absolute;top:calc(100% + 6px);left:0;width:580px;max-width:96vw;background:#fbf6ec;color:#2b2116;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;flex-direction:column}
+      .panel.open{display:flex}
+      .tabs{display:flex;flex-wrap:wrap;background:#2b2116}
+      .tabs button{flex:1 0 auto;background:none;border:0;color:#d9c4a0;padding:7px 8px;cursor:pointer;white-space:nowrap}
+      .tabs button.on{background:#fbf6ec;color:#2b2116;font-weight:700}
+      .body{overflow:auto;padding:8px 10px}
+      table{width:100%;border-collapse:collapse}
+      th{text-align:left;font-weight:600;border-bottom:1px solid #d8c8a8;padding:3px 4px;position:sticky;top:0;background:#fbf6ec}
+      td{padding:3px 4px;border-bottom:1px solid #eee3cd}
+      .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+      .muted{color:#9a8a70}
+      .hi{color:#b0410f;font-weight:700}
+      .chip{display:inline-block;background:#efe3c8;border-radius:10px;padding:1px 8px;margin:0 4px 4px 0}
+      h4{margin:10px 0 4px}
+      ul{margin:0;padding-left:18px}
+      pre{background:#2b2116;color:#f3e7cf;padding:8px;border-radius:6px;max-height:300px;overflow:auto;font:11px/1.35 Consolas,monospace;white-space:pre-wrap}
+      table.log tr{cursor:pointer} table.log tr:hover td{background:#f3ead6} tr.sel td{background:#efe0bd}
+      button[data-act]{background:#2b2116;color:#f3d9a4;border:0;border-radius:5px;padding:4px 10px;cursor:pointer}
+    </style>
+    <button class="btn" id="toggle" title="Klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
+    <div class="panel" id="panel"><div class="tabs">${TABS.map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')}</div><div class="body" id="body"></div></div>`;
+    body = root.getElementById('body');
+    setupDrag(root.getElementById('toggle'), () => {
+      open = !open; root.getElementById('panel').classList.toggle('open', open); render(); placePanel();
+    });
+    window.addEventListener('resize', () => { clampHost(); placePanel(); });
+    root.addEventListener('click', (ev) => {
+      const t = ev.target.closest('[data-tab]');
+      if (t) { tab = t.dataset.tab; render(); return; }
+      const r = ev.target.closest('tr[data-key]');
+      if (r) { selectedKey = r.dataset.key === selectedKey ? null : r.dataset.key; render(); return; }
+      if (ev.target.closest('[data-act="download"]')) download();
+    });
+    attach();
+    // Hra si stránku po načtení přestavuje – když panel zmizí, vrátíme ho.
+    setInterval(() => { if (!host.isConnected) attach(); }, 2000);
+    console.log('[FoE Reader] panel připraven');
+  }
+  // ---------- Přetahování ----------
+  const POS_KEY = 'foeReaderPos';
+  function loadPos() {
+    try { const p = JSON.parse(localStorage.getItem(POS_KEY)); if (p && isFinite(p.x) && isFinite(p.y)) return p; } catch { /* ignore */ }
+    return { x: Math.max(8, Math.round(window.innerWidth / 2 - 60)), y: 6 };
+  }
+  function savePos() {
+    try { localStorage.setItem(POS_KEY, JSON.stringify({ x: parseInt(host.style.left), y: parseInt(host.style.top) })); } catch { /* ignore */ }
+  }
+  function clampHost() {
+    const btn = root.getElementById('toggle');
+    const w = btn.offsetWidth || 120, h = btn.offsetHeight || 28;
+    host.style.left = Math.min(Math.max(0, parseInt(host.style.left) || 0), window.innerWidth - w) + 'px';
+    host.style.top = Math.min(Math.max(0, parseInt(host.style.top) || 0), window.innerHeight - h) + 'px';
+  }
+  // Panel se otevře tam, kde je místo: doprava/doleva, dolů/nahoru.
+  function placePanel() {
+    const panel = root.getElementById('panel');
+    const x = parseInt(host.style.left), y = parseInt(host.style.top);
+    const btnW = root.getElementById('toggle').offsetWidth;
+    const pw = Math.min(580, window.innerWidth * 0.96);
+    panel.style.left = (x + pw > window.innerWidth ? Math.max(-x, btnW - pw) : 0) + 'px';
+    const below = y < window.innerHeight / 2;
+    panel.style.top = below ? 'calc(100% + 6px)' : 'auto';
+    panel.style.bottom = below ? 'auto' : 'calc(100% + 6px)';
+    const btnH = root.getElementById('toggle').offsetHeight;
+    panel.style.maxHeight = Math.max(200, below ? window.innerHeight - y - btnH - 16 : y - 16) + 'px';
+  }
+  function setupDrag(btn, onClick) {
+    let start = null, moved = false;
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      start = { mx: e.clientX, my: e.clientY, x: parseInt(host.style.left), y: parseInt(host.style.top) };
+      moved = false;
+      btn.setPointerCapture(e.pointerId);
+    });
+    btn.addEventListener('pointermove', (e) => {
+      if (!start) return;
+      const dx = e.clientX - start.mx, dy = e.clientY - start.my;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+      moved = true; btn.classList.add('drag');
+      host.style.left = start.x + dx + 'px';
+      host.style.top = start.y + dy + 'px';
+      clampHost(); placePanel();
+    });
+    btn.addEventListener('pointerup', () => {
+      if (!start) return;
+      start = null; btn.classList.remove('drag');
+      if (moved) savePos(); else onClick();
+    });
+    // Ať hra pod tlačítkem nereaguje na kliky a tahy.
+    for (const t of ['mousedown', 'mouseup', 'click', 'wheel']) host.addEventListener(t, (e) => e.stopPropagation());
+  }
+
+  function attach() {
+    (document.body || document.documentElement).appendChild(host);
+  }
+
+  function download() {
+    const blob = new Blob([JSON.stringify(S.ring, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `foe-log-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+
+  function render() {
+    if (!root) return;
+    root.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    if (!open) return;
+    const keepScroll = body.scrollTop;
+    body.innerHTML = TABS.find((t) => t[0] === tab)[2]();
+    body.scrollTop = keepScroll;
+  }
+
+  let pending = false;
+  function scheduleRender() {
+    if (pending) return;
+    pending = true;
+    setTimeout(() => { pending = false; render(); }, 500);
+  }
+  setInterval(() => { if (open && tab === 'tav') render(); }, 30000);
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+  else mount();
+
+  // Pro ladění z konzole (izolovaný svět): stav není v kontextu stránky.
+  window.__foeReader = S;
+})();

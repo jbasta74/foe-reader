@@ -30,6 +30,8 @@ Ověřeno na datech svět zz1, 1. 10. 2026. Rozšíření `foe-reader` (v0.2.5) 
 - Změny provincií chodí přes WebSocket `GuildBattlegroundService.getProvinces` (jen změněná pole).
 - Opotřebení: `currentPlayerParticipant.attrition` = `{level, negotiationMultiplier, defendingArmyBonus}` (`__class__: GuildBattlegroundAttrition`). Čas resetu: `TimerService.getTimers` → `type: "battlegroundsAttrition"`.
 
+- Žebříček členů `GuildBattlegroundService.getPlayerLeaderboard` (přijde jen po otevření ve hře): `[{player:{player_id,name}, battlesWon, negotiationsWon, attrition}]`. **Per-hráč postup v provinciích server neposílá** – `conquestProgress` je jen za cech.
+
 ## Hospody – průběžně
 - WebSocket `FriendsTavernService.getSittingPlayersCount` = `[majitel, židlí, obsazeno]`. Chodí i pro vlastní hospodu (majitel = vy) a pro přátele.
 

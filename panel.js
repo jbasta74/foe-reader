@@ -121,7 +121,16 @@
         checkProvinceChange(before, after);
       }
     },
-    'GuildBattlegroundService.getPlayerLeaderboard'(d) { if (Array.isArray(d)) S.gbgLeaderboard = d; },
+    // Žebříček členů: uložíme snímek a rozdíl proti minulému otevření (kdo byl mezitím aktivní).
+    'GuildBattlegroundService.getPlayerLeaderboard'(d) {
+      if (!Array.isArray(d)) return;
+      const snap = { time: Date.now(), rows: new Map(d.map((r) => [r.player?.player_id ?? r.player?.name,
+        { b: r.battlesWon || 0, n: r.negotiationsWon || 0, a: r.attrition || 0 }])) };
+      // Dva snímky těsně po sobě (hra posílá žebříček vícekrát) nepočítat jako nové srovnání.
+      if (S.gbgLbSnap && snap.time - S.gbgLbSnap.time > 20000) S.gbgLbPrev = S.gbgLbSnap;
+      S.gbgLbSnap = snap;
+      S.gbgLeaderboard = d;
+    },
     'GuildBattlegroundStateService.getState'(d) { S.gbgState = d; },
     'TimerService.getTimers'(d) { if (Array.isArray(d)) S.timers = d; },
     // Průběžný počet obsazených židlí: [majitel, židlí, obsazeno] (chodí přes WebSocket).
@@ -327,7 +336,28 @@
   // --- GBG: změna provincie (přes WebSocket) ---
   function gbgMe() { return S.gbg?.currentParticipantId ?? S.gbg?.currentPlayerParticipantId; }
   function clanName(id) { return S.gbg?.battlegroundParticipants?.find((p) => p.participantId === id)?.clan?.name || `#${id}`; }
+  // Historie přírůstků postupu: [{t, id, pid, d}] za posledních 15 minut.
+  S.gbgHist = [];
+  function recordProgress(before, after) {
+    if (!before) return;
+    const id = after.id ?? 0, t = Date.now();
+    const prev = new Map((before.conquestProgress || []).map((c) => [c.participantId, c.progress || 0]));
+    for (const c of after.conquestProgress || []) {
+      const d = (c.progress || 0) - (prev.get(c.participantId) || 0);
+      if (d > 0) S.gbgHist.push({ t, id, pid: c.participantId, d });
+    }
+    const cut = t - 15 * 60000;
+    while (S.gbgHist.length && S.gbgHist[0].t < cut) S.gbgHist.shift();
+  }
+  // Přírůstek postupu cechu `pid` v provincii `id` za posledních `min` minut.
+  function gain(id, pid, min) {
+    const cut = Date.now() - min * 60000;
+    return S.gbgHist.reduce((a, h) => a + (h.id === id && h.pid === pid && h.t >= cut ? h.d : 0), 0);
+  }
+  const plus = (n) => (n ? `<span class="hi">+${fmt(n)}</span>` : '<span class="muted">0</span>');
+
   function checkProvinceChange(before, after) {
+    recordProgress(before, after);
     if (!before || !cfg.gbgAttack) return;
     const me = gbgMe(), id = after.id ?? 0;
     if (before.ownerId === me && after.ownerId !== me) { alert('gbg', `Ztratili jsme provincii ${provLabel(id)} (${clanName(after.ownerId)}).`, true); return; }
@@ -737,24 +767,39 @@
         .map((p) => ({ p, c: prog(p, (c) => c.participantId === me)[0] }))
         .sort((a, b) => b.c.progress / b.c.maxProgress - a.c.progress / a.c.maxProgress);
       if (attacking.length) {
-        html += `<h4>Kde útočíme</h4><table><thead><tr><th>Provincie</th><th>Vlastník</th><th>Postup</th></tr></thead><tbody>${
-          attacking.map(({ p, c }) => `<tr><td>${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(p.ownerId))}</td><td class="num">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td></tr>`).join('')}</tbody></table>`;
+        html += `<h4>Kde útočíme (celý cech)</h4><table><thead><tr><th>Provincie</th><th>Vlastník</th><th>Postup</th><th>1 min</th><th>5 min</th></tr></thead><tbody>${
+          attacking.map(({ p, c }) => `<tr><td>${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(p.ownerId))}</td><td class="num">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td>
+            <td class="num">${plus(gain(p.id ?? 0, me, 1))}</td><td class="num">${plus(gain(p.id ?? 0, me, 5))}</td></tr>`).join('')}</tbody></table>
+          <p class="muted">Sloupce 1 a 5 min = o kolik postoupil celý cech (bitva +1, vyjednávání +2). Přibývá-li víc, než děláte sám, jede tam někdo s vámi. Počítá se od otevření mapy GBG.</p>`;
       }
       html += viewAttrition();
       html += viewProvinces(provs, me, pname, now);
       const defending = provs.filter((p) => p.ownerId === me && prog(p, (c) => c.participantId !== me).length);
       if (defending.length) {
-        html += `<h4>Kde útočí na nás</h4><table><thead><tr><th>Provincie</th><th>Útočník</th><th>Postup</th></tr></thead><tbody>${
+        html += `<h4>Kde útočí na nás</h4><table><thead><tr><th>Provincie</th><th>Útočník</th><th>Postup</th><th>1 min</th><th>5 min</th></tr></thead><tbody>${
           defending.flatMap((p) => prog(p, (c) => c.participantId !== me).map((c) =>
-            `<tr><td>${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(c.participantId))}</td><td class="num hi">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td></tr>`)).join('')}</tbody></table>`;
+            `<tr><td>${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(c.participantId))}</td><td class="num hi">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td>
+             <td class="num">${plus(gain(p.id ?? 0, c.participantId, 1))}</td><td class="num">${plus(gain(p.id ?? 0, c.participantId, 5))}</td></tr>`)).join('')}</tbody></table>`;
       }
     }
     if (lb?.length) {
-      const rows = lb.map((r) => ({ name: r.player?.name || r.name, b: r.battlesWon || 0, n: r.negotiationsWon || 0 }))
-        .map((r) => ({ ...r, total: r.b + 2 * r.n })).sort((a, b) => b.total - a.total);
-      html += `<h4>Členové cechu</h4><table><thead><tr><th>Hráč</th><th>Bitvy</th><th>Vyjednávání</th><th>Celkem*</th></tr></thead><tbody>${
-        rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="num">${fmt(r.b)}</td><td class="num">${fmt(r.n)}</td><td class="num">${fmt(r.total)}</td></tr>`).join('')}</tbody></table>
-        <p class="muted">* bitva = 1, vyjednávání = 2</p>`;
+      const prev = S.gbgLbPrev;
+      const rows = lb.map((r) => {
+        const key = r.player?.player_id ?? r.player?.name;
+        const cur = { b: r.battlesWon || 0, n: r.negotiationsWon || 0, a: r.attrition || 0 };
+        const old = prev?.rows.get(key);
+        return { name: r.player?.name || r.name, ...cur, total: cur.b + 2 * cur.n,
+          db: old ? cur.b - old.b : 0, dn: old ? cur.n - old.n : 0, da: old ? cur.a - old.a : 0 };
+      }).sort((a, b) => ((b.db + 2 * b.dn) - (a.db + 2 * a.dn)) || (b.total - a.total));
+      const d = (n) => (n > 0 ? ` <span class="hi">+${fmt(n)}</span>` : '');
+      const mins = prev ? Math.max(1, Math.round((S.gbgLbSnap.time - prev.time) / 60000)) : null;
+      const active = rows.filter((r) => r.db + r.dn > 0);
+      html += `<h4>Členové cechu</h4>
+        <p class="muted">${prev ? `Červeně = přírůstek za ${mins} min (od minulého otevření žebříčku). Aktivních: ${active.length}.` : 'Otevřete žebříček ve hře ještě jednou později – ukáže se, kdo mezitím bojoval.'}</p>
+        <table><thead><tr><th>Hráč</th><th>Bitvy</th><th>Vyjednávání</th><th>Opotřebení</th><th>Celkem*</th></tr></thead><tbody>${
+        rows.map((r) => `<tr class="${prev && r.db + r.dn > 0 ? 'sel' : ''}"><td>${esc(r.name)}</td><td class="num">${fmt(r.b)}${d(r.db)}</td><td class="num">${fmt(r.n)}${d(r.dn)}</td>
+          <td class="num">${fmt(r.a)}${d(r.da)}</td><td class="num">${fmt(r.total)}</td></tr>`).join('')}</tbody></table>
+        <p class="muted">* bitva = 1, vyjednávání = 2. Kde kdo bojuje, server neposílá – jen postup celého cechu po provinciích (tabulka „Kde útočíme“).</p>`;
     } else if (bg) {
       html += '<p class="muted">Žebříček členů se objeví po otevření žebříčku v GBG.</p>';
     }
@@ -1026,7 +1071,7 @@
     pending = true;
     setTimeout(() => { pending = false; render(); }, 500);
   }
-  setInterval(() => { if (open && ['tav', 'gbg', 'prod'].includes(tab)) render(); }, 30000);
+  setInterval(() => { if (open && ['tav', 'gbg', 'prod'].includes(tab)) render(); }, 15000);
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();

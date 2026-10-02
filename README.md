@@ -1,4 +1,4 @@
-# FoE Reader 0.3.8
+# FoE Reader 0.3.9
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -28,6 +28,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - **GBG**: cechy na mapě, kde útočíme a kde útočí na nás včetně rychlosti postupu za 1 a 5 minut (pozná se, jestli v provincii jede někdo s vámi), aktivita členů (přírůstek bitev, vyjednávání a opotřebení od minulého otevření žebříčku), opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), tabulka provincií s časem odemknutí, názvy (D4C…), označením provincií sousedících s našimi a ☆ pro sledování, žebříček členů.
 - **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
 - **Suroviny**, **Log**.
+- **Sklad**: zboží všech věků (po věcích, se součtem a zvýrazněním nejslabšího zboží) a části (fragmenty) – kolik máte, kolik je potřeba, kolikrát jde sestavit a co chybí.
 - **🔔 Upozornění**: historie upozornění a nastavení.
 
 ## Upozornění

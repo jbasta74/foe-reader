@@ -71,10 +71,11 @@
     'InventoryService.getItems'(d) {
       if (!Array.isArray(d)) return;
       S.fpPacks = new Map();
-      for (const it of d) takeFpPack(it);
+      S.frags = new Map();
+      for (const it of d) { takeFpPack(it); takeFragment(it); }
       sumFpPacks();
     },
-    'InventoryService.getItem'(d) { if (d && takeFpPack(d)) sumFpPacks(); },
+    'InventoryService.getItem'(d) { if (d) { if (takeFpPack(d)) sumFpPacks(); takeFragment(d); } },
     // Změna počtu kusů (např. po vložení FP do VB).
     'InventoryService.updateItem'(d) {
       const list = Array.isArray(d) ? d : [d];
@@ -82,6 +83,8 @@
       for (const u of list) {
         const pk = u && S.fpPacks?.get(u.id);
         if (pk && typeof u.amount === 'number') { pk.stock = u.amount; hit = true; }
+        const fr = u && S.frags?.get(u.id);
+        if (fr && typeof u.amount === 'number') fr.stock = u.amount;
       }
       if (hit) sumFpPacks();
     },
@@ -160,6 +163,16 @@
     const gain = it?.item?.__class__ === 'ForgePointPackagePayload' ? it.item.resource_package?.gain : null;
     if (!gain) return false;
     (S.fpPacks ||= new Map()).set(it.id, { gain, stock: it.inStock || 0 });
+    return true;
+  }
+  // Části (fragmenty): kolik mám, kolik je potřeba na sestavení a co z nich vznikne.
+  function takeFragment(it) {
+    const rw = it?.item?.__class__ === 'FragmentItemPayload' ? it.item.reward : null;
+    if (!rw?.requiredAmount) return false;
+    (S.frags ||= new Map()).set(it.id, {
+      name: rw.assembledReward?.name || String(it.name || '').replace(/^Fragments? of /, ''),
+      kind: rw.assembledReward?.type || '', stock: it.inStock || 0, need: rw.requiredAmount,
+    });
     return true;
   }
   function sumFpPacks() {
@@ -896,6 +909,53 @@
       <p class="muted">Zvuk prohlížeč povolí až po prvním kliknutí do stránky. Upozornění fungují, jen když je hra otevřená (stačí i na pozadí).</p>`;
   }
 
+  // ---------- Sklad: zboží všech věků a části ----------
+  const ERA = {
+    BronzeAge: 'Doba bronzová', IronAge: 'Doba železná', EarlyMiddleAge: 'Raný středověk', HighMiddleAge: 'Vrcholný středověk',
+    LateMiddleAge: 'Pozdní středověk', ColonialAge: 'Kolonizace', IndustrialAge: 'Průmyslový věk', ProgressiveEra: 'Pokrokové období',
+    ModernEra: 'Moderna', PostModernEra: 'Postmoderna', ContemporaryEra: 'Současnost', TomorrowEra: 'Zítřek', FutureEra: 'Budoucnost',
+    ArcticFuture: 'Arktická budoucnost', OceanicFuture: 'Oceánská budoucnost', VirtualFuture: 'Virtuální budoucnost',
+    SpaceAgeMars: 'Mars', SpaceAgeAsteroidBelt: 'Pás asteroidů', SpaceAgeVenus: 'Venuše', SpaceAgeJupiterMoon: 'Jupiterův měsíc',
+    SpaceAgeTitan: 'Titan', SpaceAgeSpaceHub: 'Vesmírný uzel', StellarAgeDiscovery: 'Hvězdný věk',
+  };
+  let fragFilter = 'ready';
+  function viewStock() {
+    const r = S.resources;
+    let html = '';
+    // Zboží podle věků (pořadí věků podle goodsList).
+    const eras = new Map();
+    for (const [id, era] of S.goodsEra) { if (!eras.has(era)) eras.set(era, []); eras.get(era).push(id); }
+    if (eras.size) {
+      const rows = [...eras.entries()].reverse().map(([era, ids]) => {
+        const sum = ids.reduce((a, id) => a + (r[id] || 0), 0);
+        const min = Math.min(...ids.map((id) => r[id] || 0));
+        return `<tr class="${era === S.player?.era ? 'sel' : ''}"><td><b>${esc(ERA[era] || era)}</b></td>
+          <td>${ids.map((id) => `<span class="good ${(r[id] || 0) === min && sum ? 'low' : ''}" title="${esc(S.goodsName.get(id) || id)}">${esc(S.goodsName.get(id) || id)} <b>${fmt(r[id] || 0)}</b></span>`).join('')}</td>
+          <td class="num">${fmt(sum)}</td></tr>`;
+      }).join('');
+      html += `<h4>Zboží podle věků</h4><table class="stock"><thead><tr><th>Věk</th><th>Zboží</th><th>Celkem</th></tr></thead><tbody>${rows}</tbody></table>
+        <p class="muted">Zvýrazněný řádek = váš věk. Podtržené je zboží, kterého máte v daném věku nejméně.</p>`;
+    }
+    // Části
+    const fr = [...(S.frags?.values() || [])].map((f) => ({ ...f, can: Math.floor(f.stock / f.need), pct: f.stock / f.need }));
+    if (fr.length) {
+      const ready = fr.filter((f) => f.can > 0).sort((a, b) => b.can - a.can || a.name.localeCompare(b.name));
+      const rest = fr.filter((f) => f.can === 0).sort((a, b) => b.pct - a.pct);
+      const list = fragFilter === 'ready' ? ready : fragFilter === 'near' ? rest.filter((f) => f.pct >= 0.5) : [...ready, ...rest];
+      const btn = (k, label) => `<button class="fbtn ${fragFilter === k ? 'on' : ''}" data-frag="${k}">${label}</button>`;
+      html += `<h4>Části (fragmenty)</h4>
+        <p>${btn('ready', `Lze sestavit (${ready.length})`)}${btn('near', `Přes polovinu (${rest.filter((f) => f.pct >= 0.5).length})`)}${btn('all', `Vše (${fr.length})`)}</p>
+        ${list.length ? `<table><thead><tr><th>Co vznikne</th><th>Mám / potřeba</th><th>Sestavím</th><th>Chybí</th></tr></thead><tbody>${
+          list.map((f) => `<tr><td>${esc(f.name)}</td><td class="num">${fmt(f.stock)} / ${fmt(f.need)}</td>
+            <td class="num ${f.can ? 'hi' : 'muted'}">${f.can ? f.can + '×' : Math.floor(f.pct * 100) + ' %'}</td>
+            <td class="num">${f.can ? `<span class="muted">zbyde ${fmt(f.stock % f.need)}</span>` : fmt(f.need - f.stock)}</td></tr>`).join('')}</tbody></table>`
+          : '<p class="muted">Nic.</p>'}`;
+    } else {
+      html += '<p class="muted">Části se načtou s inventářem (po načtení hry).</p>';
+    }
+    return html || '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
+  }
+
   let selectedKey = null;
   function viewLog() {
     const rows = [...S.log.entries()].sort((a, b) => b[1].time - a[1].time);
@@ -915,7 +975,7 @@
   const TABS = [
     ['gb', 'Moje VB', viewGB], ['fgb', 'VB přátel', viewForeignGB], ['prod', 'Produkce', viewProduction],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
-    ['res', 'Suroviny', viewResources], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts],
+    ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts],
   ];
   let tab = 'gb';
   let open = false;
@@ -962,6 +1022,9 @@
       input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
       input.pname{width:70px}
       .copyrow{display:flex;gap:6px}
+      .good{display:inline-block;margin:0 10px 1px 0;white-space:nowrap}
+      .good.low{text-decoration:underline;text-decoration-color:#b0410f}
+      table.stock td{vertical-align:top}
       .fbtn{background:#fff;border:1px solid #c9b48c;border-radius:4px;padding:1px 6px;margin-right:3px;cursor:pointer}
       .fbtn.on{background:#2b2116;color:#f3d9a4;border-color:#2b2116;font-weight:700}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
@@ -980,6 +1043,8 @@
       if (r) { selectedKey = r.dataset.key === selectedKey ? null : r.dataset.key; render(); return; }
       if (ev.target.closest('[data-act="download"]')) download();
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
+      const fg = ev.target.closest('[data-frag]');
+      if (fg) { fragFilter = fg.dataset.frag; render(); return; }
       const fb = ev.target.closest('[data-factor]');
       if (fb) { cfg.arcFactor = +fb.dataset.factor; saveCfg(); render(); return; }
       const cp = ev.target.closest('[data-act="copy"]');

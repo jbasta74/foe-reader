@@ -38,9 +38,14 @@
   XHR.send = function (body) {
     const url = this.__foeUrl || '';
     // Odchozí dotaz hry jen přečteme (např. kterou budovu hráč otevřel). Nic se nemění.
-    if (isGameJson(url) && typeof body === 'string') {
+    if (isGameJson(url) && body != null) {
       try {
-        const req = parseJson(body);
+        // Tělo může být text i binární pole (ArrayBuffer / Uint8Array).
+        let text = null;
+        if (typeof body === 'string') text = body;
+        else if (body instanceof ArrayBuffer) text = new TextDecoder().decode(body);
+        else if (ArrayBuffer.isView(body)) text = new TextDecoder().decode(body);
+        const req = parseJson(text);
         if (req) emit('req', url, (Array.isArray(req) ? req : [req]).map((r) => ({
           requestClass: r.requestClass, requestMethod: r.requestMethod, requestData: r.requestData })));
       } catch { /* ignore */ }

@@ -1,4 +1,4 @@
-# FoE Reader 0.3.7
+# FoE Reader 0.3.8
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.

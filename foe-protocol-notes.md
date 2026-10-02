@@ -17,7 +17,7 @@ Ověřeno na datech svět zz1, 1. 10. 2026. Rozšíření `foe-reader` (v0.2.5) 
 | `FriendsTavernService.getOtherTavernStates` | bez `state` = volno, `isSitting`, `noChair`, `alreadyVisited` (+`nextVisitTime`) |
 | `GreatBuildingsService.getOtherPlayerOverview` | `GreatBuildingContributionRow[]`: `current_progress`, `max_progress`, `maxLevel`; u vlastního vkladu `rank`, `forge_points`, `reward` |
 | `OtherPlayerService.getOtherPlayerCityMapEntity` | cizí VB (CityMapEntity) |
-| `GreatBuildingsService.getConstruction` | `rankings[]` (`GreatBuildingRankingRow`, `player.is_self`, `reward.strategy_point_amount`) |
+| `GreatBuildingsService.getConstruction` | `rankings[]` (`GreatBuildingRankingRow`, `player.is_self`, `reward.strategy_point_amount`). **Řádek majitele (bez `rank`) je jen tehdy, když má majitel vloženo > 0 FP.** Budova: `reward.blueprintRewards[0].building_id`. Cizí VB předchází `getOtherPlayerCityMapEntity`, vlastní ne. Dotaz: `requestData = [entityId, playerId]` |
 | `GreatBuildingsService.contributeForgePoints` | po vkladu: nové `GreatBuildingRankingRow[]`; následuje `CityMapService.reset` (aktualizovaná VB) a znovu overview |
 | `GreatBuildingsService.getAvailablePackageForgePoints` | `[n]` = FP v balíčcích v inventáři |
 | `InventoryService.getItems` | inventář; FP balíčky mají `item.__class__ = ForgePointPackagePayload`, `item.resource_package.gain` (10, 100…) a `inStock`. Součet gain × inStock = hodnota výše (ověřeno) |

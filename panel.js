@@ -185,7 +185,14 @@
         const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
         let building = rows.map((r) => r.reward?.blueprintRewards?.[0]?.building_id).find(Boolean);
         const req = S.gbReq && Date.now() - S.gbReq.time < 15000 ? S.gbReq : null;
-        const isOwn = ownerRow ? ownerRow.player.player_id === myId() : !!req && req.playerId === myId();
+        // Řádek majitele server posílá jen tehdy, když má majitel něco vloženo. Bez něj:
+        // 1) dotaz hry (entityId, playerId), 2) jinak – cizí VB vždy těsně předchází zpráva
+        // s její budovou (getOtherPlayerCityMapEntity); když nepřišla a tu budovu mám, je moje.
+        const foreignJustOpened = S.foreignGB && Date.now() - (S.foreignGBAt || 0) < 5000 && (!building || S.foreignGB.cityentity_id === building);
+        const iHaveIt = !!building && [...S.entities.values()].some((e) => e.type === 'greatbuilding' && e.cityentity_id === building);
+        const isOwn = ownerRow ? ownerRow.player.player_id === myId()
+          : req ? req.playerId === myId()
+          : iHaveIt && !foreignJustOpened;
         if (isOwn) {
           const ent = req && S.entities.get(req.entityId);
           if (ent?.type === 'greatbuilding') building = ent.cityentity_id;
@@ -205,7 +212,7 @@
       if (!x || x.__class__ !== 'CityMapEntity' || x.id == null) continue;
       if (x.player_id != null && myId() != null && x.player_id !== myId()) {
         if (x.type === 'greatbuilding') {
-          S.foreignGB = x;
+          S.foreignGB = x; S.foreignGBAt = Date.now();
           const row = S.otherGBs?.list?.find((g) => g.entity_id === x.id);
           if (row && x.state?.invested_forge_points != null) {
             row.current_progress = x.state.invested_forge_points;
@@ -245,6 +252,10 @@
 
   // Odchozí dotazy hry: zajímá nás jen, kterou VB hráč právě otevřel.
   function handleRequest(r) {
+    if (r?.requestClass) {
+      S.ring.push({ t: Date.now(), channel: 'req', key: `${r.requestClass}.${r.requestMethod}`, data: r.requestData });
+      if (S.ring.length > RING_MAX) S.ring.shift();
+    }
     if (r?.requestClass === 'GreatBuildingsService' && r.requestMethod === 'getConstruction' && Array.isArray(r.requestData)) {
       S.gbReq = { entityId: r.requestData[0], playerId: r.requestData[1], time: Date.now() };
     }
@@ -453,7 +464,9 @@
     if (S.ownRanking) {
       const ent = gbs.find((e) => e.cityentity_id === S.ownRanking.building);
       const c = nahozCalc(S.ownRanking.rankings, ent, S.player?.user_name || '');
-      if (c) calc = viewNahoz(c, 'Náhozy: ' + entName(ent.cityentity_id)) + '<h4>Všechny moje VB</h4>';
+      if (c) calc = viewNahoz(c, 'Náhozy: ' + entName(ent.cityentity_id))
+        + (ent.max_level != null && ent.level >= ent.max_level ? '<p class="hi">Budova je na maximální odemčené úrovni – další úroveň je potřeba nejdřív odemknout plánky.</p>' : '')
+        + '<h4>Všechny moje VB</h4>';
     }
     const rows = gbs.map((e) => {
       const max = e.max_level ?? S.gbInfo.get(e.cityentity_id)?.max_level;

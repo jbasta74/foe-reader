@@ -183,8 +183,12 @@
       if (cls === 'GreatBuildingRankingRow') {
         // První řádek bez pořadí je majitel; budovu poznáme podle plánků v odměně.
         const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
-        const building = rows.map((r) => r.reward?.blueprintRewards?.[0]?.building_id).find(Boolean);
-        if (ownerRow && ownerRow.player.player_id === myId()) {
+        let building = rows.map((r) => r.reward?.blueprintRewards?.[0]?.building_id).find(Boolean);
+        const req = S.gbReq && Date.now() - S.gbReq.time < 15000 ? S.gbReq : null;
+        const isOwn = ownerRow ? ownerRow.player.player_id === myId() : !!req && req.playerId === myId();
+        if (isOwn) {
+          const ent = req && S.entities.get(req.entityId);
+          if (ent?.type === 'greatbuilding') building = ent.cityentity_id;
           S.ownRanking = { rankings: rows, building, time: Date.now() };
           return;
         }
@@ -239,6 +243,13 @@
     for (const v of Array.isArray(o) ? o : Object.values(o)) if (v && typeof v === 'object') scanAttrition(v, depth + 1);
   }
 
+  // Odchozí dotazy hry: zajímá nás jen, kterou VB hráč právě otevřel.
+  function handleRequest(r) {
+    if (r?.requestClass === 'GreatBuildingsService' && r.requestMethod === 'getConstruction' && Array.isArray(r.requestData)) {
+      S.gbReq = { entityId: r.requestData[0], playerId: r.requestData[1], time: Date.now() };
+    }
+  }
+
   function handleMetadata(m) {
     const d = m.data;
     const take = (o) => { if (o && typeof o === 'object' && o.id && o.name) S.names.set(o.id, o.name); };
@@ -249,6 +260,7 @@
     if (ev.source !== window) return;
     const p = ev.data;
     if (!p || p.source !== SOURCE) return;
+    if (p.channel === 'req') { p.messages.forEach(handleRequest); return; }
     if (p.channel === 'metadata') p.messages.forEach(handleMetadata);
     else for (const r of p.messages) handleMessage(p.channel, r);
     scheduleRender();
@@ -972,6 +984,7 @@
         saveWatch(set); timeChecks(); render();
       }
     });
+    root.addEventListener('input', () => { lastInputAt = Date.now(); });
     root.addEventListener('change', (ev) => {
       const el = ev.target.closest('[data-cfg]');
       if (el) { cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render(); }
@@ -1058,13 +1071,18 @@
     if (open && tab === 'alerts' && S.unread) { S.unread = 0; updateBadge(); }
     if (!open) return;
     // Nepřekreslovat, když uživatel zrovna píše do pole v panelu.
+    // Při psaní do pole chvíli počkat (jinak by se přepsalo pod rukama), pak překreslit a vrátit kurzor.
     const act = root.activeElement;
-    if (act && act.tagName === 'INPUT' && !act.readOnly && (act.type === 'number' || act.type === 'text') && body.contains(act)) return;
+    const editing = act && act.tagName === 'INPUT' && !act.readOnly && body.contains(act);
+    if (editing && Date.now() - lastInputAt < 2500) { setTimeout(scheduleRender, 2600); return; }
+    const focusSel = editing ? (act.dataset.cfg ? `[data-cfg="${act.dataset.cfg}"]` : act.dataset.prov ? `[data-prov="${act.dataset.prov}"]` : act.dataset.input ? `[data-input="${act.dataset.input}"]` : null) : null;
     const keepScroll = body.scrollTop;
     body.innerHTML = TABS.find((t) => t[0] === tab)[2]();
     body.scrollTop = keepScroll;
+    if (focusSel) body.querySelector(focusSel)?.focus({ preventScroll: true });
   }
 
+  let lastInputAt = 0;
   let pending = false;
   function scheduleRender() {
     if (pending) return;

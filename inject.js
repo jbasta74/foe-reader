@@ -37,6 +37,14 @@
 
   XHR.send = function (body) {
     const url = this.__foeUrl || '';
+    // Odchozí dotaz hry jen přečteme (např. kterou budovu hráč otevřel). Nic se nemění.
+    if (isGameJson(url) && typeof body === 'string') {
+      try {
+        const req = parseJson(body);
+        if (req) emit('req', url, (Array.isArray(req) ? req : [req]).map((r) => ({
+          requestClass: r.requestClass, requestMethod: r.requestMethod, requestData: r.requestData })));
+      } catch { /* ignore */ }
+    }
     if (isGameJson(url) || isMetadata(url)) {
       this.addEventListener('load', () => {
         try {

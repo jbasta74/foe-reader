@@ -67,7 +67,25 @@
     'FriendsTavernService.getOtherTavernStates'(d) {
       if (Array.isArray(d)) S.taverns = d;
     },
-    // FP v balíčcích v inventáři (přichází po otevření VB / vložení FP).
+    // FP v balíčcích: spočítáno z inventáře hned po načtení (balíčky 10 FP, 100 FP …).
+    'InventoryService.getItems'(d) {
+      if (!Array.isArray(d)) return;
+      S.fpPacks = new Map();
+      for (const it of d) takeFpPack(it);
+      sumFpPacks();
+    },
+    'InventoryService.getItem'(d) { if (d && takeFpPack(d)) sumFpPacks(); },
+    // Změna počtu kusů (např. po vložení FP do VB).
+    'InventoryService.updateItem'(d) {
+      const list = Array.isArray(d) ? d : [d];
+      let hit = false;
+      for (const u of list) {
+        const pk = u && S.fpPacks?.get(u.id);
+        if (pk && typeof u.amount === 'number') { pk.stock = u.amount; hit = true; }
+      }
+      if (hit) sumFpPacks();
+    },
+    // Server posílá součet i sám (po otevření VB / vložení FP) – má přednost.
     'GreatBuildingsService.getAvailablePackageForgePoints'(d) {
       if (Array.isArray(d) && typeof d[0] === 'number') S.packageFP = d[0];
     },
@@ -128,6 +146,18 @@
       }
     },
   };
+
+  function takeFpPack(it) {
+    const gain = it?.item?.__class__ === 'ForgePointPackagePayload' ? it.item.resource_package?.gain : null;
+    if (!gain) return false;
+    (S.fpPacks ||= new Map()).set(it.id, { gain, stock: it.inStock || 0 });
+    return true;
+  }
+  function sumFpPacks() {
+    let sum = 0;
+    for (const pk of S.fpPacks.values()) sum += pk.gain * pk.stock;
+    S.packageFP = sum;
+  }
 
   // Obecné zachycení: kdekoli přijde CityMapEntity (např. po sbírání produkce
   // nebo vložení FP), aktualizuje se mapa města. Cizí budovy jdou zvlášť.
@@ -408,12 +438,14 @@
   function viewResources() {
     const r = S.resources;
     if (!Object.keys(r).length) return '<p class="muted">Zatím žádná data.</p>';
-    const main = [['Forge body (FP)', 'strategy_points'], ['FP v balíčcích', '__packageFP'], ['Diamanty', 'premium'], ['Mince', 'money'],
+    const packs = [...(S.fpPacks?.values() || [])].filter((x) => x.stock > 0).sort((a, b) => b.gain - a.gain)
+      .map((x) => `${fmt(x.stock)}× ${x.gain} FP`).join(', ');
+    const main = [['Forge body (FP) – v liště', 'strategy_points'], [`FP v balíčcích${packs ? ` <span class="muted">(${packs})</span>` : ''}`, '__packageFP'], ['<b>FP celkem</b>', '__totalFP'], ['Diamanty', 'premium'], ['Mince', 'money'],
       ['Zásoby', 'supplies'], ['Medaile', 'medals'], ['Pokusy expedice', 'guild_expedition_attempt']];
     const era = S.player?.era;
     const goods = [...S.goodsEra].filter(([, e]) => e === era).map(([id]) => id);
     return `${S.player ? `<p><b>${esc(S.player.user_name)}</b> · ${esc(era)} · ${esc(S.player.clan_name || '')}</p>` : ''}
-      <table><tbody>${main.map(([l, k]) => `<tr><td>${l}</td><td class="num">${fmt(k === '__packageFP' ? S.packageFP : r[k])}</td></tr>`).join('')}</tbody></table>
+      <table><tbody>${main.map(([l, k]) => `<tr><td>${l}</td><td class="num">${fmt(k === '__packageFP' ? S.packageFP : k === '__totalFP' ? (r.strategy_points || 0) + (S.packageFP || 0) : r[k])}</td></tr>`).join('')}</tbody></table>
       ${goods.length ? `<h4>Zboží aktuálního věku</h4><table><tbody>${goods.map((g) =>
         `<tr><td>${esc(S.goodsName.get(g) || g)}</td><td class="num">${fmt(r[g])}</td></tr>`).join('')}</tbody></table>` : ''}`;
   }

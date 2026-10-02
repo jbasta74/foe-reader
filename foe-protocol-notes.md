@@ -20,6 +20,8 @@ Ověřeno na datech svět zz1, 1. 10. 2026. Rozšíření `foe-reader` (v0.2.5) 
 | `GreatBuildingsService.getConstruction` | `rankings[]` (`GreatBuildingRankingRow`, `player.is_self`, `reward.strategy_point_amount`) |
 | `GreatBuildingsService.contributeForgePoints` | po vkladu: nové `GreatBuildingRankingRow[]`; následuje `CityMapService.reset` (aktualizovaná VB) a znovu overview |
 | `GreatBuildingsService.getAvailablePackageForgePoints` | `[n]` = FP v balíčcích v inventáři |
+| `InventoryService.getItems` | inventář; FP balíčky mají `item.__class__ = ForgePointPackagePayload`, `item.resource_package.gain` (10, 100…) a `inStock`. Součet gain × inStock = hodnota výše (ověřeno) |
+| `InventoryService.updateItem` | `{id, amount}` – nový počet kusů položky (např. po vložení FP) |
 | `CityProductionService.startProduction` | `updatedEntities[]` |
 | `GuildBattlegroundService.getBattleground` | `map.provinces[]` (id 0 chybí), `battlegroundParticipants[]`, `currentParticipantId`, `endsAt`, `currentPlayerParticipant.attrition` |
 

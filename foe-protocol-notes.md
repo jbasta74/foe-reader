@@ -24,7 +24,7 @@ Ověřeno na datech svět zz1, 1. 10. 2026. Rozšíření `foe-reader` (v0.2.5) 
 | `GuildBattlegroundService.getBattleground` | `map.provinces[]` (id 0 chybí), `battlegroundParticipants[]`, `currentParticipantId`, `endsAt`, `currentPlayerParticipant.attrition` |
 
 ## GBG – provincie a opotřebení
-- `map.provinces[]`: `lockedUntil` (čas odemknutí), `ownerId`, `gainAttritionChance` (100/60/20 %; u vlastních provincií chybí), `isAttackBattleType`, `victoryPoints`, `conquestProgress[]` (`participantId`, `progress`, `maxProgress`). **Názvy provincií v datech nejsou** – jen `id` (provincie 0 nemá `id`).
+- `map.provinces[]`: `lockedUntil` (čas odemknutí), `ownerId`, `gainAttritionChance` (100/60/20 %; u vlastních provincií chybí), `isAttackBattleType`, `victoryPoints`, `conquestProgress[]` (`participantId`, `progress`, `maxProgress`). **Názvy provincií v datech nejsou** – jen `id` (provincie 0 nemá `id`). Převod id → název a sousednost je v `provinces.js` (převzato z FoE Helperu, `province_map.js`; ověřeno: 30 = D4C na `waterfall_archipelago`).
 - Změny provincií chodí přes WebSocket `GuildBattlegroundService.getProvinces` (jen změněná pole).
 - Opotřebení: `currentPlayerParticipant.attrition` = `{level, negotiationMultiplier, defendingArmyBonus}` (`__class__: GuildBattlegroundAttrition`). Čas resetu: `TimerService.getTimers` → `type: "battlegroundsAttrition"`.
 

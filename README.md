@@ -1,4 +1,4 @@
-# FoE Reader 0.3.1
+# FoE Reader 0.3.2
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -14,6 +14,7 @@ Po každé úpravě kódu klikněte v `chrome://extensions` na ikonu obnovení u
 ## Soubory
 - `manifest.json`: vkládá dva skripty do `https://*.forgeofempires.com/game/*`.
 - `inject.js`: běží v kontextu stránky (`world: MAIN`) ještě před hrou. Obaluje `XMLHttpRequest`, `fetch` a `WebSocket` a přeposílá naparsované odpovědi z `/game/json?h=`, `/start/metadata?id=` a `wss://…/socket/` přes `window.postMessage`.
+- `provinces.js`: názvy a sousednost provincií GBG pro obě mapy (statická data převzatá z FoE Helperu, AGPL-3.0).
 - `panel.js`: běží v izolovaném světě. Třídí zprávy podle `requestClass.requestMethod` (objekt `H`), drží stav a kreslí panel ve Shadow DOM.
 
 ## Záložky
@@ -21,7 +22,7 @@ Po každé úpravě kódu klikněte v `chrome://extensions` na ikonu obnovení u
 - **VB přátel**: po otevření cizí VB ukáže, kolik FP chybí, odměny s bonusem Archy, cenu zajištění místa a zisk.
 - **Produkce**: co se vyrábí, souhrn FP/mincí/zásob/medailí/zboží za aktuální cyklus a kdy bude hotovo.
 - **Bonusy**: útok a obrana útočníka i obránce podle oblasti (Všude, GBG, Expedice, QI) a ostatní bonusy.
-- **GBG**: cechy na mapě, kde útočíme a kde útočí na nás, opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), tabulka provincií s časem odemknutí, ☆ pro sledování a vlastním názvem (server názvy neposílá, doplní se ručně a uloží), žebříček členů.
+- **GBG**: cechy na mapě, kde útočíme a kde útočí na nás, opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), tabulka provincií s časem odemknutí, názvy (D4C…), označením provincií sousedících s našimi a ☆ pro sledování, žebříček členů.
 - **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
 - **Suroviny**, **Log**.
 - **🔔 Upozornění**: historie upozornění a nastavení.

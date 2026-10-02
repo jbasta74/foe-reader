@@ -228,12 +228,15 @@
 
   // Názvy provincií server neposílá – uživatel si je doplní sám (ukládá se pro každou mapu zvlášť).
   const NAMES_KEY = 'foeReaderProvNames';
-  const PROV_SEED = { waterfall_archipelago: { 30: 'D4C' } };
+  // Vestavěná tabulka (provinces.js): id -> [zkratka, název, sousedé]. Vlastní název ji přebije.
+  const provData = () => (globalThis.FOE_PROVINCES || {})[S.gbg?.map?.id || ''] || {};
   function provNames() {
     const map = S.gbg?.map?.id || '';
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}')[map] || {}; } catch { /* ignore */ }
-    return { ...(PROV_SEED[map] || {}), ...saved };
+    const built = Object.fromEntries(Object.entries(provData()).map(([id, v]) => [id, v[0]]));
+    for (const [id, n] of Object.entries(saved)) if (n) built[id] = n;
+    return built;
   }
   function setProvName(id, name) {
     const map = S.gbg?.map?.id || '';
@@ -243,7 +246,8 @@
       localStorage.setItem(NAMES_KEY, JSON.stringify(all));
     } catch { /* ignore */ }
   }
-  const provLabel = (id) => { const n = provNames()[id]; return n ? `${n} (#${id})` : `#${id}`; };
+  const provLabel = (id) => provNames()[id] || `#${id}`;
+  const provFull = (id) => provData()[id]?.[1] || '';
 
   // Zvuk přes WebAudio – prohlížeč ho povolí až po prvním kliknutí na stránku/panel.
   let audio = null;
@@ -693,20 +697,26 @@
   function viewProvinces(provs, me, pname, now) {
     const watch = loadWatch();
     const names = provNames();
-    const list = provs.map((p) => ({ p, id: p.id ?? 0, left: (p.lockedUntil || 0) - now, own: p.ownerId === me }))
-      .sort((a, b) => (watch.has(b.id) - watch.has(a.id)) || (a.own - b.own) || (Math.max(0, a.left) - Math.max(0, b.left)) || (a.id - b.id));
+    const data = provData();
+    const mine = new Set(provs.filter((p) => p.ownerId === me).map((p) => p.id ?? 0));
+    const isNeighbour = (id) => (data[id]?.[2] || []).some((n) => mine.has(n));
+    const list = provs.map((p) => {
+      const id = p.id ?? 0, own = p.ownerId === me;
+      return { p, id, own, left: (p.lockedUntil || 0) - now, near: !own && isNeighbour(id) };
+    }).sort((a, b) => (watch.has(b.id) - watch.has(a.id)) || (a.own - b.own) || (b.near - a.near)
+      || (Math.max(0, a.left) - Math.max(0, b.left)) || (a.id - b.id));
     return `<h4>Provincie (★ = upozornit ${cfg.gbgWatchLead ? cfg.gbgWatchLead + ' min před' : 'při'} odemknutí)</h4>
-      <table class="prov"><thead><tr><th></th><th>#</th><th>Název</th><th>Vlastník</th><th>Odemčeno</th><th>Opotř.</th><th>Body</th></tr></thead><tbody>${
-      list.map(({ p, id, left, own }) => `<tr class="${watch.has(id) ? 'sel' : own ? 'muted' : ''}">
+      <table class="prov"><thead><tr><th></th><th>Název</th><th>Vlastník</th><th>Sousedí</th><th>Odemčeno</th><th>Opotř.</th><th>Body</th></tr></thead><tbody>${
+      list.map(({ p, id, left, own, near }) => `<tr class="${watch.has(id) ? 'sel' : own ? 'muted' : ''}">
         <td>${own ? '' : `<button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button>`}</td>
-        <td>${id}</td>
-        <td><input type="text" class="pname" data-prov="${id}" value="${esc(names[id] || '')}" placeholder="název" maxlength="12"></td>
+        <td title="${esc(provFull(id))} · #${id}"><input type="text" class="pname" data-prov="${id}" value="${esc(names[id] || '')}" placeholder="#${id}" maxlength="12"></td>
         <td>${own ? 'my' : esc(pname(p.ownerId))}</td>
+        <td>${near ? '<span class="hi">s námi</span>' : ''}</td>
         <td class="num">${left > 0 ? 'za ' + dur(left) : '<b>teď</b>'}</td>
         <td class="num">${p.gainAttritionChance != null ? p.gainAttritionChance + ' %' : '–'}</td>
         <td class="num">${fmt(p.victoryPoints)}</td></tr>`).join('')
     }</tbody></table>
-      <p class="muted">Názvy provincií server neposílá. Doplňte si je do sloupce „Název“ (např. D4C) – uloží se a ukážou se i v upozorněních.</p>`;
+      <p class="muted">„Sousedí s námi“ = hraničí s některou naší provincií, dá se na ni tedy útočit. Název lze přepsat (uloží se). Celý název a číslo se ukážou po najetí myší.</p>`;
   }
 
   // ---------- Upozornění ----------

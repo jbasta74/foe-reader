@@ -172,7 +172,14 @@
     if (rows && rows.length) {
       const cls = rows[0]?.__class__;
       if (cls === 'GreatBuildingRankingRow') {
-        S.gbRanking = { rankings: rows, time: Date.now() };
+        // První řádek bez pořadí je majitel; budovu poznáme podle plánků v odměně.
+        const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
+        const building = rows.map((r) => r.reward?.blueprintRewards?.[0]?.building_id).find(Boolean);
+        if (ownerRow && ownerRow.player.player_id === myId()) {
+          S.ownRanking = { rankings: rows, building, time: Date.now() };
+          return;
+        }
+        S.gbRanking = { rankings: rows, building, ownerName: ownerRow?.player?.name, time: Date.now() };
         // Promítnout vlastní vklad a místo i do přehledu VB hráče.
         const me = rows.find((r) => r.player?.is_self || r.player?.player_id === myId());
         const row = S.foreignGB && S.otherGBs?.list?.find((g) => g.entity_id === S.foreignGB.id);
@@ -243,6 +250,7 @@
   const CFG_DEFAULT = {
     sound: true, gbgAttack: true, gbgWatch: true, gbgWatchLead: 1,
     tavFree: true, tavAgain: true, tavOwnFull: true, prodOn: true, prodMin: 20,
+    arcFactor: 1.9,
   };
   const cfg = (() => {
     try { return { ...CFG_DEFAULT, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { ...CFG_DEFAULT }; }
@@ -399,6 +407,12 @@
   function viewGB() {
     const gbs = [...S.entities.values()].filter((e) => e.type === 'greatbuilding');
     if (!gbs.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
+    let calc = '<p class="muted">Kalkulačka náhozů: otevřete ve hře svou Velkou budovu.</p>';
+    if (S.ownRanking) {
+      const ent = gbs.find((e) => e.cityentity_id === S.ownRanking.building);
+      const c = nahozCalc(S.ownRanking.rankings, ent, S.player?.user_name || '');
+      if (c) calc = viewNahoz(c, 'Náhozy: ' + entName(ent.cityentity_id)) + '<h4>Všechny moje VB</h4>';
+    }
     const rows = gbs.map((e) => {
       const max = e.max_level ?? S.gbInfo.get(e.cityentity_id)?.max_level;
       const inv = e.state?.invested_forge_points || 0;
@@ -407,7 +421,7 @@
       const left = need != null ? need - inv : null;
       return { name: entName(e.cityentity_id), level: e.level, max, inv, need, left, atMax };
     }).sort((a, b) => (a.atMax - b.atMax) || ((a.left ?? 1e15) - (b.left ?? 1e15)));
-    return `<table><thead><tr><th>Velká budova</th><th>Úr.</th><th>Vloženo / potřeba</th><th>Chybí FP</th></tr></thead><tbody>${
+    return `${calc}<table><thead><tr><th>Velká budova</th><th>Úr.</th><th>Vloženo / potřeba</th><th>Chybí FP</th></tr></thead><tbody>${
       rows.map((r) => `<tr class="${r.atMax ? 'muted' : ''}">
         <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''}</td>
         <td class="num">${r.atMax ? 'max' : `${fmt(r.inv)} / ${fmt(r.need)}`}</td>
@@ -594,6 +608,38 @@
     }</tbody></table>`;
   }
 
+  // ---------- Kalkulačka náhozů (P1–P5 × koeficient, text do vlákna) ----------
+  function nahozCalc(rows, entity, ownerName) {
+    if (!rows || !entity) return null;
+    const f1000 = Math.round((+cfg.arcFactor || 1.9) * 1000); // celočíselně kvůli zaokrouhlení (285 × 1,9 = 541,5 → 542)
+    const total = entity.state?.forge_points_for_level_up;
+    const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
+    const ownerFp = ownerRow?.forge_points || 0;
+    const places = rows.filter((r) => r.rank && r.reward).sort((a, b) => a.rank - b.rank).slice(0, 5).map((r) => {
+      const base = r.reward.strategy_point_amount || 0;
+      const val = Math.round((base * f1000) / 1000);
+      const holder = r.player?.player_id != null ? { name: r.player.name, fp: r.forge_points || 0 } : null;
+      return { rank: r.rank, base, val, holder, filled: !!holder && holder.fp >= val };
+    });
+    const sumP = places.reduce((a, x) => a + x.val, 0);
+    const ownShare = total != null ? Math.max(0, total - sumP) : null;
+    const free = places.filter((x) => !x.filled && x.val > 0);
+    const text = `${ownerName} ${entName(entity.cityentity_id)} ${entity.level}→${entity.level + 1} ` + free.map((x) => `P${x.rank}(${x.val})`).join(' ');
+    return { total, ownerFp, places, sumP, ownShare, ownLeft: ownShare != null ? Math.max(0, ownShare - ownerFp) : null, text: text.trim() };
+  }
+
+  function viewNahoz(c, title) {
+    if (!c) return '';
+    return `<div class="cfg"><div><b>${esc(title)}</b> · koeficient <input type="number" data-cfg="arcFactor" value="${cfg.arcFactor}" step="0.01" min="1" max="3" style="width:60px"></div>
+      <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>
+      <table><thead><tr><th>Místo</th><th>Odměna</th><th>Nához</th><th>Stav</th></tr></thead><tbody>${
+        c.places.map((x) => `<tr class="${x.filled ? 'muted' : ''}"><td>P${x.rank}</td><td class="num">${fmt(x.base)}</td><td class="num"><b>${fmt(x.val)}</b></td>
+          <td>${x.holder ? `${esc(x.holder.name)} ${fmt(x.holder.fp)}${x.filled ? ' ✓' : ' (málo)'}` : 'volné'}</td></tr>`).join('')}
+        <tr><td colspan="2">Vlastní podíl (celkem ${fmt(c.total)} − náhozy ${fmt(c.sumP)})</td><td class="num"><b>${fmt(c.ownShare)}</b></td>
+          <td>vloženo ${fmt(c.ownerFp)}, zbývá <b>${fmt(c.ownLeft)}</b></td></tr>
+      </tbody></table>`;
+  }
+
   // ---------- VB přátel (kalkulátor) ----------
   function arcBonus() {
     for (const e of S.entities.values()) {
@@ -640,6 +686,11 @@
       }
     } else {
       html += '<p class="muted">Otevřete ve hře Velkou budovu jiného hráče.</p>';
+    }
+    if (gb && rk) {
+      const c = nahozCalc(rk, gb, S.players.get(gb.player_id)?.name || S.gbRanking.ownerName || '');
+      if (c && c.text) html += `<div class="cfg"><div><b>Text do vlákna</b> · koeficient <input type="number" data-cfg="arcFactor" value="${cfg.arcFactor}" step="0.01" min="1" max="3" style="width:60px"></div>
+        <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>`;
     }
     if (S.otherGBs?.list?.length) {
       const list = S.otherGBs.list.map((g) => ({
@@ -833,6 +884,8 @@
       .cfg label{margin-right:10px;white-space:nowrap}
       input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
       input.pname{width:70px}
+      .copyrow{display:flex;gap:6px}
+      .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>
     <button class="btn" id="toggle" title="Klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
     <div class="panel" id="panel"><div class="tabs">${TABS.map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')}</div><div class="body" id="body"></div></div>`;
@@ -848,6 +901,14 @@
       if (r) { selectedKey = r.dataset.key === selectedKey ? null : r.dataset.key; render(); return; }
       if (ev.target.closest('[data-act="download"]')) download();
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
+      const cp = ev.target.closest('[data-act="copy"]');
+      if (cp) {
+        const txt = cp.dataset.text;
+        const done = () => { cp.textContent = 'Zkopírováno ✓'; setTimeout(() => { cp.textContent = 'Kopírovat'; }, 1500); };
+        (navigator.clipboard?.writeText(txt) || Promise.reject()).then(done).catch(() => {
+          const inp = cp.parentElement.querySelector('.copytext'); inp.select(); document.execCommand('copy'); done();
+        });
+      }
       const w = ev.target.closest('[data-watch]');
       if (w) {
         const set = loadWatch(), id = +w.dataset.watch;
@@ -942,7 +1003,7 @@
     if (!open) return;
     // Nepřekreslovat, když uživatel zrovna píše do pole v panelu.
     const act = root.activeElement;
-    if (act && act.tagName === 'INPUT' && (act.type === 'number' || act.type === 'text') && body.contains(act)) return;
+    if (act && act.tagName === 'INPUT' && !act.readOnly && (act.type === 'number' || act.type === 'text') && body.contains(act)) return;
     const keepScroll = body.scrollTop;
     body.innerHTML = TABS.find((t) => t[0] === tab)[2]();
     body.scrollTop = keepScroll;

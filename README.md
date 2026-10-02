@@ -1,4 +1,4 @@
-# FoE Reader 0.3.9
+# FoE Reader 0.3.10
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -30,6 +30,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - **Suroviny**, **Log**.
 - **Sklad**: zboží všech věků (po věcích, se součtem a zvýrazněním nejslabšího zboží) a části (fragmenty) – kolik máte, kolik je potřeba, kolikrát jde sestavit a co chybí.
 - **🔔 Upozornění**: historie upozornění a nastavení.
+- **ℹ️ O rozšíření**: verze, odkazy na GitHub (kód, vydání, hlášení chyb).
 
 ## Upozornění
 Při upozornění zapípá zvuk a tlačítko začne blikat s počtem nových zpráv. Zvuk prohlížeč povolí až po prvním kliknutí do stránky.

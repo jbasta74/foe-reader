@@ -956,6 +956,25 @@
     return html || '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
   }
 
+  // ---------- O rozšíření ----------
+  const REPO = 'https://github.com/jbasta74/foe-reader';
+  const VERSION = (() => { try { return chrome.runtime.getManifest().version; } catch { return '?'; } })();
+  function viewAbout() {
+    const world = location.hostname.split('.')[0];
+    return `<h4>FoE Reader ${esc(VERSION)}</h4>
+      <p>Pasivně čte komunikaci Forge of Empires a zobrazuje přehledy. Na server nic neposílá a nic ve hře nemění.</p>
+      <table><tbody>
+        <tr><td>Verze</td><td><b>${esc(VERSION)}</b></td></tr>
+        <tr><td>Zdrojový kód</td><td><a href="${REPO}" target="_blank" rel="noopener">${REPO.replace('https://', '')}</a></td></tr>
+        <tr><td>Vydání a seznam změn</td><td><a href="${REPO}/releases" target="_blank" rel="noopener">Releases</a></td></tr>
+        <tr><td>Nahlásit chybu / nápad</td><td><a href="${REPO}/issues" target="_blank" rel="noopener">Issues</a></td></tr>
+        <tr><td>Svět</td><td>${esc(world)}${S.player ? ` · ${esc(S.player.user_name)}` : ''}</td></tr>
+        <tr><td>Zachyceno zpráv</td><td>${fmt([...S.log.values()].reduce((a, l) => a + l.count, 0))} (${S.log.size} druhů)</td></tr>
+      </tbody></table>
+      <p class="muted">Aktualizace: stáhněte novou verzi (git pull nebo ZIP z Releases), v chrome://extensions klikněte u rozšíření na obnovit a ve hře dejte F5.</p>
+      <p class="muted">Názvy a sousednost provincií GBG pocházejí z projektu FoE Helper (AGPL-3.0).</p>`;
+  }
+
   let selectedKey = null;
   function viewLog() {
     const rows = [...S.log.entries()].sort((a, b) => b[1].time - a[1].time);
@@ -975,7 +994,7 @@
   const TABS = [
     ['gb', 'Moje VB', viewGB], ['fgb', 'VB přátel', viewForeignGB], ['prod', 'Produkce', viewProduction],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
-    ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts],
+    ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];
   let tab = 'gb';
   let open = false;
@@ -999,7 +1018,7 @@
       .panel{display:none;position:absolute;top:calc(100% + 6px);left:0;width:580px;max-width:96vw;background:#fbf6ec;color:#2b2116;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;flex-direction:column}
       .panel.open{display:flex}
       .tabs{display:flex;flex-wrap:wrap;background:#2b2116}
-      .tabs button{flex:1 0 auto;background:none;border:0;color:#d9c4a0;padding:7px 8px;cursor:pointer;white-space:nowrap}
+      .tabs button{flex:1 0 auto;background:none;border:0;color:#d9c4a0;padding:7px 5px;cursor:pointer;white-space:nowrap}
       .tabs button.on{background:#fbf6ec;color:#2b2116;font-weight:700}
       .body{overflow:auto;padding:8px 10px}
       table{width:100%;border-collapse:collapse}
@@ -1022,6 +1041,7 @@
       input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
       input.pname{width:70px}
       .copyrow{display:flex;gap:6px}
+      a{color:#8a4b12}
       .good{display:inline-block;margin:0 10px 1px 0;white-space:nowrap}
       .good.low{text-decoration:underline;text-decoration-color:#b0410f}
       table.stock td{vertical-align:top}
@@ -1029,7 +1049,7 @@
       .fbtn.on{background:#2b2116;color:#f3d9a4;border-color:#2b2116;font-weight:700}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>
-    <button class="btn" id="toggle" title="Klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
+    <button class="btn" id="toggle" title="FoE Reader ${VERSION} · klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
     <div class="panel" id="panel"><div class="tabs">${TABS.map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')}</div><div class="body" id="body"></div></div>`;
     body = root.getElementById('body');
     setupDrag(root.getElementById('toggle'), () => {

@@ -628,9 +628,16 @@
     return { total, ownerFp, places, sumP, ownShare, ownLeft: ownShare != null ? Math.max(0, ownShare - ownerFp) : null, text: text.trim() };
   }
 
+  // Volba koeficientu: rychlé předvolby + vlastní hodnota (pamatuje se).
+  const FACTORS = [1.8, 1.85, 1.9, 1.92, 1.95, 2.0];
+  function factorPicker() {
+    return FACTORS.map((f) => `<button class="fbtn ${+cfg.arcFactor === f ? 'on' : ''}" data-factor="${f}">${f.toFixed(2).replace(/0$/, '').replace('.', ',')}</button>`).join('')
+      + ` <input type="number" data-cfg="arcFactor" value="${cfg.arcFactor}" step="0.01" min="1" max="3" style="width:60px" title="Vlastní koeficient">`;
+  }
+
   function viewNahoz(c, title) {
     if (!c) return '';
-    return `<div class="cfg"><div><b>${esc(title)}</b> · koeficient <input type="number" data-cfg="arcFactor" value="${cfg.arcFactor}" step="0.01" min="1" max="3" style="width:60px"></div>
+    return `<div class="cfg"><div><b>${esc(title)}</b> · koeficient ${factorPicker()}</div>
       <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>
       <table><thead><tr><th>Místo</th><th>Odměna</th><th>Nához</th><th>Stav</th></tr></thead><tbody>${
         c.places.map((x) => `<tr class="${x.filled ? 'muted' : ''}"><td>P${x.rank}</td><td class="num">${fmt(x.base)}</td><td class="num"><b>${fmt(x.val)}</b></td>
@@ -689,7 +696,7 @@
     }
     if (gb && rk) {
       const c = nahozCalc(rk, gb, S.players.get(gb.player_id)?.name || S.gbRanking.ownerName || '');
-      if (c && c.text) html += `<div class="cfg"><div><b>Text do vlákna</b> · koeficient <input type="number" data-cfg="arcFactor" value="${cfg.arcFactor}" step="0.01" min="1" max="3" style="width:60px"></div>
+      if (c && c.text) html += `<div class="cfg"><div><b>Text do vlákna</b> · koeficient ${factorPicker()}</div>
         <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>`;
     }
     if (S.otherGBs?.list?.length) {
@@ -885,6 +892,8 @@
       input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
       input.pname{width:70px}
       .copyrow{display:flex;gap:6px}
+      .fbtn{background:#fff;border:1px solid #c9b48c;border-radius:4px;padding:1px 6px;margin-right:3px;cursor:pointer}
+      .fbtn.on{background:#2b2116;color:#f3d9a4;border-color:#2b2116;font-weight:700}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>
     <button class="btn" id="toggle" title="Klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
@@ -901,6 +910,8 @@
       if (r) { selectedKey = r.dataset.key === selectedKey ? null : r.dataset.key; render(); return; }
       if (ev.target.closest('[data-act="download"]')) download();
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
+      const fb = ev.target.closest('[data-factor]');
+      if (fb) { cfg.arcFactor = +fb.dataset.factor; saveCfg(); render(); return; }
       const cp = ev.target.closest('[data-act="copy"]');
       if (cp) {
         const txt = cp.dataset.text;

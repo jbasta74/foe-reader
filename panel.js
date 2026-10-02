@@ -226,6 +226,25 @@
   }
   function saveWatch(set) { try { localStorage.setItem(WATCH_KEY, JSON.stringify({ key: watchKey(), ids: [...set] })); } catch { /* ignore */ } }
 
+  // Názvy provincií server neposílá – uživatel si je doplní sám (ukládá se pro každou mapu zvlášť).
+  const NAMES_KEY = 'foeReaderProvNames';
+  const PROV_SEED = { waterfall_archipelago: { 30: 'D4C' } };
+  function provNames() {
+    const map = S.gbg?.map?.id || '';
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}')[map] || {}; } catch { /* ignore */ }
+    return { ...(PROV_SEED[map] || {}), ...saved };
+  }
+  function setProvName(id, name) {
+    const map = S.gbg?.map?.id || '';
+    try {
+      const all = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}');
+      (all[map] ||= {})[id] = name.trim();
+      localStorage.setItem(NAMES_KEY, JSON.stringify(all));
+    } catch { /* ignore */ }
+  }
+  const provLabel = (id) => { const n = provNames()[id]; return n ? `${n} (#${id})` : `#${id}`; };
+
   // Zvuk přes WebAudio – prohlížeč ho povolí až po prvním kliknutí na stránku/panel.
   let audio = null;
   function ensureAudio() {
@@ -269,16 +288,16 @@
   function checkProvinceChange(before, after) {
     if (!before || !cfg.gbgAttack) return;
     const me = gbgMe(), id = after.id ?? 0;
-    if (before.ownerId === me && after.ownerId !== me) { alert('gbg', `Ztratili jsme provincii #${id} (${clanName(after.ownerId)}).`, true); return; }
-    if (before.ownerId !== me && after.ownerId === me) { alert('gbg', `Dobyli jsme provincii #${id}.`); return; }
+    if (before.ownerId === me && after.ownerId !== me) { alert('gbg', `Ztratili jsme provincii ${provLabel(id)} (${clanName(after.ownerId)}).`, true); return; }
+    if (before.ownerId !== me && after.ownerId === me) { alert('gbg', `Dobyli jsme provincii ${provLabel(id)}.`); return; }
     if (after.ownerId !== me) return;
     const prev = new Map((before.conquestProgress || []).map((c) => [c.participantId, c.progress]));
     for (const c of after.conquestProgress || []) {
       if (c.participantId === me || !(c.progress > 0)) continue;
       const was = prev.get(c.participantId) || 0;
-      if (was === 0) alert('gbg', `Útok na naši provincii #${id}: ${clanName(c.participantId)} ${c.progress}/${c.maxProgress}.`, true);
+      if (was === 0) alert('gbg', `Útok na naši provincii ${provLabel(id)}: ${clanName(c.participantId)} ${c.progress}/${c.maxProgress}.`, true);
       else if (was / c.maxProgress < 0.75 && c.progress / c.maxProgress >= 0.75)
-        alert('gbg', `Provincie #${id} je skoro ztracená: ${clanName(c.participantId)} ${c.progress}/${c.maxProgress}.`, true);
+        alert('gbg', `Provincie ${provLabel(id)} je skoro ztracená: ${clanName(c.participantId)} ${c.progress}/${c.maxProgress}.`, true);
     }
   }
 
@@ -299,7 +318,7 @@
         if (unlockAlerted.has(key) || now < p.lockedUntil - lead || now > p.lockedUntil + 60) continue;
         unlockAlerted.add(key);
         const left = p.lockedUntil - now;
-        alert('gbg', left > 0 ? `Provincie #${id} (${clanName(p.ownerId)}) se odemkne za ${dur(left)}.` : `Provincie #${id} (${clanName(p.ownerId)}) je odemčená.`, true);
+        alert('gbg', left > 0 ? `Provincie ${provLabel(id)} (${clanName(p.ownerId)}) se odemkne za ${dur(left)}.` : `Provincie ${provLabel(id)} (${clanName(p.ownerId)}) je odemčená.`, true);
       }
     }
     if (lastCheck == null) { lastCheck = now; return; } // po načtení nehlásit staré události
@@ -625,7 +644,7 @@
         .sort((a, b) => b.c.progress / b.c.maxProgress - a.c.progress / a.c.maxProgress);
       if (attacking.length) {
         html += `<h4>Kde útočíme</h4><table><thead><tr><th>Provincie</th><th>Vlastník</th><th>Postup</th></tr></thead><tbody>${
-          attacking.map(({ p, c }) => `<tr><td>#${p.id ?? 0}</td><td>${esc(pname(p.ownerId))}</td><td class="num">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td></tr>`).join('')}</tbody></table>`;
+          attacking.map(({ p, c }) => `<tr><td>${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(p.ownerId))}</td><td class="num">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td></tr>`).join('')}</tbody></table>`;
       }
       html += viewAttrition();
       html += viewProvinces(provs, me, pname, now);
@@ -633,7 +652,7 @@
       if (defending.length) {
         html += `<h4>Kde útočí na nás</h4><table><thead><tr><th>Provincie</th><th>Útočník</th><th>Postup</th></tr></thead><tbody>${
           defending.flatMap((p) => prog(p, (c) => c.participantId !== me).map((c) =>
-            `<tr><td>#${p.id ?? 0}</td><td>${esc(pname(c.participantId))}</td><td class="num hi">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td></tr>`)).join('')}</tbody></table>`;
+            `<tr><td>${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(c.participantId))}</td><td class="num hi">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td></tr>`)).join('')}</tbody></table>`;
       }
     }
     if (lb?.length) {
@@ -673,19 +692,21 @@
   // ---------- GBG: provincie a sledování ----------
   function viewProvinces(provs, me, pname, now) {
     const watch = loadWatch();
-    const list = provs.filter((p) => p.ownerId !== me)
-      .map((p) => ({ p, id: p.id ?? 0, left: (p.lockedUntil || 0) - now }))
-      .sort((a, b) => (watch.has(b.id) - watch.has(a.id)) || (Math.max(0, a.left) - Math.max(0, b.left)));
-    return `<h4>Provincie ostatních (★ = upozornit ${cfg.gbgWatchLead ? cfg.gbgWatchLead + ' min před' : 'při'} odemknutí)</h4>
-      <table class="prov"><thead><tr><th></th><th>#</th><th>Vlastník</th><th>Odemčeno</th><th>Opotř.</th><th>Body</th></tr></thead><tbody>${
-      list.map(({ p, id, left }) => `<tr class="${watch.has(id) ? 'sel' : ''}">
-        <td><button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button></td>
-        <td>${id}</td><td>${esc(pname(p.ownerId))}</td>
+    const names = provNames();
+    const list = provs.map((p) => ({ p, id: p.id ?? 0, left: (p.lockedUntil || 0) - now, own: p.ownerId === me }))
+      .sort((a, b) => (watch.has(b.id) - watch.has(a.id)) || (a.own - b.own) || (Math.max(0, a.left) - Math.max(0, b.left)) || (a.id - b.id));
+    return `<h4>Provincie (★ = upozornit ${cfg.gbgWatchLead ? cfg.gbgWatchLead + ' min před' : 'při'} odemknutí)</h4>
+      <table class="prov"><thead><tr><th></th><th>#</th><th>Název</th><th>Vlastník</th><th>Odemčeno</th><th>Opotř.</th><th>Body</th></tr></thead><tbody>${
+      list.map(({ p, id, left, own }) => `<tr class="${watch.has(id) ? 'sel' : own ? 'muted' : ''}">
+        <td>${own ? '' : `<button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button>`}</td>
+        <td>${id}</td>
+        <td><input type="text" class="pname" data-prov="${id}" value="${esc(names[id] || '')}" placeholder="název" maxlength="12"></td>
+        <td>${own ? 'my' : esc(pname(p.ownerId))}</td>
         <td class="num">${left > 0 ? 'za ' + dur(left) : '<b>teď</b>'}</td>
         <td class="num">${p.gainAttritionChance != null ? p.gainAttritionChance + ' %' : '–'}</td>
         <td class="num">${fmt(p.victoryPoints)}</td></tr>`).join('')
     }</tbody></table>
-      <p class="muted">Názvy provincií server neposílá, ve hře je najdete podle čísla v pořadí na mapě.</p>`;
+      <p class="muted">Názvy provincií server neposílá. Doplňte si je do sloupce „Název“ (např. D4C) – uloží se a ukážou se i v upozorněních.</p>`;
   }
 
   // ---------- Upozornění ----------
@@ -768,7 +789,8 @@
       .star{background:none;border:0;cursor:pointer;font-size:15px;color:#b0410f;padding:0 2px;line-height:1}
       .cfg{display:flex;flex-direction:column;gap:6px;background:#f3ead6;border-radius:6px;padding:8px}
       .cfg label{margin-right:10px;white-space:nowrap}
-      input[type=number]{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
+      input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
+      input.pname{width:70px}
     </style>
     <button class="btn" id="toggle" title="Klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
     <div class="panel" id="panel"><div class="tabs">${TABS.map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')}</div><div class="body" id="body"></div></div>`;
@@ -794,6 +816,8 @@
     root.addEventListener('change', (ev) => {
       const el = ev.target.closest('[data-cfg]');
       if (el) { cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render(); }
+      const pn = ev.target.closest('[data-prov]');
+      if (pn) { setProvName(+pn.dataset.prov, pn.value); render(); }
       const inp = ev.target.closest('[data-input="attrTarget"]');
       if (inp) { attrTarget = +inp.value || null; render(); }
     });
@@ -876,7 +900,7 @@
     if (!open) return;
     // Nepřekreslovat, když uživatel zrovna píše do pole v panelu.
     const act = root.activeElement;
-    if (act && act.tagName === 'INPUT' && act.type === 'number' && body.contains(act)) return;
+    if (act && act.tagName === 'INPUT' && (act.type === 'number' || act.type === 'text') && body.contains(act)) return;
     const keepScroll = body.scrollTop;
     body.innerHTML = TABS.find((t) => t[0] === tab)[2]();
     body.scrollTop = keepScroll;

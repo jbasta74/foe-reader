@@ -1,4 +1,4 @@
-# FoE Reader 0.3.0
+# FoE Reader 0.3.1
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -21,7 +21,7 @@ Po každé úpravě kódu klikněte v `chrome://extensions` na ikonu obnovení u
 - **VB přátel**: po otevření cizí VB ukáže, kolik FP chybí, odměny s bonusem Archy, cenu zajištění místa a zisk.
 - **Produkce**: co se vyrábí, souhrn FP/mincí/zásob/medailí/zboží za aktuální cyklus a kdy bude hotovo.
 - **Bonusy**: útok a obrana útočníka i obránce podle oblasti (Všude, GBG, Expedice, QI) a ostatní bonusy.
-- **GBG**: cechy na mapě, kde útočíme a kde útočí na nás, opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), provincie ostatních s časem odemknutí a ☆ pro sledování, žebříček členů.
+- **GBG**: cechy na mapě, kde útočíme a kde útočí na nás, opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), tabulka provincií s časem odemknutí, ☆ pro sledování a vlastním názvem (server názvy neposílá, doplní se ručně a uloží), žebříček členů.
 - **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
 - **Suroviny**, **Log**.
 - **🔔 Upozornění**: historie upozornění a nastavení.

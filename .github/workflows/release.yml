@@ -1,0 +1,48 @@
+# Automatické vydání: když se na main změní verze v manifest.json a tag v<verze>
+# ještě neexistuje, zabalí rozšíření do ZIPu a vytvoří GitHub Release.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Zjistit verzi
+        id: ver
+        run: |
+          VERSION=$(jq -r .version manifest.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Zabalit rozšíření
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          mkdir -p dist/foe-reader
+          cp manifest.json inject.js provinces.js panel.js README.md dist/foe-reader/
+          cd dist && zip -r "foe-reader-${{ steps.ver.outputs.version }}.zip" foe-reader
+
+      - name: Vytvořit vydání
+        if: steps.ver.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.ver.outputs.version }}" \
+            "dist/foe-reader-${{ steps.ver.outputs.version }}.zip" \
+            --title "FoE Reader ${{ steps.ver.outputs.version }}" \
+            --generate-notes \
+            --target "$GITHUB_SHA"

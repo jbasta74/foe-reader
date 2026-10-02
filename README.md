@@ -11,6 +11,9 @@ Nic neodesílá a nic nemění.
 
 Po každé úpravě kódu klikněte v `chrome://extensions` na ikonu obnovení u rozšíření a znovu načtěte hru.
 
+## Vydání
+Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vydání (GitHub Actions, `.github/workflows/release.yml`): tag `v<verze>`, ZIP s rozšířením a seznam změn. Hotový ZIP je v záložce **Releases**.
+
 ## Soubory
 - `manifest.json`: vkládá dva skripty do `https://*.forgeofempires.com/game/*`.
 - `inject.js`: běží v kontextu stránky (`world: MAIN`) ještě před hrou. Obaluje `XMLHttpRequest`, `fetch` a `WebSocket` a přeposílá naparsované odpovědi z `/game/json?h=`, `/start/metadata?id=` a `wss://…/socket/` přes `window.postMessage`.

@@ -56,5 +56,13 @@ Součet = `getAllBoosts` (feature `all` + feature oblasti) **+ pasivní bonusy v
 - Radnice u Expedice ukazuje `defense_boost` Sochy Dia (+2 %) vedle součtu, ne v něm.
 - FoE Helper bonusy VB nezapočítává. Hlášení s daty bylo odesláno na GitHub (mainIine/foe-helfer-extension), 1. 10. 2026.
 
+## Odměny za příspěvky do VB (rework, beta od 2. 10. 2026)
+Zdroj: InnoGames support „Great Buildings Prestige: Contribution Rewards Rework“; ověřeno na datech (Galata 78, Terracotta 95, HYDRA 60).
+- Přispěvatelům jde podíl z ceny úrovně podle úrovně VB: 1–9: 25 %, 10–39: 30 %, 40–69: 40 %, 70–100: 25 %, 101–200: 15 %, 201–300: 10 %, 301–400: 7 %.
+- Dělení mezi místa: P1 58,25 %, P2 29,13 %, P3 9,71 %, P4 2,43 %, P5 ≈ 0,5 % (zaokrouhleno na 5). Zlatý stupeň: 7 míst (P6 0,08 %, P7 0,01 %).
+- Bonus Archy: do úrovně 200 až ×2, od 201 jen ×1,6 (10 % → 16 %, 7 % → 11,2 %).
+- Ceny úrovní se 2. 10. neměnily (11 VB porovnáno 1. 10. vs 2. 10.); proti ostrým serverům jsou ale na betě vyšší.
+- Rozšíření odměny nepočítá, čte je ze serveru (`reward.strategy_point_amount`).
+
 ## Kalkulátor míst ve VB
 Zajistit místo i: `x = ceil((zbývá + FP_držitele_bez_mě − můj_vklad) / 2)`, zisk = `round(odměna × (1 + Archa%/100)) − x − můj_vklad`. Bonus Archy: `bonuses[].type = "contribution_boost"` u `X_FutureEra_Landmark1`.

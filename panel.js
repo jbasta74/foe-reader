@@ -683,7 +683,8 @@
     const total = entity.state?.forge_points_for_level_up;
     const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
     const ownerFp = ownerRow?.forge_points || 0;
-    const places = rows.filter((r) => r.rank && r.reward).sort((a, b) => a.rank - b.rank).slice(0, 5).map((r) => {
+    // Počet odměňovaných míst není pevný (zlatý stupeň VB má 7 míst) – bereme všechna, která server pošle.
+    const places = rows.filter((r) => r.rank && r.reward).sort((a, b) => a.rank - b.rank).map((r) => {
       const base = r.reward.strategy_point_amount || 0;
       const val = Math.round((base * f1000) / 1000);
       const holder = r.player?.player_id != null ? { name: r.player.name, fp: r.forge_points || 0 } : null;

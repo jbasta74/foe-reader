@@ -37,6 +37,8 @@ Ověřeno na datech svět zz1, 1. 10. 2026. Rozšíření `foe-reader` (v0.2.5) 
 - WebSocket `FriendsTavernService.getSittingPlayersCount` = `[majitel, židlí, obsazeno]`. Chodí i pro vlastní hospodu (majitel = vy) a pro přátele.
 
 ## Produkce budov
+- `StartupService.getData.city_map` obsahuje jen hlavní město (`gridId: main`). Budovy osady ani QI při načtení nechodí.
+- `TimerService.getTimers`: `{gridId: cultural_outpost | guild_raids, type: outpostProduction, time}` – `time` je počet **sekund** do další hotové produkce (relativní); u ostatních časovačů je `time` absolutní unix čas.
 - Speciální budovy: `state.productionOption.products[]`: `ResourceProduct.playerResources`, `GuildResourceProduct.guildResources`, `GenericRewardProduct.reward` (`isRandom`), příznak `onlyWhenMotivated`.
 - VB a radnice: `state.current_product` (`products[]` s `product.resources` nebo `goods` = cechovní pokladna).
 

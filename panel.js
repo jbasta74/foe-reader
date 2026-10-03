@@ -135,7 +135,13 @@
       S.gbgLeaderboard = d;
     },
     'GuildBattlegroundStateService.getState'(d) { S.gbgState = d; },
-    'TimerService.getTimers'(d) { if (Array.isArray(d)) S.timers = d; },
+    // Časovače: u produkce osady / QI je `time` počet sekund do další hotové produkce,
+    // u ostatních absolutní čas. Relativní převedeme na absolutní serverový čas.
+    'TimerService.getTimers'(d) {
+      if (!Array.isArray(d)) return;
+      const now = nowServer();
+      S.timers = d.map((t) => ({ ...t, at: t.time < 1e9 ? now + t.time : t.time }));
+    },
     // Průběžný počet obsazených židlí: [majitel, židlí, obsazeno] (chodí přes WebSocket).
     'FriendsTavernService.getSittingPlayersCount'(d) {
       if (!Array.isArray(d) || d.length < 3) return;
@@ -294,7 +300,7 @@
   const CFG_KEY = 'foeReaderSettings', WATCH_KEY = 'foeReaderWatch';
   const CFG_DEFAULT = {
     sound: true, gbgAttack: true, gbgWatch: true, gbgWatchLead: 1,
-    tavFree: true, tavAgain: true, tavOwnFull: true, prodOn: true, prodMin: 20,
+    tavFree: true, tavAgain: true, tavOwnFull: true, prodOn: true, prodMin: 20, prodOutpost: true,
     arcFactor: 1.9,
   };
   const cfg = (() => {
@@ -409,6 +415,7 @@
     }
   }
 
+  const GRID = { cultural_outpost: 'Osada', guild_raids: 'Kvantové invaze', era_outpost: 'Kolonie' };
   // --- Kontroly podle času (sledované provincie, hospody, produkce) ---
   let lastCheck = null;
   const unlockAlerted = new Set();
@@ -451,6 +458,12 @@
         groups.set(k, (groups.get(k) || 0) + 1);
       }
       for (const n of groups.values()) if (n >= (+cfg.prodMin || 1)) alert('prod', `Hotová produkce: ${n} budov k vybrání.`);
+    }
+    // Osada a Kvantové invaze: jen časovač další hotové produkce (budovy server při načtení neposílá).
+    if (cfg.prodOutpost) {
+      for (const t of S.timers) {
+        if (t.type === 'outpostProduction' && passed(t.at)) alert('prod', `${GRID[t.gridId] || t.gridId}: produkce je hotová.`);
+      }
     }
   }
   setInterval(timeChecks, 5000);
@@ -665,7 +678,8 @@
       <td class="num">${fmt(o.supplies || 0)}</td><td class="num">${fmt(o.medals || 0)}</td><td class="num">${fmt(goodsSum(o))}</td></tr>`;
     const times = [...groups.entries()].sort((a, b) => a[0] - b[0]);
     return `<p>${ready ? `<span class="chip">k vybrání: ${ready}</span>` : ''}<span class="chip">vyrábí: ${[...groups.values()].reduce((a, g) => a + g.count, 0)}</span></p>
-      <h4>Aktuální cyklus (většinou 24 h)</h4>
+      ${S.timers.filter((t) => t.type === 'outpostProduction').map((t) => `<p><b>${esc(GRID[t.gridId] || t.gridId)}:</b> další produkce ${t.at > now ? 'za ' + dur(t.at - now) : '<span class="hi">hotová</span>'}</p>`).join('')}
+      <h4>Aktuální cyklus (většinou 24 h) – hlavní město</h4>
       <table><thead><tr><th></th><th>FP</th><th>Mince</th><th>Zásoby</th><th>Medaile</th><th>Zboží</th></tr></thead><tbody>
       ${line('Jisté', sure)}${line('+ po motivaci', extra)}</tbody></table>
       <p class="muted">Cechovní pokladna: ${fmt(goodsSum(guild) + Object.entries(guild).filter(([k]) => !S.goodsEra.has(k)).reduce((a, [, v]) => a + v, 0))} ks zboží/surovin.</p>
@@ -851,7 +865,7 @@
   function viewAttrition() {
     const a = S.attrition;
     if (!a) return '';
-    const reset = S.timers.find((t) => t.type === 'battlegroundsAttrition')?.time;
+    const reset = S.timers.find((t) => t.type === 'battlegroundsAttrition')?.at;
     const target = attrTarget ?? a.level + 20;
     const need = Math.max(0, target - a.level);
     const rows = [100, 60, 20].map((c) => `<tr><td>${c} %</td><td class="num">${fmt(Math.ceil(need / (c / 100)))}</td></tr>`).join('');
@@ -902,7 +916,7 @@
         ${chk('sound', 'Zvuk')} <button data-act="testsound">Vyzkoušet zvuk</button>
         <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
-        <div><b>Produkce:</b> ${chk('prodOn', 'hotovo')} ${num('prodMin', 'od počtu budov')}</div>
+        <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
       </div>
       <h4>Poslední upozornění</h4>
       ${S.alerts.length ? `<table><tbody>${S.alerts.map((a) => `<tr><td class="muted" style="white-space:nowrap">${new Date(a.t).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}</td>

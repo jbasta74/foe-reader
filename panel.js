@@ -137,6 +137,19 @@
     'GuildBattlegroundStateService.getState'(d) { S.gbgState = d; },
     // Časovače: u produkce osady / QI je `time` počet sekund do další hotové produkce,
     // u ostatních absolutní čas. Relativní převedeme na absolutní serverový čas.
+    // Mapa jiné "mřížky" než hlavního města – osada (cultural_outpost) apod. Přijde po otevření osady.
+    'CityMapService.getCityMap'(d) {
+      if (!d || !Array.isArray(d.entities)) return;
+      if (d.gridId === 'main') { for (const e of d.entities) S.entities.set(e.id, e); return; }
+      S.outpost = { gridId: d.gridId, entities: new Map(d.entities.map((e) => [e.id, e])), time: Date.now() };
+    },
+    'OutpostService.getAll'(d) { if (Array.isArray(d)) S.outposts = d; },
+    'AdvancementService.getAll'(d) { if (Array.isArray(d)) S.advancements = d; },
+    'ResourceService.getResourceDefinitions'(d) {
+      if (!Array.isArray(d)) return;
+      S.resName ||= new Map();
+      for (const r of d) if (r?.id) S.resName.set(r.id, r.name || r.id);
+    },
     'TimerService.getTimers'(d) {
       if (!Array.isArray(d)) return;
       const now = nowServer();
@@ -185,6 +198,12 @@
     let sum = 0;
     for (const pk of S.fpPacks.values()) sum += pk.gain * pk.stock;
     S.packageFP = sum;
+  }
+
+  // Budovy osad mají v ID název kultury (H_Aztecs_Townhall), budovy města věk nebo MultiAge/AllAge.
+  const OUTPOST_ID = /^[A-Z]_(Aztecs|Vikings|Japanese|Egyptians|Mughals|Polynesia|Pirates)_/;
+  function isOutpostEntity(x) {
+    return !!S.outpost?.entities.has(x.id) || OUTPOST_ID.test(x.cityentity_id || '');
   }
 
   // Obecné zachycení: kdekoli přijde CityMapEntity (např. po sbírání produkce
@@ -239,6 +258,8 @@
             row.level = x.level ?? row.level;
           }
         }
+      } else if (isOutpostEntity(x)) {
+        S.outpost?.entities.set(x.id, x);
       } else {
         S.entities.set(x.id, x);
       }
@@ -461,8 +482,14 @@
     }
     // Osada a Kvantové invaze: jen časovač další hotové produkce (budovy server při načtení neposílá).
     if (cfg.prodOutpost) {
+      // Známe-li budovy osady (po jejím otevření), hlásíme přesně; jinak jen podle časovače.
+      const known = S.outpost?.gridId;
+      if (known) {
+        const done = [...S.outpost.entities.values()].filter((e) => e.state?.__class__ === 'ProducingState' && passed(e.state.next_state_transition_at));
+        if (done.length) alert('prod', `${GRID[known] || known}: hotovo ${done.length} ${done.length === 1 ? 'budova' : done.length < 5 ? 'budovy' : 'budov'} (${resList(sumProducts(done))}).`);
+      }
       for (const t of S.timers) {
-        if (t.type === 'outpostProduction' && passed(t.at)) alert('prod', `${GRID[t.gridId] || t.gridId}: produkce je hotová.`);
+        if (t.type === 'outpostProduction' && t.gridId !== known && passed(t.at)) alert('prod', `${GRID[t.gridId] || t.gridId}: produkce je hotová.`);
       }
     }
   }
@@ -639,11 +666,62 @@
       const list = cp.products || [cp];
       for (const p of list) {
         if (p.product?.resources) out.push({ res: p.product.resources });
+        else if (p.resources?.resources) out.push({ res: p.resources.resources });
         else if (p.goods) out.push({ res: Object.fromEntries(p.goods.map((g) => [g.good_id, g.value])), guild: true });
         else if (p.amount && p.name) out.push({ label: `${p.amount}× ${p.name}` });
       }
     }
     return out;
+  }
+
+  const resLabel = (id) => S.resName?.get(id) || S.goodsName.get(id) || id;
+  function sumProducts(ents) {
+    const sum = {};
+    for (const e of ents) for (const p of entityProducts(e)) if (p.res) for (const [k, v] of Object.entries(p.res)) sum[k] = (sum[k] || 0) + v;
+    return sum;
+  }
+  const resList = (o) => Object.entries(o).map(([k, v]) => `${fmt(v)}× ${resLabel(k)}`).join(', ') || '–';
+
+  function viewOutpost(now) {
+    const timers = S.timers.filter((t) => t.type === 'outpostProduction');
+    const tline = (grid) => { const t = timers.find((x) => x.gridId === grid); return t ? (t.at > now ? 'za ' + dur(t.at - now) : '<span class="hi">hotová</span>') : null; };
+    let html = '';
+    const qi = tline('guild_raids');
+    if (qi) html += `<p><b>Kvantové invaze:</b> další produkce ${qi}</p>`;
+    const op = S.outpost;
+    const info = (S.outposts || []).find((o) => o.gridId === (op?.gridId || 'cultural_outpost') && o.startedAt && !o.finishedAt);
+    if (!op) {
+      const t = tline('cultural_outpost');
+      return html + (t ? `<p><b>Osada${info ? ' – ' + esc(info.name) : ''}:</b> další produkce ${t} <span class="muted">(pro přehled budov osadu ve hře otevřete)</span></p>` : '');
+    }
+    const ents = [...op.entities.values()];
+    const prod = ents.filter((e) => e.state?.__class__ === 'ProducingState' && e.state.next_state_transition_at);
+    const ready = prod.filter((e) => e.state.next_state_transition_at <= now);
+    const idle = ents.filter((e) => e.state?.__class__ === 'IdleState' && ['cultural_goods_production', 'residential'].includes(e.type));
+    const unconn = ents.filter((e) => e.state?.__class__ === 'UnconnectedState');
+    html += `<h4>Osada${info ? ' – ' + esc(info.name) : ''}</h4><p>
+      ${ready.length ? `<span class="chip hi">k vybrání: ${ready.length}</span>` : ''}<span class="chip">vyrábí: ${prod.length - ready.length}</span>
+      ${idle.length ? `<span class="chip hi">stojí: ${idle.length}</span>` : ''}${unconn.length ? `<span class="chip hi">nepřipojeno: ${unconn.length}</span>` : ''}</p>`;
+    // Suroviny osady
+    if (info) {
+      const ids = [info.primaryResourceId, 'diplomacy', ...(info.goodsResourceIds || [])];
+      html += `<p>${ids.map((id) => `<span class="good">${esc(resLabel(id))} <b>${fmt(S.resources[id] || 0)}</b></span>`).join('')}</p>`;
+    }
+    // Další odemčení
+    const next = (S.advancements || []).find((a) => !a.isUnlocked);
+    if (next) {
+      const req = Object.entries(next.requirements?.resources || {}).filter(([k]) => k !== '__class__');
+      html += `<p><b>Další odemčení: ${esc(next.name)}</b><br>${req.map(([k, v]) => {
+        const have = S.resources[k] || 0;
+        return `<span class="good ${have >= v ? '' : 'hi'}">${esc(resLabel(k))} ${fmt(have)} / ${fmt(v)}${have >= v ? ' ✓' : ''}</span>`; }).join('')}</p>`;
+    }
+    // Kdy bude hotovo
+    const groups = new Map();
+    for (const e of prod) { const k = Math.ceil(e.state.next_state_transition_at / 60) * 60; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
+    const rows = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+    if (rows.length) html += `<table><thead><tr><th>Hotovo</th><th>Budov</th><th>Co</th></tr></thead><tbody>${
+      rows.map(([t, es]) => `<tr><td>${t > now ? 'za ' + dur(t - now) : '<span class="hi">teď</span>'}</td><td class="num">${es.length}</td><td>${esc(resList(sumProducts(es)))}</td></tr>`).join('')}</tbody></table>`;
+    return html + '<p class="muted">Stav osady se obnoví při jejím otevření ve hře a při výběru nebo spuštění produkce.</p>';
   }
 
   function viewProduction() {
@@ -678,7 +756,6 @@
       <td class="num">${fmt(o.supplies || 0)}</td><td class="num">${fmt(o.medals || 0)}</td><td class="num">${fmt(goodsSum(o))}</td></tr>`;
     const times = [...groups.entries()].sort((a, b) => a[0] - b[0]);
     return `<p>${ready ? `<span class="chip">k vybrání: ${ready}</span>` : ''}<span class="chip">vyrábí: ${[...groups.values()].reduce((a, g) => a + g.count, 0)}</span></p>
-      ${S.timers.filter((t) => t.type === 'outpostProduction').map((t) => `<p><b>${esc(GRID[t.gridId] || t.gridId)}:</b> další produkce ${t.at > now ? 'za ' + dur(t.at - now) : '<span class="hi">hotová</span>'}</p>`).join('')}
       <h4>Aktuální cyklus (většinou 24 h) – hlavní město</h4>
       <table><thead><tr><th></th><th>FP</th><th>Mince</th><th>Zásoby</th><th>Medaile</th><th>Zboží</th></tr></thead><tbody>
       ${line('Jisté', sure)}${line('+ po motivaci', extra)}</tbody></table>
@@ -687,7 +764,7 @@
       <table><thead><tr><th>Čas</th><th>Za</th><th>Budov</th><th>FP</th></tr></thead><tbody>${
       times.slice(0, 20).map(([t, g]) => `<tr><td>${new Date((t - S.serverOffset) * 1000).toLocaleString('cs-CZ', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</td>
         <td>${dur(t - now)}</td><td class="num">${g.count}</td><td class="num">${g.fp ? fmt(g.fp) : ''}</td></tr>`).join('')
-    }</tbody></table>`;
+    }</tbody></table>${viewOutpost(now)}`;
   }
 
   // ---------- Kalkulačka náhozů (P1–P5 × koeficient, text do vlákna) ----------

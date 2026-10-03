@@ -36,6 +36,14 @@ Ověřeno na datech svět zz1, 1. 10. 2026. Rozšíření `foe-reader` (v0.2.5) 
 ## Hospody – průběžně
 - WebSocket `FriendsTavernService.getSittingPlayersCount` = `[majitel, židlí, obsazeno]`. Chodí i pro vlastní hospodu (majitel = vy) a pro přátele.
 
+## Osada (cultural_outpost)
+- `CityMapService.getCityMap` (dotaz `["cultural_outpost"]`): `{gridId, entities[]}` – budovy osady; ID ve tvaru `X_<Kultura>_…` (Aztecs, Vikings, Japanese, Egyptians, Mughals, Polynesia, Pirates). Typy: `main_building`, `residential`, `diplomacy`, `cultural_goods_production`, `impediment`, `street`.
+- Produkt zboží osady: `current_product.resources.resources` (+ `requirements.cost`), ostatní `current_product.product.resources`.
+- `OutpostService.getAll`: osady; aktivní má `startedAt` bez `finishedAt`, `primaryResourceId`, `goodsResourceIds`, `completedPlaythroughs`.
+- `AdvancementService.getAll`: cíle osady `{name, isUnlocked, requirements.resources}`.
+- Suroviny osady jsou v běžném `getPlayerResourceBag` (cocoa_beans, diplomacy, …). Názvy surovin: `ResourceService.getResourceDefinitions`.
+- Časovač `outpostProduction` = čas nejbližší hotové produkce (ověřeno proti budovám).
+
 ## Produkce budov
 - `StartupService.getData.city_map` obsahuje jen hlavní město (`gridId: main`). Budovy osady ani QI při načtení nechodí.
 - `TimerService.getTimers`: `{gridId: cultural_outpost | guild_raids, type: outpostProduction, time}` – `time` je počet **sekund** do další hotové produkce (relativní); u ostatních časovačů je `time` absolutní unix čas.

@@ -76,3 +76,10 @@ Zdroj: InnoGames support „Great Buildings Prestige: Contribution Rewards Rewor
 
 ## Kalkulátor míst ve VB
 Zajistit místo i: `x = ceil((zbývá + FP_držitele_bez_mě − můj_vklad) / 2)`, zisk = `round(odměna × (1 + Archa%/100)) − x − můj_vklad`. Bonus Archy: `bonuses[].type = "contribution_boost"` u `X_FutureEra_Landmark1`.
+
+## Upravená kopie FoE Helperu (soukromá, od 5. 10. 2026)
+Základ: FoE Helper 4.8.3.0 (commit f24d1fd). Balíček `foe-helper-jb1.zip`, patch `foe-helper-army-boosts.patch`. Tři příčiny špatných bonusů armády v `js/web/boosts/js/boosts.js` a `js/web/profile/js/profile.js`:
+1. `InitLB` zahazoval `targetedFeature` u bonusů VB a `Mapper` neznal `attacker_defense_boost`, `defender_attack_boost`, `defense_boost` → oblastní bonusy VB (Archa v GBG, Château v Expedici…) se nesčítaly.
+2. `TimeIn.add` volal `Boosts.Remove([{entityId}])`, což smazalo i bonusy spojence umístěného v budově (u budov s `decaysAt`); zpět se přidaly jen bonusy budovy.
+3. Profil bral bonusy QI z `noSettlement` (bez budov osady QI), hra je počítá.
+Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16/16), opravený = čísla radnice (16/16). Při nové verzi FoE Helperu je potřeba patch přenést znovu.

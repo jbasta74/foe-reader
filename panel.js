@@ -150,6 +150,12 @@
       S.resName ||= new Map();
       for (const r of d) if (r?.id) S.resName.set(r.id, r.name || r.id);
     },
+    // Události od ostatních hráčů – živě přes WebSocket (newEvent) i zpětně z historie událostí.
+    'OtherPlayerService.newEvent'(d) { for (const e of Array.isArray(d) ? d : [d]) playerEvent(e, true); },
+    'OtherPlayerService.getEventsPaginated'(d) {
+      const evs = Array.isArray(d) ? d : d?.events;
+      if (Array.isArray(evs)) for (const e of evs.slice().reverse()) playerEvent(e, false);
+    },
     'TimerService.getTimers'(d) {
       if (!Array.isArray(d)) return;
       const now = nowServer();
@@ -284,6 +290,39 @@
     catch (e) { console.warn('[FoE Reader] handler', key, e); }
   }
 
+  // Událost od jiného hráče. live = přišla právě teď; jinak jde o záznam z historie (jen doplnit do seznamu).
+  S.seenEvents = new Set();
+  function playerEvent(e, live) {
+    if (!e || !e.type) return;
+    if (e.id != null) { if (S.seenEvents.has(e.id)) return; S.seenEvents.add(e.id); }
+    const who = e.other_player?.name || '?';
+    const when = live ? '' : ` (${e.date || 'dříve'})`;
+    if (e.type === 'trade_accepted' && cfg.tradeOn) {
+      const o = e.offer || {}, n = e.need || {};
+      const txt = o.good_id && n.good_id
+        ? `Obchod: ${who} vzal vaši nabídku – dali jste ${fmt(o.value)}× ${resLabel(o.good_id)}, dostali jste ${fmt(n.value)}× ${resLabel(n.good_id)}${when}.`
+        : `Obchod: ${who} vzal vaši nabídku${when}.`;
+      alert('trade', txt, false, !(live && cfg.tradeSound));
+    } else if (e.type === 'trade_offer_expired' && cfg.tradeExpired && live) {
+      // Nabídky často vyprší hromadně – sloučit do jednoho řádku.
+      expiredBuf.push(e);
+      clearTimeout(expiredTimer);
+      expiredTimer = setTimeout(flushExpired, 4000);
+    } else if (e.type === 'great_building_contribution' && cfg.gbContribOn && live) {
+      alert('gb', `${who} přispěl do vaší VB ${e.great_building_name || ''}${e.level != null ? ` (úr. ${e.level})` : ''}${e.rank ? `, ${e.rank}. místo` : ''}.`, false, true);
+    }
+  }
+
+  let expiredBuf = [], expiredTimer = null;
+  function flushExpired() {
+    const list = expiredBuf; expiredBuf = [];
+    if (!list.length) return;
+    const back = {};
+    for (const e of list) if (e.offer?.good_id) back[e.offer.good_id] = (back[e.offer.good_id] || 0) + (e.offer.value || 0);
+    const n = list.length;
+    alert('trade', `${n === 1 ? 'Vypršela 1 nabídka' : n < 5 ? `Vypršely ${n} nabídky` : `Vypršelo ${n} nabídek`} na trhu – vrátilo se ${resList(back)}.`, false, true);
+  }
+
   function scanAttrition(o, depth) {
     if (!o || typeof o !== 'object' || depth > 4) return;
     if (o.__class__ === 'GuildBattlegroundAttrition') { S.attrition = o; return; }
@@ -323,6 +362,7 @@
     sound: true, gbgAttack: true, gbgWatch: true, gbgWatchLead: 1,
     tavFree: true, tavAgain: true, tavOwnFull: true, prodOn: true, prodMin: 20, prodOutpost: true,
     arcFactor: 1.9,
+    tradeOn: true, tradeSound: false, tradeExpired: true, gbContribOn: true,
   };
   const cfg = (() => {
     try { return { ...CFG_DEFAULT, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { ...CFG_DEFAULT }; }
@@ -377,11 +417,12 @@
     });
   }
 
-  function alert(kind, text, urgent = false) {
-    S.alerts.unshift({ t: Date.now(), kind, text, urgent });
+  // silent = jen zapsat do seznamu (bez zvuku a bez blikání tlačítka)
+  function alert(kind, text, urgent = false, silent = false) {
+    S.alerts.unshift({ t: Date.now(), kind, text, urgent, silent });
     if (S.alerts.length > 60) S.alerts.pop();
-    if (!(open && tab === 'alerts')) S.unread++;
-    beep(urgent);
+    if (!(open && tab === 'alerts')) { S.unread++; if (!silent) S.unreadLoud = (S.unreadLoud || 0) + 1; }
+    if (!silent) beep(urgent);
     updateBadge();
     scheduleRender();
   }
@@ -390,7 +431,7 @@
     if (!root) return;
     const btn = root.getElementById('toggle');
     btn.textContent = S.unread ? `⠿ FoE Reader 🔔${S.unread}` : '⠿ FoE Reader';
-    btn.classList.toggle('alert', S.unread > 0);
+    btn.classList.toggle('alert', (S.unreadLoud || 0) > 0);
     const tb = root.querySelector('[data-tab="alerts"]');
     if (tb) tb.textContent = S.unread ? `🔔 ${S.unread}` : '🔔';
     clampHost();
@@ -988,11 +1029,13 @@
   function viewAlerts() {
     const chk = (k, label) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${label}</label>`;
     const num = (k, label, w = 50) => `<label>${label} <input type="number" data-cfg="${k}" value="${cfg[k]}" min="0" style="width:${w}px"></label>`;
-    const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭' };
+    const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭', trade: '🤝', gb: '🏛️' };
     return `<div class="cfg">
         ${chk('sound', 'Zvuk')} <button data-act="testsound">Vyzkoušet zvuk</button>
         <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
+        <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
+        <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')}</div>
         <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
       </div>
       <h4>Poslední upozornění</h4>
@@ -1258,7 +1301,7 @@
   function render() {
     if (!root) return;
     root.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-    if (open && tab === 'alerts' && S.unread) { S.unread = 0; updateBadge(); }
+    if (open && tab === 'alerts' && S.unread) { S.unread = 0; S.unreadLoud = 0; updateBadge(); }
     if (!open) return;
     // Nepřekreslovat, když uživatel zrovna píše do pole v panelu.
     // Při psaní do pole chvíli počkat (jinak by se přepsalo pod rukama), pak překreslit a vrátit kurzor.

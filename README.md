@@ -1,4 +1,4 @@
-# FoE Reader 0.3.13
+# FoE Reader 0.3.14
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -44,6 +44,8 @@ Při upozornění zapípá zvuk a tlačítko začne blikat s počtem nových zpr
 | 🍺 Uvolněná židle | u přítele s plnou hospodou se uvolní místo |
 | 🍺 Znovu k návštěvě | uplyne čas od poslední návštěvy |
 | 🍺 Moje hospoda plná | lze vybrat stříbro |
+| 🤝 Obchod | někdo vzal vaši nabídku na trhu (tiše, jen zápis; zvuk lze zapnout); vypršené nabídky sloučené do jednoho řádku |
+| 🏛️ Příspěvek do mé VB | někdo vložil FP do vaší Velké budovy (tiše) |
 | 🏭 Hotová produkce | dokončí se najednou aspoň N budov hlavního města (výchozí 20) |
 | 🏭 Osada / Kvantové invaze | doběhne časovač další hotové produkce (`outpostProduction`) |
 

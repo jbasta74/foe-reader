@@ -33,6 +33,10 @@ Ověřeno na datech svět zz1, 1. 10. 2026. Rozšíření `foe-reader` (v0.2.5) 
 
 - Žebříček členů `GuildBattlegroundService.getPlayerLeaderboard` (přijde jen po otevření ve hře): `[{player:{player_id,name}, battlesWon, negotiationsWon, attrition}]`. **Per-hráč postup v provinciích server neposílá** – `conquestProgress` je jen za cech.
 
+## Události od hráčů
+- WebSocket `OtherPlayerService.newEvent` (ověřeno pro `trade_offer_expired` – `offer`/`need` jako `CityGood`, bez `other_player`; `trade_accepted` podle FoE Helperu, v logách zatím nebyl). Po každé události chodí přes WS i nový `ResourceService.getPlayerResourceBag`. Tvar: `{id, type, other_player{name}, …}`; `trade_accepted` má `offer{good_id,value}` a `need{good_id,value}`, `great_building_contribution` má `great_building_name`, `level`, `rank`.
+- Historie: `OtherPlayerService.getEventsPaginated` → `{events[]}` se stejnými typy (`social_interaction`, `friend_tavern_sat_down`, …) a textovým `date`.
+
 ## Hospody – průběžně
 - WebSocket `FriendsTavernService.getSittingPlayersCount` = `[majitel, židlí, obsazeno]`. Chodí i pro vlastní hospodu (majitel = vy) a pro přátele.
 

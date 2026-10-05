@@ -309,7 +309,7 @@
       clearTimeout(expiredTimer);
       expiredTimer = setTimeout(flushExpired, 4000);
     } else if (e.type === 'great_building_contribution' && cfg.gbContribOn && live) {
-      alert('gb', `${who} přispěl do vaší VB ${e.great_building_name || ''}${e.level != null ? ` (úr. ${e.level})` : ''}${e.rank ? `, ${e.rank}. místo` : ''}.`, false, true);
+      alert('gb', `VB ${e.great_building_name || ''} hráče ${who} dosáhla úr. ${e.level != null ? e.level : '?'}${e.rank ? ` – máte ${e.rank}. místo a odměnu za příspěvek` : ''}.`, false, true);
     }
   }
 

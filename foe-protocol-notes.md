@@ -87,3 +87,9 @@ Základ: FoE Helper 4.8.3.0 (commit f24d1fd). Balíček `foe-helper-jb1.zip`, pa
 2. `TimeIn.add` volal `Boosts.Remove([{entityId}])`, což smazalo i bonusy spojence umístěného v budově (u budov s `decaysAt`); zpět se přidaly jen bonusy budovy.
 3. Profil bral bonusy QI z `noSettlement` (bez budov osady QI), hra je počítá.
 Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16/16), opravený = čísla radnice (16/16). Při nové verzi FoE Helperu je potřeba patch přenést znovu.
+
+## Limitované (pozvednuté) budovy
+- Aktivní: `CityMapEntity.state.decaysAt` (unix čas vypršení).
+- Vypršelá: `CityMapEntity.decayedFromCityEntityId` = ID pozvednuté verze; `cityentity_id` je už základní budova.
+- Sada na pozvednutí: metadata `building_upgrades`, položka s `upgradeItem.id` `upgrade_kit_ascended_*`, jejíž poslední `upgradeSteps[].buildingIds` obsahuje pozvednutou budovu. V inventáři `UpgradeKitPayload.upgradeItemId`, fragmenty `FragmentItemPayload.reward.assembledReward.id`.
+- Budovy bez sady (Forgotten Temple, Tourney Grounds) se nahrazují novým kusem z inventáře (`BuildingItemPayload.cityEntityId`).

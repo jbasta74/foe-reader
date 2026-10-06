@@ -32,6 +32,8 @@
   S.unread = 0;
   S.attrition = null;       // GuildBattlegroundAttrition
   S.timers = [];            // TimerService.getTimers
+  S.inv = new Map();        // celý inventář: id -> {name, stock, item}
+  S.ascKit = new Map();     // ID pozvednuté (limitované) budovy -> {id, name} sady, která ji vytvoří
   S.myTavern = null;        // {unlocked, sitting}
   const myId = () => S.player?.player_id;
 
@@ -72,10 +74,12 @@
       if (!Array.isArray(d)) return;
       S.fpPacks = new Map();
       S.frags = new Map();
-      for (const it of d) { takeFpPack(it); takeFragment(it); }
+      S.inv = new Map();
+      for (const it of d) { takeFpPack(it); takeFragment(it); takeInv(it); }
       sumFpPacks();
+      S.invLoaded = true;
     },
-    'InventoryService.getItem'(d) { if (d) { if (takeFpPack(d)) sumFpPacks(); takeFragment(d); } },
+    'InventoryService.getItem'(d) { if (d) { if (takeFpPack(d)) sumFpPacks(); takeFragment(d); takeInv(d); } },
     // Změna počtu kusů (např. po vložení FP do VB).
     'InventoryService.updateItem'(d) {
       const list = Array.isArray(d) ? d : [d];
@@ -85,6 +89,8 @@
         if (pk && typeof u.amount === 'number') { pk.stock = u.amount; hit = true; }
         const fr = u && S.frags?.get(u.id);
         if (fr && typeof u.amount === 'number') fr.stock = u.amount;
+        const iv = u && S.inv.get(u.id);
+        if (iv && typeof u.amount === 'number') iv.stock = u.amount;
       }
       if (hit) sumFpPacks();
     },
@@ -197,9 +203,45 @@
     (S.frags ||= new Map()).set(it.id, {
       name: rw.assembledReward?.name || String(it.name || '').replace(/^Fragments? of /, ''),
       kind: rw.assembledReward?.type || '', stock: it.inStock || 0, need: rw.requiredAmount,
+      rid: rw.assembledReward?.id || String(rw.id || '').replace(/^fragment#/, ''),
     });
     return true;
   }
+  function takeInv(it) {
+    if (it?.id != null && it.item) S.inv.set(it.id, { name: it.name, stock: it.inStock || 0, item: it.item });
+  }
+
+  // --- Limitované (pozvednuté) budovy ---
+  // Aktivní mají state.decaysAt, vypršelé decayedFromCityEntityId (= ID pozvednuté verze).
+  // Sadu na pozvednutí určujeme z metadat building_upgrades, jinak odhadem z ID budovy.
+  function ascKitFor(ascId) {
+    const m = S.ascKit.get(ascId);
+    if (m) return m;
+    const fam = String(ascId).replace(/^[A-Z]_[A-Za-z]+_/, '').replace(/\d+(TEMP)?$/, '');
+    return { id: 'upgrade_kit_ascended_' + fam, name: null };
+  }
+  function limitedList() {
+    const out = [];
+    for (const e of S.entities.values()) {
+      const at = e.state?.decaysAt, from = e.decayedFromCityEntityId;
+      if (!at && !from) continue;
+      const ascId = from || e.cityentity_id;
+      const kit = ascKitFor(ascId);
+      let kits = 0, spare = 0, kitName = kit.name, frag = null;
+      for (const v of S.inv.values()) {
+        if (v.item.upgradeItemId === kit.id) { kits += v.stock; kitName ||= v.name; }
+        else if (v.item.cityEntityId === ascId) spare += v.stock;
+      }
+      for (const f of (S.frags || new Map()).values()) if (f.rid === kit.id || f.rid === ascId) frag = f;
+      out.push({ id: e.id, name: entName(e.cityentity_id), ascName: entName(ascId), at: at || null, decayed: !!from, kits, kitName, spare, frag });
+    }
+    return out.sort((a, b) => (a.decayed - b.decayed) || ((a.at || 0) - (b.at || 0)));
+  }
+  const limSupply = (l) => [
+    l.kits ? `sada ${l.kits}×` : '', l.spare ? `budova ve skladu ${l.spare}×` : '',
+    l.frag ? `fragmenty ${l.frag.stock}/${l.frag.need}` : '',
+  ].filter(Boolean).join(', ');
+  const limCan = (l) => l.kits > 0 || l.spare > 0 || (l.frag && l.frag.stock >= l.frag.need);
   function sumFpPacks() {
     let sum = 0;
     for (const pk of S.fpPacks.values()) sum += pk.gain * pk.stock;
@@ -342,7 +384,15 @@
 
   function handleMetadata(m) {
     const d = m.data;
-    const take = (o) => { if (o && typeof o === 'object' && o.id && o.name) S.names.set(o.id, o.name); };
+    const take = (o) => {
+      if (!o || typeof o !== 'object') return;
+      if (o.id && o.name) S.names.set(o.id, o.name);
+      // building_upgrades: sada, jejíž poslední krok je časově omezená budova
+      const steps = o.upgradeSteps, kit = o.upgradeItem;
+      if (kit?.id && Array.isArray(steps) && steps.length > 1 && /ascended/i.test(kit.id)) {
+        for (const b of steps[steps.length - 1].buildingIds || []) S.ascKit.set(b, { id: kit.id, name: kit.name });
+      }
+    };
     if (Array.isArray(d)) d.forEach(take); else take(d);
   }
 
@@ -363,6 +413,7 @@
     tavFree: true, tavAgain: true, tavOwnFull: true, prodOn: true, prodMin: 20, prodOutpost: true,
     arcFactor: 1.9,
     tradeOn: true, tradeSound: false, tradeExpired: true, gbContribOn: true,
+    limOn: true, limLead: 24, limInv: true,
   };
   const cfg = (() => {
     try { return { ...CFG_DEFAULT, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { ...CFG_DEFAULT }; }
@@ -481,6 +532,8 @@
   // --- Kontroly podle času (sledované provincie, hospody, produkce) ---
   let lastCheck = null;
   const unlockAlerted = new Set();
+  const limAlerted = new Set();
+  let limInvDone = false;
   function timeChecks() {
     const now = nowServer();
     // Sledované provincie: upozornit X minut před odemknutím.
@@ -498,6 +551,26 @@
         alert('gbg', left > 0 ? `Provincie ${provLabel(id)} (${clanName(p.ownerId)}) se odemkne za ${dur(left)}.` : `Provincie ${provLabel(id)} (${clanName(p.ownerId)}) je odemčená.`, true);
       }
     }
+    // Limitované budovy: jednou předem (i hned po načtení, je-li to už v okně) a souhrn, co lze pozvednout.
+    if (S.entities.size && S.invLoaded) {
+      const lims = limitedList();
+      if (cfg.limOn) {
+        const lead = Math.max(0, +cfg.limLead || 0) * 3600;
+        for (const l of lims) {
+          if (l.decayed || !l.at || now >= l.at || now < l.at - lead) continue;
+          const key = `${l.id}|${l.at}`;
+          if (limAlerted.has(key)) continue;
+          limAlerted.add(key);
+          const sup = limSupply(l);
+          alert('lim', `${l.name} vyprší za ${durLong(l.at - now)}. ${sup ? 'Na obnovu máte: ' + sup + '.' : 'Na obnovu nemáte nic ve skladu.'}`);
+        }
+      }
+      if (cfg.limInv && !limInvDone) {
+        limInvDone = true;
+        const can = lims.filter((l) => l.decayed && limCan(l));
+        if (can.length) alert('lim', `Vypršelé budovy, které lze pozvednout (${can.length}): ${[...can.reduce((m, l) => m.set(l.name, (m.get(l.name) || 0) + 1), new Map())].map(([n, c]) => (c > 1 ? `${c}× ${n}` : n)).join(', ')}.`, false, true);
+      }
+    }
     if (lastCheck == null) { lastCheck = now; return; } // po načtení nehlásit staré události
     const from = lastCheck; lastCheck = now;
     const passed = (t) => t != null && t > from && t <= now;
@@ -508,6 +581,14 @@
       if (again.length) {
         const names = again.slice(0, 5).map((t) => playerName(t.ownerId)).join(', ');
         alert('tav', `Znovu lze navštívit ${again.length} ${again.length === 1 ? 'hospodu' : again.length < 5 ? 'hospody' : 'hospod'}: ${names}${again.length > 5 ? '…' : ''}`);
+      }
+    }
+    // Limitované budovy: právě vypršela.
+    if (cfg.limOn) {
+      for (const l of limitedList()) {
+        if (l.decayed || !passed(l.at)) continue;
+        const sup = limSupply(l);
+        alert('lim', `${l.name} právě vypršela. ${sup ? 'Na obnovu máte: ' + sup + '.' : 'Na obnovu nemáte nic ve skladu.'}`, true);
       }
     }
     // Produkce: dokončení velké skupiny budov.
@@ -546,6 +627,11 @@
     if (sec < 60) return '< 1 min';
     const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
     return h ? `${h} h ${m} min` : `${m} min`;
+  }
+  function durLong(sec) {
+    if (sec < 86400) return dur(sec);
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600);
+    return `${d} d ${h} h`;
   }
   const playerName = (id) => S.players.get(id)?.name || `#${id}`;
   const entName = (id) => S.gbInfo.get(id)?.name || S.names.get(id) || id;
@@ -805,7 +891,18 @@
       <table><thead><tr><th>Čas</th><th>Za</th><th>Budov</th><th>FP</th></tr></thead><tbody>${
       times.slice(0, 20).map(([t, g]) => `<tr><td>${new Date((t - S.serverOffset) * 1000).toLocaleString('cs-CZ', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</td>
         <td>${dur(t - now)}</td><td class="num">${g.count}</td><td class="num">${g.fp ? fmt(g.fp) : ''}</td></tr>`).join('')
-    }</tbody></table>${viewOutpost(now)}`;
+    }</tbody></table>${viewLimited(now)}${viewOutpost(now)}`;
+  }
+
+  function viewLimited(now) {
+    const lims = limitedList();
+    if (!lims.length) return '';
+    const row = (l) => `<tr><td>${esc(l.name)}${l.decayed ? `<br><span class="muted">→ ${esc(l.ascName)}</span>` : ''}</td>
+      <td>${l.decayed ? '<span class="hi">vypršela</span>' : `${l.at > now ? 'za ' + durLong(l.at - now) : 'právě teď'}<br><span class="muted">${new Date((l.at - S.serverOffset) * 1000).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>`}</td>
+      <td>${limSupply(l) ? (l.decayed && limCan(l) ? '✅ ' : '') + esc(limSupply(l)) : '<span class="muted">nic</span>'}</td></tr>`;
+    return `<h4>Limitované budovy</h4>
+      <table><thead><tr><th>Budova</th><th>Stav</th><th>Ve skladu na obnovu</th></tr></thead><tbody>${lims.map(row).join('')}</tbody></table>
+      ${S.invLoaded ? '' : '<p class="muted">Inventář ještě nebyl načten.</p>'}`;
   }
 
   // ---------- Kalkulačka náhozů (P1–P5 × koeficient, text do vlákna) ----------
@@ -1029,13 +1126,14 @@
   function viewAlerts() {
     const chk = (k, label) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${label}</label>`;
     const num = (k, label, w = 50) => `<label>${label} <input type="number" data-cfg="${k}" value="${cfg[k]}" min="0" style="width:${w}px"></label>`;
-    const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭', trade: '🤝', gb: '🏛️' };
+    const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭', trade: '🤝', gb: '🏛️', lim: '⏳' };
     return `<div class="cfg">
         ${chk('sound', 'Zvuk')} <button data-act="testsound">Vyzkoušet zvuk</button>
         <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
         <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')}</div>
+        <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
         <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
       </div>
       <h4>Poslední upozornění</h4>

@@ -422,13 +422,16 @@
   const CFG_DEFAULT = {
     sound: true, gbgAttack: true, gbgWatch: true, gbgWatchLead: 1,
     tavFree: true, tavAgain: true, tavOwnFull: true, prodOn: true, prodMin: 20, prodOutpost: true,
-    arcFactor: 1.9,
+    arcFactor: 'arc', // 'arc' = podle bonusu vlastní Archy (mění se samo), jinak pevné číslo
     tradeOn: true, tradeSound: false, tradeExpired: true, gbContribOn: true,
     limOn: true, limLead: 24, limInv: true,
   };
   const cfg = (() => {
     try { return { ...CFG_DEFAULT, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { ...CFG_DEFAULT }; }
   })();
+  // 0.3.20: koeficient „Arc“ se nově ukládá jako 'arc' (sleduje bonus Archy). Starší uložená hodnota z tlačítka Arc (např. 1,99) se převede.
+  if (typeof cfg.arcFactor === 'number' && !cfg.arcMigrated && ![1.8, 1.85, 1.9, 1.92, 1.95, 2].includes(cfg.arcFactor)) cfg.arcFactor = 'arc';
+  cfg.arcMigrated = true;
   const saveCfg = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } };
 
   // Sledované provincie – platí pro jednu bitvu (mapa + konec sezóny).
@@ -929,7 +932,7 @@
   // ---------- Kalkulačka náhozů (P1–P5 × koeficient, text do vlákna) ----------
   function nahozCalc(rows, entity, ownerName) {
     if (!rows || !entity) return null;
-    const f1000 = Math.round((+cfg.arcFactor || 1.9) * 1000); // celočíselně kvůli zaokrouhlení (285 × 1,9 = 541,5 → 542)
+    const f1000 = Math.round(factorNow() * 1000); // celočíselně kvůli zaokrouhlení (285 × 1,9 = 541,5 → 542)
     const total = entity.state?.forge_points_for_level_up;
     const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
     const ownerFp = ownerRow?.forge_points || 0;
@@ -949,13 +952,21 @@
 
   // Volba koeficientu: rychlé předvolby + vlastní hodnota (pamatuje se).
   const FACTORS = [1.8, 1.85, 1.9, 1.92, 1.95, 2.0];
-  function factorPicker() {
-    // Tlačítko „Arc“ = skutečný bonus vaší Archy (např. 99 % → 1,99).
+  function arcFactorNow() {
     const arc = arcBonus();
-    const arcF = arc ? Math.round((1 + arc / 100) * 1000) / 1000 : null;
-    const arcBtn = arcF ? `<button class="fbtn ${+cfg.arcFactor === arcF ? 'on' : ''}" data-factor="${arcF}" title="Bonus vaší Archy ${arc} %">Arc ${String(arcF).replace('.', ',')}</button>` : '';
-    return arcBtn + FACTORS.filter((f) => f !== arcF).map((f) => `<button class="fbtn ${+cfg.arcFactor === f ? 'on' : ''}" data-factor="${f}">${f.toFixed(2).replace(/0$/, '').replace('.', ',')}</button>`).join('')
-      + ` <input type="number" data-cfg="arcFactor" value="${cfg.arcFactor}" step="0.01" min="1" max="3" style="width:60px" title="Vlastní koeficient">`;
+    return arc ? Math.round((1 + arc / 100) * 1000) / 1000 : null;
+  }
+  function factorNow() {
+    if (cfg.arcFactor === 'arc') return arcFactorNow() || 1.9;
+    return +cfg.arcFactor || 1.9;
+  }
+  function factorPicker() {
+    // Tlačítko „Arc“ = skutečný bonus vaší Archy; zvolené se přepíná samo, když se bonus změní.
+    const arcF = arcFactorNow();
+    const auto = cfg.arcFactor === 'arc';
+    const arcBtn = arcF ? `<button class="fbtn arc ${auto ? 'on' : ''}" data-factor="arc" title="Podle bonusu vaší Archy (${fmt(arcBonus())} %) – mění se samo">Arc ${String(arcF).replace('.', ',')}</button>` : '';
+    return arcBtn + FACTORS.map((f) => `<button class="fbtn ${!auto && +cfg.arcFactor === f ? 'on' : ''}" data-factor="${f}">${f.toFixed(2).replace(/0$/, '').replace('.', ',')}</button>`).join('')
+      + ` <input type="number" data-cfg="arcFactor" value="${factorNow()}" step="0.01" min="1" max="3" style="width:60px" title="Vlastní koeficient">`;
   }
 
   function viewNahoz(c, title) {
@@ -1305,6 +1316,8 @@
       table.stock td{vertical-align:top}
       .fbtn{background:#fff;border:1px solid #c9b48c;border-radius:4px;padding:1px 6px;margin-right:3px;cursor:pointer}
       .fbtn.on{background:#2b2116;color:#f3d9a4;border-color:#2b2116;font-weight:700}
+      .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
+      .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>
     <button class="btn" id="toggle" title="FoE Reader ${VERSION} · klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
@@ -1324,7 +1337,7 @@
       const fg = ev.target.closest('[data-frag]');
       if (fg) { fragFilter = fg.dataset.frag; render(); return; }
       const fb = ev.target.closest('[data-factor]');
-      if (fb) { cfg.arcFactor = +fb.dataset.factor; saveCfg(); render(); return; }
+      if (fb) { cfg.arcFactor = fb.dataset.factor === 'arc' ? 'arc' : +fb.dataset.factor; saveCfg(); render(); return; }
       const cp = ev.target.closest('[data-act="copy"]');
       if (cp) {
         const txt = cp.dataset.text;

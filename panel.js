@@ -103,11 +103,18 @@
     },
     // --- VB jiných hráčů (struktura podle FoE Helperu, ověřit na logu) ---
     'GreatBuildingsService.getConstruction'(d) {
-      if (d?.rankings) S.gbRanking = { rankings: d.rankings, time: Date.now() };
+      // Pořadí třídí genericScan (moje vs. cizí VB) – tady ho nepřepisovat.
+      // Stupeň VB přímo z odměn (plánky mají tier); platí pro budovu z právě odeslaného dotazu.
+      const tiers = new Set();
+      for (const r of d?.rankings || []) for (const bp of r.reward?.blueprintRewards || []) if (bp.tier?.value) tiers.add(bp.tier.value);
+      const top = [...tiers].sort((a, b) => (TIER_RANK[b] || 0) - (TIER_RANK[a] || 0))[0];
+      if (top && S.gbReq && Date.now() - S.gbReq.time < 15000) {
+        const ent = S.entities.get(S.gbReq.entityId);
+        (S.gbTierSeen ||= new Map()).set(S.gbReq.entityId, { tier: top, level: ent?.level });
+      }
     },
     'GreatBuildingsService.getConstructionRanking'(d) {
-      const r = Array.isArray(d) ? d : d?.rankings;
-      if (r) S.gbRanking = { rankings: r, time: Date.now() };
+      // pořadí zpracuje genericScan podle __class__ (GreatBuildingRankingRow)
     },
     'GreatBuildingsService.getOtherPlayerOverview'(d) {
       if (Array.isArray(d)) S.otherGBs = { list: d, time: Date.now() };
@@ -641,7 +648,9 @@
   // Stupeň platný pro stavbu další úrovně (při překryvu rozsahů vyhrává vyšší).
   const TIER_RANK = { copper: 1, silver: 2, gold: 3 };
   const TIER_ICON = { copper: '🥉', silver: '🥈', gold: '🥇' };
-  function gbTier(level) {
+  function gbTier(level, entityId) {
+    const seen = S.gbTierSeen?.get(entityId);
+    if (seen && (seen.level == null || seen.level === level)) return `<span title="podle odměn">${TIER_ICON[seen.tier] || ''}</span>`;
     const l = level + 1;
     const hit = (S.gbTiers || []).filter((t) => l >= t.from && l <= t.to).sort((a, b) => (TIER_RANK[b.tier] || 0) - (TIER_RANK[a.tier] || 0))[0];
     return hit ? `<span title="${esc(hit.name)} (úr. ${hit.from}–${hit.to})">${TIER_ICON[hit.tier] || esc(hit.name)}</span>` : '';
@@ -666,11 +675,11 @@
       const need = e.state?.forge_points_for_level_up;
       const atMax = max != null && e.level >= max;
       const left = need != null ? need - inv : null;
-      return { name: entName(e.cityentity_id), level: e.level, max, inv, need, left, atMax };
+      return { id: e.id, name: entName(e.cityentity_id), level: e.level, max, inv, need, left, atMax };
     }).sort((a, b) => (a.atMax - b.atMax) || ((a.left ?? 1e15) - (b.left ?? 1e15)));
     return `${calc}<table><thead><tr><th>Velká budova</th><th>Úr.</th><th>Vloženo / potřeba</th><th>Chybí FP</th></tr></thead><tbody>${
       rows.map((r) => `<tr class="${r.atMax ? 'muted' : ''}">
-        <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''} ${gbTier(r.level)}</td>
+        <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''} ${gbTier(r.level, r.id)}</td>
         <td class="num">${r.atMax ? 'max' : `${fmt(r.inv)} / ${fmt(r.need)}`}</td>
         <td class="num ${!r.atMax && r.left != null && r.left <= 100 ? 'hi' : ''}">${r.atMax ? '' : fmt(r.left)}</td></tr>`).join('')
     }</tbody></table>`;
@@ -925,7 +934,7 @@
     const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
     const ownerFp = ownerRow?.forge_points || 0;
     // Počet odměňovaných míst není pevný (zlatý stupeň VB má 7 míst) – bereme všechna, která server pošle.
-    const places = rows.filter((r) => r.rank && r.reward).sort((a, b) => a.rank - b.rank).map((r) => {
+    const places = rows.filter((r) => r.rank && r.reward?.strategy_point_amount > 0).sort((a, b) => a.rank - b.rank).map((r) => {
       const base = r.reward.strategy_point_amount || 0;
       const val = Math.round((base * f1000) / 1000);
       const holder = r.player?.player_id != null ? { name: r.player.name, fp: r.forge_points || 0 } : null;
@@ -979,7 +988,7 @@
       const remaining = need != null ? need - inv : null;
       const others = (rk || []).filter((r) => r.player?.player_id !== myId() && r.player?.player_id !== gb?.player_id);
       const mine = (rk || []).find((r) => r.player?.player_id === myId())?.forge_points || 0;
-      const places = (rk || []).filter((r) => r.reward && (r.reward.strategy_point_amount || r.reward.blueprints || r.reward.resources))
+      const places = (rk || []).filter((r) => r.rank && r.reward?.strategy_point_amount > 0) // místa jen s plánky (P7 u zlaté) vynechat
         .sort((a, b) => a.rank - b.rank);
       html += `<p><b>${esc(gb ? entName(gb.cityentity_id) : 'Otevřená VB')}</b> · ${esc(owner)}${gb ? ` · úr. ${gb.level}` : ''}<br>
         Chybí: <b>${remaining != null ? fmt(remaining) : '?'}</b> FP · bonus Archy ${fmt(arc)} % · váš vklad ${fmt(mine)}${S.packageFP != null ? ` · máte ${fmt((S.resources.strategy_points || 0) + S.packageFP)} FP` : ''}</p>`;

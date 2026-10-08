@@ -950,7 +950,11 @@
   // Volba koeficientu: rychlé předvolby + vlastní hodnota (pamatuje se).
   const FACTORS = [1.8, 1.85, 1.9, 1.92, 1.95, 2.0];
   function factorPicker() {
-    return FACTORS.map((f) => `<button class="fbtn ${+cfg.arcFactor === f ? 'on' : ''}" data-factor="${f}">${f.toFixed(2).replace(/0$/, '').replace('.', ',')}</button>`).join('')
+    // Tlačítko „Arc“ = skutečný bonus vaší Archy (např. 99 % → 1,99).
+    const arc = arcBonus();
+    const arcF = arc ? Math.round((1 + arc / 100) * 1000) / 1000 : null;
+    const arcBtn = arcF ? `<button class="fbtn ${+cfg.arcFactor === arcF ? 'on' : ''}" data-factor="${arcF}" title="Bonus vaší Archy ${arc} %">Arc ${String(arcF).replace('.', ',')}</button>` : '';
+    return arcBtn + FACTORS.filter((f) => f !== arcF).map((f) => `<button class="fbtn ${+cfg.arcFactor === f ? 'on' : ''}" data-factor="${f}">${f.toFixed(2).replace(/0$/, '').replace('.', ',')}</button>`).join('')
       + ` <input type="number" data-cfg="arcFactor" value="${cfg.arcFactor}" step="0.01" min="1" max="3" style="width:60px" title="Vlastní koeficient">`;
   }
 

@@ -932,7 +932,8 @@
   // ---------- Kalkulačka náhozů (P1–P5 × koeficient, text do vlákna) ----------
   function nahozCalc(rows, entity, ownerName) {
     if (!rows || !entity) return null;
-    const f1000 = Math.round(factorNow() * 1000); // celočíselně kvůli zaokrouhlení (285 × 1,9 = 541,5 → 542)
+    const gold = isGoldLevel(entity);
+    const f1000 = Math.round(factorNow(gold) * 1000); // celočíselně kvůli zaokrouhlení (285 × 1,9 = 541,5 → 542)
     const total = entity.state?.forge_points_for_level_up;
     const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
     const ownerFp = ownerRow?.forge_points || 0;
@@ -947,31 +948,31 @@
     const ownShare = total != null ? Math.max(0, total - sumP) : null;
     const free = places.filter((x) => !x.filled && x.val > 0);
     const text = `${ownerName} ${entName(entity.cityentity_id)} ${entity.level}→${entity.level + 1} ` + free.map((x) => `P${x.rank}(${x.val})`).join(' ');
-    return { total, ownerFp, places, sumP, ownShare, ownLeft: ownShare != null ? Math.max(0, ownShare - ownerFp) : null, text: text.trim() };
+    return { gold, total, ownerFp, places, sumP, ownShare, ownLeft: ownShare != null ? Math.max(0, ownShare - ownerFp) : null, text: text.trim() };
   }
 
   // Volba koeficientu: rychlé předvolby + vlastní hodnota (pamatuje se).
   const FACTORS = [1.8, 1.85, 1.9, 1.92, 1.95, 2.0];
-  function arcFactorNow() {
-    const arc = arcBonus();
-    return arc ? Math.round((1 + arc / 100) * 1000) / 1000 : null;
+  function arcFactorNow(gold) {
+    const arc = arcBonus(gold);
+    return Math.round((1 + arc / 100) * 1000) / 1000;
   }
-  function factorNow() {
-    if (cfg.arcFactor === 'arc') return arcFactorNow() || 1.9;
+  function factorNow(gold) {
+    if (cfg.arcFactor === 'arc') return arcFactorNow(gold) || 1;
     return +cfg.arcFactor || 1.9;
   }
-  function factorPicker() {
-    // Tlačítko „Arc“ = skutečný bonus vaší Archy; zvolené se přepíná samo, když se bonus změní.
-    const arcF = arcFactorNow();
+  function factorPicker(gold) {
+    // Tlačítko „Arc“ = skutečný bonus vaší Archy pro stupeň dané úrovně (měď / zlato); přepíná se samo.
+    const arcF = arcFactorNow(gold);
     const auto = cfg.arcFactor === 'arc';
-    const arcBtn = arcF ? `<button class="fbtn arc ${auto ? 'on' : ''}" data-factor="arc" title="Podle bonusu vaší Archy (${fmt(arcBonus())} %) – mění se samo">Arc ${String(arcF).replace('.', ',')}</button>` : '';
+    const arcBtn = arcF ? `<button class="fbtn arc ${auto ? 'on' : ''}" data-factor="arc" title="${gold ? 'Zlatý' : 'Měděný'} bonus příspěvků vaší Archy ${fmt(arcBonus(gold))} % (${gold ? 'úrovně nad 100' : 'úrovně do 100'}) – mění se samo">Arc ${gold ? '🥇' : '🥉'} ${String(arcF).replace('.', ',')}</button>` : '';
     return arcBtn + FACTORS.map((f) => `<button class="fbtn ${!auto && +cfg.arcFactor === f ? 'on' : ''}" data-factor="${f}">${f.toFixed(2).replace(/0$/, '').replace('.', ',')}</button>`).join('')
-      + ` <input type="number" data-cfg="arcFactor" value="${factorNow()}" step="0.01" min="1" max="3" style="width:60px" title="Vlastní koeficient">`;
+      + ` <input type="number" data-cfg="arcFactor" value="${factorNow(gold)}" step="0.01" min="1" max="3" style="width:60px" title="Vlastní koeficient">`;
   }
 
   function viewNahoz(c, title) {
     if (!c) return '';
-    return `<div class="cfg"><div><b>${esc(title)}</b> · koeficient ${factorPicker()}</div>
+    return `<div class="cfg"><div><b>${esc(title)}</b> · koeficient ${factorPicker(c.gold)}</div>
       <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>
       <table><thead><tr><th>Místo</th><th>Odměna</th><th>Nához</th><th>Stav</th></tr></thead><tbody>${
         c.places.map((x) => `<tr class="${x.filled ? 'muted' : ''}"><td>P${x.rank}</td><td class="num">${fmt(x.base)}</td><td class="num"><b>${fmt(x.val)}</b></td>
@@ -982,21 +983,23 @@
   }
 
   // ---------- VB přátel (kalkulátor) ----------
-  function arcBonus() {
-    for (const e of S.entities.values()) {
-      if (e.cityentity_id !== 'X_FutureEra_Landmark1') continue;
-      const b = (e.bonuses || []).find((x) => x.type === 'contribution_boost');
-      if (b) return b.value;
-    }
-    return 0;
+  // Bonus příspěvků: měděný (contribution_boost) platí pro stavbu úrovní do 100, zlatý
+  // (contribution_boost_gold) pro úrovně nad 100. Sčítá se ze všech budov (Archa, Shattered Horizon Siphon …).
+  function arcBonus(gold) {
+    const type = gold ? 'contribution_boost_gold' : 'contribution_boost';
+    let sum = 0;
+    for (const e of S.entities.values()) for (const b of e.bonuses || []) if (b.type === type) sum += b.value || 0;
+    return sum;
   }
+  const isGoldLevel = (gb) => gb?.level != null && gb.level + 1 > 100;
 
   function viewForeignGB() {
     let html = '';
     const gb = S.foreignGB;
     const rk = S.gbRanking?.rankings;
     if (gb || rk) {
-      const arc = arcBonus();
+      const gold = isGoldLevel(gb);
+      const arc = arcBonus(gold);
       const owner = gb ? (S.players.get(gb.player_id)?.name || `#${gb.player_id}`) : '?';
       const inv = gb?.state?.invested_forge_points || 0;
       const need = gb?.state?.forge_points_for_level_up;
@@ -1006,7 +1009,7 @@
       const places = (rk || []).filter((r) => r.rank && r.reward?.strategy_point_amount > 0) // místa jen s plánky (P7 u zlaté) vynechat
         .sort((a, b) => a.rank - b.rank);
       html += `<p><b>${esc(gb ? entName(gb.cityentity_id) : 'Otevřená VB')}</b> · ${esc(owner)}${gb ? ` · úr. ${gb.level}` : ''}<br>
-        Chybí: <b>${remaining != null ? fmt(remaining) : '?'}</b> FP · bonus Archy ${fmt(arc)} % · váš vklad ${fmt(mine)}${S.packageFP != null ? ` · máte ${fmt((S.resources.strategy_points || 0) + S.packageFP)} FP` : ''}</p>`;
+        Chybí: <b>${remaining != null ? fmt(remaining) : '?'}</b> FP · bonus Archy ${fmt(arc)} % (${gold ? 'zlatý' : 'měděný'}) · váš vklad ${fmt(mine)}${S.packageFP != null ? ` · máte ${fmt((S.resources.strategy_points || 0) + S.packageFP)} FP` : ''}</p>`;
       if (places.length) {
         html += `<table><thead><tr><th>Místo</th><th>Drží (bez vás)</th><th>Odměna FP</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
           places.map((p, i) => {
@@ -1030,7 +1033,7 @@
     }
     if (gb && rk) {
       const c = nahozCalc(rk, gb, S.players.get(gb.player_id)?.name || S.gbRanking.ownerName || '');
-      if (c && c.text) html += `<div class="cfg"><div><b>Text do vlákna</b> · koeficient ${factorPicker()}</div>
+      if (c && c.text) html += `<div class="cfg"><div><b>Text do vlákna</b> · koeficient ${factorPicker(c.gold)}</div>
         <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>`;
     }
     if (S.otherGBs?.list?.length) {

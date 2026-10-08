@@ -98,3 +98,11 @@ Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16
 - Stupeň není v `CityMapEntity`; určuje se z metadat `great_building_tiers`: `[{tier:{value:'copper'|'silver'|'gold'}, name, startLevel, endLevel}]`.
 - Rozsahy se mohou překrývat; pro stavbu úrovně L→L+1 platí nejvyšší stupeň, jehož rozsah obsahuje L+1.
 - Beta 8. 10. 2026: stříbro zrušeno, nad úr. 100 zlato se 7 odměňovanými místy (podle hráče; metadata ověřit).
+
+## Bonus příspěvků (Archa) po přestavbě VB (beta 10/2026)
+- Zdroj: https://support.innogames.com/kb/ForgeOfEmpires/en_DK/6992/Great-Buildings-Prestige-redesigned-the-feature-overview
+- Archa má dva bonusy v `bonuses`: `contribution_boost` (měděný, platí pro stavbu úrovní ≤ 100) a `contribution_boost_gold` (zlatý, úrovně > 100). Zlatý dává i Shattered Horizon Siphon – sčítat ze všech budov.
+- Rozhoduje úroveň, do které se vkládá (cílová = level + 1).
+- Podíl přispěvatelů z ceny úrovně: 1–9 25 %, 10–39 30 %, 40–69 40 %, 70–100 25 %, 101–200 15 %, 201–300 10 %, 301–400 7 %, 401–500 5 %.
+- Rozdělení podle místa: měď 58,25 / 29,13 / 9,71 / 2,43 / 0,49 %; zlato 7 míst 58,20 / 29,10 / 9,70 / 2,42 / 0,48 / 0,08 / 0,01 %. Stříbro zrušeno, plánky z příspěvků −60 %.
+- Ověřeno v logu 8. 10.: Archa úr. 180 měď 99 %, zlato 19 %; Observatory 132→133 P1 = 4 645 FP (15 % z 53 236 × 58,2 %).

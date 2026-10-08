@@ -387,6 +387,10 @@
     const take = (o) => {
       if (!o || typeof o !== 'object') return;
       if (o.id && o.name) S.names.set(o.id, o.name);
+      // great_building_tiers: stupně VB (měď/stříbro/zlato) podle úrovně
+      if (o.__class__ === 'GreatBuildingTierMetadata' && o.tier?.value) {
+        S.gbTiers = (S.gbTiers || []).filter((t) => t.tier !== o.tier.value).concat({ tier: o.tier.value, name: o.name, from: o.startLevel, to: o.endLevel });
+      }
       // building_upgrades: sada, jejíž poslední krok je časově omezená budova
       const steps = o.upgradeSteps, kit = o.upgradeItem;
       if (kit?.id && Array.isArray(steps) && steps.length > 1 && /ascended/i.test(kit.id)) {
@@ -634,6 +638,14 @@
     return `${d} d ${h} h`;
   }
   const playerName = (id) => S.players.get(id)?.name || `#${id}`;
+  // Stupeň platný pro stavbu další úrovně (při překryvu rozsahů vyhrává vyšší).
+  const TIER_RANK = { copper: 1, silver: 2, gold: 3 };
+  const TIER_ICON = { copper: '🥉', silver: '🥈', gold: '🥇' };
+  function gbTier(level) {
+    const l = level + 1;
+    const hit = (S.gbTiers || []).filter((t) => l >= t.from && l <= t.to).sort((a, b) => (TIER_RANK[b.tier] || 0) - (TIER_RANK[a.tier] || 0))[0];
+    return hit ? `<span title="${esc(hit.name)} (úr. ${hit.from}–${hit.to})">${TIER_ICON[hit.tier] || esc(hit.name)}</span>` : '';
+  }
   const entName = (id) => S.gbInfo.get(id)?.name || S.names.get(id) || id;
 
   // ===================== Pohledy =====================
@@ -658,7 +670,7 @@
     }).sort((a, b) => (a.atMax - b.atMax) || ((a.left ?? 1e15) - (b.left ?? 1e15)));
     return `${calc}<table><thead><tr><th>Velká budova</th><th>Úr.</th><th>Vloženo / potřeba</th><th>Chybí FP</th></tr></thead><tbody>${
       rows.map((r) => `<tr class="${r.atMax ? 'muted' : ''}">
-        <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''}</td>
+        <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''} ${gbTier(r.level)}</td>
         <td class="num">${r.atMax ? 'max' : `${fmt(r.inv)} / ${fmt(r.need)}`}</td>
         <td class="num ${!r.atMax && r.left != null && r.left <= 100 ? 'hi' : ''}">${r.atMax ? '' : fmt(r.left)}</td></tr>`).join('')
     }</tbody></table>`;

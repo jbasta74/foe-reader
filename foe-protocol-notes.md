@@ -93,3 +93,8 @@ Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16
 - Vypršelá: `CityMapEntity.decayedFromCityEntityId` = ID pozvednuté verze; `cityentity_id` je už základní budova.
 - Sada na pozvednutí: metadata `building_upgrades`, položka s `upgradeItem.id` `upgrade_kit_ascended_*`, jejíž poslední `upgradeSteps[].buildingIds` obsahuje pozvednutou budovu. V inventáři `UpgradeKitPayload.upgradeItemId`, fragmenty `FragmentItemPayload.reward.assembledReward.id`.
 - Budovy bez sady (Forgotten Temple, Tourney Grounds) se nahrazují novým kusem z inventáře (`BuildingItemPayload.cityEntityId`).
+
+## Stupně VB (měď / stříbro / zlato)
+- Stupeň není v `CityMapEntity`; určuje se z metadat `great_building_tiers`: `[{tier:{value:'copper'|'silver'|'gold'}, name, startLevel, endLevel}]`.
+- Rozsahy se mohou překrývat; pro stavbu úrovně L→L+1 platí nejvyšší stupeň, jehož rozsah obsahuje L+1.
+- Beta 8. 10. 2026: stříbro zrušeno, nad úr. 100 zlato se 7 odměňovanými místy (podle hráče; metadata ověřit).

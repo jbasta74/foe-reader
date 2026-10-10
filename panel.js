@@ -932,7 +932,7 @@
   // ---------- Kalkulačka náhozů (P1–P5 × koeficient, text do vlákna) ----------
   function nahozCalc(rows, entity, ownerName) {
     if (!rows || !entity) return null;
-    const gold = isGoldLevel(entity);
+    const gold = isGoldLevel(entity, rows);
     const arcMode = cfg.arcFactor === 'arc';
     const f1000 = Math.round(factorNow(gold) * 1000); // celočíselně kvůli zaokrouhlení (285 × 1,9 = 541,5 → 542)
     const total = entity.state?.forge_points_for_level_up;
@@ -995,14 +995,21 @@
   }
   // Zaokrouhlení na násobky 5 jako ve hře (i základní odměny ze serveru jsou po 5).
   const round5 = (x) => Math.round(Math.round(x * 1000) / 5000) * 5;
-  const isGoldLevel = (gb) => gb?.level != null && gb.level + 1 > 100;
+  // Zlatý stupeň: rozhodují plánky v odměnách (věkové VB, např. Saturn VI Gate, zůstávají měděné i nad úr. 100).
+  // Bez pořadí odhad podle úrovně (cílová úroveň nad 100).
+  function isGoldLevel(gb, rows) {
+    const tiers = new Set();
+    for (const r of rows || []) for (const bp of r.reward?.blueprintRewards || []) if (bp.tier?.value) tiers.add(bp.tier.value);
+    if (tiers.size) return tiers.has('gold');
+    return gb?.level != null && gb.level + 1 > 100;
+  }
 
   function viewForeignGB() {
     let html = '';
     const gb = S.foreignGB;
     const rk = S.gbRanking?.rankings;
     if (gb || rk) {
-      const gold = isGoldLevel(gb);
+      const gold = isGoldLevel(gb, rk);
       const arc = arcBonus(gold);
       const owner = gb ? (S.players.get(gb.player_id)?.name || `#${gb.player_id}`) : '?';
       const inv = gb?.state?.invested_forge_points || 0;

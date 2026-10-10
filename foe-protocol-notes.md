@@ -107,3 +107,5 @@ Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16
 - Rozdělení podle místa: měď 58,25 / 29,13 / 9,71 / 2,43 / 0,49 %; zlato 7 míst 58,20 / 29,10 / 9,70 / 2,42 / 0,48 / 0,08 / 0,01 %. Stříbro zrušeno, plánky z příspěvků −60 %.
 - Ověřeno v logu 8. 10.: Archa úr. 180 měď 99 %, zlato 19 %; Observatory 132→133 P1 = 4 645 FP (15 % z 53 236 × 58,2 %).
 - Zaokrouhlení (log 10. 10.): základní odměny ze serveru jsou po 5 (round na nejbližší 5, např. 1660,5 × 58,25 % = 967 → 965). Odměnu s bonusem Archy hra (prasátko) zaokrouhluje také na 5: 175 × 1,99 = 348,25 → 350, 40 × 1,99 → 80, 10 × 1,99 → 20.
+- Stupeň pro bonus Archy určují plánky v odměnách (`reward.blueprintRewards[].tier`), ne úroveň: věkové VB (Saturn VI Gate PEGASUS úr. 139, log 10. 10.) mají jen měď, 5 míst a platí měděný bonus.
+- Potvrzení zaokrouhlení na nejbližší 5 (ne nahoru): kellyfamily na P1 vložil 12 575 = 6 320 × 1,99 = 12 576,8 → 12 575.

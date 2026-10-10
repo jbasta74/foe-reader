@@ -933,6 +933,7 @@
   function nahozCalc(rows, entity, ownerName) {
     if (!rows || !entity) return null;
     const gold = isGoldLevel(entity);
+    const arcMode = cfg.arcFactor === 'arc';
     const f1000 = Math.round(factorNow(gold) * 1000); // celočíselně kvůli zaokrouhlení (285 × 1,9 = 541,5 → 542)
     const total = entity.state?.forge_points_for_level_up;
     const ownerRow = rows.find((r) => r.rank == null && r.player?.player_id != null);
@@ -940,7 +941,8 @@
     // Počet odměňovaných míst není pevný (zlatý stupeň VB má 7 míst) – bereme všechna, která server pošle.
     const places = rows.filter((r) => r.rank && r.reward?.strategy_point_amount > 0).sort((a, b) => a.rank - b.rank).map((r) => {
       const base = r.reward.strategy_point_amount || 0;
-      const val = Math.round((base * f1000) / 1000);
+      // Hra odměnu s bonusem Archy zaokrouhluje na pětky (175 × 1,99 = 348,25 → 350). Pevné koeficienty cechu na celá čísla.
+      const val = arcMode ? round5((base * f1000) / 1000) : Math.round((base * f1000) / 1000);
       const holder = r.player?.player_id != null ? { name: r.player.name, fp: r.forge_points || 0 } : null;
       return { rank: r.rank, base, val, holder, filled: !!holder && holder.fp >= val };
     });
@@ -991,6 +993,8 @@
     for (const e of S.entities.values()) for (const b of e.bonuses || []) if (b.type === type) sum += b.value || 0;
     return sum;
   }
+  // Zaokrouhlení na násobky 5 jako ve hře (i základní odměny ze serveru jsou po 5).
+  const round5 = (x) => Math.round(Math.round(x * 1000) / 5000) * 5;
   const isGoldLevel = (gb) => gb?.level != null && gb.level + 1 > 100;
 
   function viewForeignGB() {
@@ -1015,7 +1019,7 @@
           places.map((p, i) => {
             const holder = others[i]?.forge_points || 0;
             const base = p.reward.strategy_point_amount || 0;
-            const withArc = Math.round(base * (1 + arc / 100));
+            const withArc = round5(base * (1 + arc / 100)); // stejně jako hra (prasátko)
             const cost = remaining != null ? Math.max(0, Math.ceil((remaining + holder - mine) / 2)) : null;
             const possible = cost != null && cost <= remaining;
             const profit = possible ? withArc - cost - mine : null; // celý vklad vč. již vloženého

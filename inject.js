@@ -100,5 +100,40 @@
   for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) WrappedWS[k] = OrigWS[k];
   window.WebSocket = WrappedWS;
 
+  // ---------- Ikony zboží (jen statické obrázky z CDN hry, žádný dotaz na herní server) ----------
+  // Seznam souborů s hashi je ve skriptu klienta ForgeHX (stejně jako ho čte FoE Helper);
+  // z něj se sestaví adresa atlasu ikon zboží a jeho JSON s pozicemi jednotlivých ikon.
+  (async () => {
+    try {
+      let script = null;
+      for (let i = 0; i < 600 && !script; i++) {
+        script = document.querySelector('script[src*="ForgeHX"]');
+        if (!script) await new Promise((r) => setTimeout(r, 500));
+      }
+      if (!script) return;
+      const origin = new URL(script.src, document.baseURI).origin;
+      const raw = await (await origFetch.call(window, script.src)).text();
+      const start = raw.indexOf('baseUrl,');
+      if (start < 0) return;
+      let list = raw.substring(start + 'baseUrl,'.length);
+      list = JSON.parse(list.substring(0, list.indexOf('}') + 1));
+      const url = (path) => {
+        const hash = list[path];
+        if (!hash) return null;
+        const dot = path.lastIndexOf('.');
+        return `${origin}/assets${path.substring(0, dot)}-${hash}${path.substring(dot)}`;
+      };
+      const base = '/shared/icons/goods_large/fine_goods_large_0';
+      const jsonUrl = url(base + '.json'), pngUrl = url(base + '.png');
+      if (!jsonUrl || !pngUrl) return;
+      const sprite = await (await origFetch.call(window, jsonUrl)).json();
+      const frames = {};
+      for (const f of sprite.frames || []) frames[f[0]] = [f[1], f[2], f[3], f[4], f[f.length - 1] === true];
+      emit('assets', '', [{ goodsSprite: { png: pngUrl, w: sprite.size?.w, h: sprite.size?.h, frames } }]);
+    } catch (e) {
+      console.warn('[FoE Reader] ikony zboží se nepodařilo načíst', e);
+    }
+  })();
+
   console.log('[FoE Reader] odposlech aktivní (pouze čtení)');
 })();

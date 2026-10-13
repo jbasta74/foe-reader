@@ -454,6 +454,7 @@
     const p = ev.data;
     if (!p || p.source !== SOURCE) return;
     if (p.channel === 'req') { p.messages.forEach(handleRequest); return; }
+    if (p.channel === 'assets') { for (const m of p.messages) if (m.goodsSprite) S.goodsSprite = m.goodsSprite; scheduleRender(); return; }
     if (p.channel === 'metadata') p.messages.forEach(handleMetadata);
     else for (const r of p.messages) handleMessage(p.channel, r);
     scheduleRender();
@@ -1244,11 +1245,20 @@
     SpaceAgeTitan: 'Titan', SpaceAgeSpaceHub: 'Vesmírný uzel', StellarAgeDiscovery: 'Hvězdný věk',
   };
   let fragFilter = 'ready';
+  // Ikona zboží z atlasu hry (zmenšená na size px); bez atlasu nebo ikony vrátí název.
+  function goodIcon(id, size = 30) {
+    const sp = S.goodsSprite, f = sp?.frames?.[id];
+    if (!f) return esc(resLabel(id));
+    const [x, y, w, h, rot] = f;
+    const k = size / Math.max(w, h);
+    return `<span class="gicon" title="${esc(resLabel(id))}" style="width:${Math.round(w * k)}px;height:${Math.round(h * k)}px;background-image:url('${sp.png}');background-size:${sp.w * k}px ${sp.h * k}px;background-position:${-x * k}px ${-y * k}px${rot ? ';transform:rotate(-90deg)' : ''}"></span>`;
+  }
+
   function viewNego() {
     const n = S.nego;
     if (!n) return '<p class="muted">Začněte ve hře vyjednávání (expedice) – tady se ukáže návrh dalšího tahu.</p>';
     if (n.gbg) return '<p class="muted">Vyjednávání v GBG: pomocník je tu záměrně vypnutý.</p>';
-    const name = (gi) => esc(resLabel(n.goods[gi]));
+    const name = (gi) => goodIcon(n.goods[gi]);
     const CLS = { correct: 'ok', wrong_person: 'wp', not_needed: 'nn' };
     const TXT = { correct: '✓', wrong_person: '↔', not_needed: '✗' };
     const left = S.resources.negotiation_game_turn;
@@ -1266,7 +1276,7 @@
     if (c && c.suggestion && n.state === 'ongoing') sugRow = `<tr class="sel"><td><b>Návrh</b></td>${[...Array(NEGO_SLOTS).keys()].map((sl) => c.fixed.has(sl)
       ? `<td class="ng ok">✓ ${name(c.fixed.get(sl))}</td>` : `<td><b>${name(c.suggestion.get(sl))}</b></td>`).join('')}</tr>`;
     if (sugRow) sug = `<p class="muted">Možných kombinací: ${fmt(c.cands)}${c.sure ? ' – <b>jisté řešení</b>' : ''}.</p>`;
-    const cost = n.goods.map((g) => `${esc(resLabel(g))} ${fmt(n.costs[g])}${S.resources[g] != null ? ` <span class="muted">(máte ${fmt(S.resources[g])})</span>` : ''}`).join(' · ');
+    const cost = n.goods.map((g) => `${goodIcon(g, 22)} ${fmt(n.costs[g])}${S.resources[g] != null ? ` <span class="muted">(máte ${fmt(S.resources[g])})</span>` : ''}`).join(' · ');
     return `<p>${left != null ? `Zbývá tahů: <b>${left}</b> · ` : ''}Zboží: ${cost}</p>
       <table class="neg"><thead>${head}</thead><tbody>${rows}${sugRow}</tbody></table>${sug}
       <p class="muted">✓ správně · ↔ chce jiná postava · ✗ nikdo další nechce. Návrh jen radí – tah zadáváte ve hře sami.</p>`;
@@ -1401,6 +1411,7 @@
       .fbtn{background:#fff;border:1px solid #c9b48c;border-radius:4px;padding:1px 6px;margin-right:3px;cursor:pointer}
       .fbtn.on{background:#2b2116;color:#f3d9a4;border-color:#2b2116;font-weight:700}
       table.neg{table-layout:fixed;width:100%}table.neg td,table.neg th{word-break:break-word;font-size:12px}table.neg td:first-child,table.neg th:first-child{width:52px}
+      .gicon{display:inline-block;vertical-align:middle;background-repeat:no-repeat}table.neg td{text-align:center}
       td.ng.ok{background:#d6efc7}td.ng.wp{background:#fbe3b4}td.ng.nn{background:#e6e0d6;color:#7a6f60}
       .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
       .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}

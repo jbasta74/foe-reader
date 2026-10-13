@@ -6,40 +6,36 @@
 //  - každá postava (slot) chce právě jedno zboží, zboží se může opakovat;
 //  - posílají se jen nevyřešené sloty; vyřešený slot (correct) už se neposílá ani nepočítá;
 //  - correct = slot chce právě toto zboží;
-//  - wrong_person = zboží chce jiná dosud neuspokojená postava; počet je omezen poptávkou
-//    (bio na slotech 2, 3, 4 při poptávce 2× → dvakrát correct, jednou not_needed);
+//  - wrong_person = zboží chce jiná postava, která v tomto tahu správné zboží nedostala
+//    (bio na slotech 2, 3, 4, chtěly ho 2 a 4 → obě correct, slot 3 not_needed; porifera na 2 slotech,
+//    chtěla ji jen jedna jiná postava → oba sloty wrong_person, tedy bez omezení počtem);
 //  - not_needed = žádná další poptávka.
 (() => {
   'use strict';
 
   // secret: pole indexů zboží pro všech 5 slotů; open: indexy otevřených slotů;
-  // guess: Map slot -> zboží. Vrací {correct:Set slotů, wp: Map zboží -> počet wrong_person}.
+  // guess: Map slot -> zboží. Vrací Map slot -> 'correct' | 'wrong_person' | 'not_needed'.
+  // wrong_person = zboží chce jiná otevřená postava, která v tomto tahu nedostala správné zboží
+  // (bez omezení počtem – log 13. 10.: porifera na 2 slotech, obě ↔, chtěla ji jen jedna postava).
   function feedback(secret, open, guess) {
+    const out = new Map();
     const correct = new Set();
     for (const [slot, g] of guess) if (secret[slot] === g) correct.add(slot);
-    const demand = new Map();
-    for (const s of open) if (!correct.has(s)) demand.set(secret[s], (demand.get(secret[s]) || 0) + 1);
-    const nonCorrect = new Map();
-    for (const [slot, g] of guess) if (!correct.has(slot)) nonCorrect.set(g, (nonCorrect.get(g) || 0) + 1);
-    const wp = new Map();
-    for (const [g, n] of nonCorrect) wp.set(g, Math.min(n, demand.get(g) || 0));
-    return { correct, wp };
+    for (const [slot, g] of guess) {
+      if (correct.has(slot)) { out.set(slot, 'correct'); continue; }
+      let wp = false;
+      for (const j of open) if (j !== slot && !correct.has(j) && secret[j] === g) { wp = true; break; }
+      out.set(slot, wp ? 'wrong_person' : 'not_needed');
+    }
+    return out;
   }
 
-  const key = (fb, guess) => {
-    let k = '';
-    for (const [slot] of guess) k += fb.correct.has(slot) ? 'C' : '.';
-    for (const [g, n] of [...fb.wp].sort((a, b) => a[0] - b[0])) if (n) k += `|${g}:${n}`;
-    return k;
-  };
+  const key = (fb) => { let k = ''; for (const v of fb.values()) k += v[0]; return k; };
 
   // Odpovídá kandidát pozorovanému tahu?
   function consistent(secret, turn) {
     const fb = feedback(secret, turn.open, turn.guess);
-    for (const [slot] of turn.guess) if (fb.correct.has(slot) !== (turn.result.get(slot) === 'correct')) return false;
-    const obsWp = new Map();
-    for (const [slot, g] of turn.guess) if (turn.result.get(slot) === 'wrong_person') obsWp.set(g, (obsWp.get(g) || 0) + 1);
-    for (const g of new Set([...obsWp.keys(), ...fb.wp.keys()])) if ((obsWp.get(g) || 0) !== (fb.wp.get(g) || 0)) return false;
+    for (const [slot, st] of turn.result) if (fb.get(slot) !== st) return false;
     return true;
   }
 
@@ -90,7 +86,7 @@
     let best = null;
     for (const p of pool) {
       const parts = new Map();
-      for (const c of sample) { const k = key(feedback(c, open, p.g), p.g); parts.set(k, (parts.get(k) || 0) + 1); }
+      for (const c of sample) { const k = key(feedback(c, open, p.g)); parts.set(k, (parts.get(k) || 0) + 1); }
       let score = 0;
       for (const n of parts.values()) score += n * n;
       const isCand = candKeys.has(open.map((s) => p.g.get(s)).join(','));

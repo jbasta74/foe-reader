@@ -109,3 +109,9 @@ Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16
 - Zaokrouhlení (log 10. 10.): základní odměny ze serveru jsou po 5 (round na nejbližší 5, např. 1660,5 × 58,25 % = 967 → 965). Odměnu s bonusem Archy hra (prasátko) zaokrouhluje také na 5: 175 × 1,99 = 348,25 → 350, 40 × 1,99 → 80, 10 × 1,99 → 20.
 - Stupeň pro bonus Archy určují plánky v odměnách (`reward.blueprintRewards[].tier`), ne úroveň: věkové VB (Saturn VI Gate PEGASUS úr. 139, log 10. 10.) mají jen měď, 5 míst a platí měděný bonus.
 - Potvrzení zaokrouhlení na nejbližší 5 (ne nahoru): kellyfamily na P1 vložil 12 575 = 6 320 × 1,99 = 12 576,8 → 12 575.
+
+## Vyjednávání (expedice)
+- Start: `GuildExpeditionService.startNegotiation` → `{__class__:'NegotiationGame', context:'guildExpedition', possibleCosts:{resources:{zboží: cena}}}`. Počet postav (slotů) není v odpovědi – v expedici 5. Počet tahů = zdroj `negotiation_game_turn` (3 + např. +1 z hospody `extra_negotiation_turn`), snižuje se po každém tahu.
+- Tah: požadavek `NegotiationGameService.submitTurn` `[[{slotId, resourceId}…], číslo tahu]`; posílají se jen nevyřešené sloty. Odpověď `{state:'ongoing'|'won'|…, turnResult:{slots:[{slotId?, resourceId, state:'correct'|'wrong_person'|'not_needed'}]}}`; slot 0 je bez `slotId`.
+- Zpětná vazba (ověřeno na 2 hrách z 13. 10.): correct = shoda; wrong_person = zboží chce jiná dosud neuspokojená postava, počet omezen poptávkou (bio na 3 slotech při poptávce 2 → 2× correct, 1× not_needed); vyřešené sloty z dřívějších tahů se do poptávky nepočítají.
+- GBG (`context:'guildBattleground'`): pomocník vypnutý (jako FoE Helper).

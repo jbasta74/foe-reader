@@ -1,4 +1,4 @@
-# FoE Reader 0.3.23
+# FoE Reader 0.3.24
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -26,6 +26,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - **Produkce**: co se vyrábí, souhrn FP/mincí/zásob/medailí/zboží za aktuální cyklus a kdy bude hotovo. Po otevření osady ve hře i přehled osady: suroviny, další odemčení (co chybí), kdy bude která produkce hotová, stojící a nepřipojené budovy. Dole je tabulka **Limitované budovy**: kdy která vyprší a co máte ve skladu na obnovu (sada, hotová budova, fragmenty).
 - **Bonusy**: útok a obrana útočníka i obránce podle oblasti (Všude, GBG, Expedice, QI) a ostatní bonusy.
 - **GBG**: cechy na mapě, kde útočíme a kde útočí na nás včetně rychlosti postupu za 1 a 5 minut (pozná se, jestli v provincii jede někdo s vámi), aktivita členů (přírůstek bitev, vyjednávání a opotřebení od minulého otevření žebříčku), opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), tabulka provincií s časem odemknutí, názvy (D4C…), označením provincií sousedících s našimi a ☆ pro sledování, žebříček členů.
+- **Vyjednávání**: při vyjednávání na expedici ukáže dosavadní tahy a navrhne další (vyřazuje nemožné kombinace). Jen radí, tah zadáváte ve hře sami; v GBG je vypnuté.
 - **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
 - **Suroviny**, **Log**.
 - **Sklad**: zboží všech věků (po věcích, se součtem a zvýrazněním nejslabšího zboží) a části (fragmenty) – kolik máte, kolik je potřeba, kolikrát jde sestavit a co chybí.

@@ -49,6 +49,7 @@
     'TimeService.updateTime'(d) {
       if (d && d.time) S.serverOffset = d.time - Date.now() / 1000;
     },
+    'NegotiationGameService.submitTurn'(d) { negoTurn(d); },
     'ResourceService.getPlayerResourceBag'(d) {
       Object.assign(S.resources, d?.resources?.resources || {});
     },
@@ -335,8 +336,49 @@
     S.ring.push({ t: Date.now(), channel, key, data: d });
     if (S.ring.length > RING_MAX) S.ring.shift();
 
-    try { H[key] && H[key](d); genericScan(d); if (/Battleground/.test(key)) scanAttrition(d, 0); }
+    try { if (d?.__class__ === 'NegotiationGame') negoStart(d); H[key] && H[key](d); genericScan(d); if (/Battleground/.test(key)) scanAttrition(d, 0); }
     catch (e) { console.warn('[FoE Reader] handler', key, e); }
+  }
+
+  // ===================== Vyjednávání =====================
+  // Jen radí – tah zadává hráč ve hře. V GBG je vypnuté (stejně jako ve FoE Helperu).
+  S.nego = null;
+  const NEGO_SLOTS = 5;
+  function negoStart(d) {
+    if (d.context === 'guildBattleground') { S.nego = { gbg: true, t: Date.now() }; return; }
+    const costs = d.possibleCosts?.resources || {};
+    const goods = Object.keys(costs);
+    S.nego = { context: d.context, goods, costs, turns: [], state: 'ongoing', t: Date.now(), calc: null };
+    negoCalc();
+    if (open && tab !== 'neg') tab = 'neg';
+  }
+  function negoTurn(d) {
+    const n = S.nego;
+    if (!n || n.gbg || !d?.turnResult?.slots) return;
+    const solved = new Set();
+    for (const t of n.turns) for (const [sl, st] of t.result) if (st === 'correct') solved.add(sl);
+    const guess = new Map(), result = new Map();
+    for (const x of d.turnResult.slots) {
+      const sl = x.slotId || 0; // slot 0 server posílá bez slotId
+      const gi = n.goods.indexOf(x.resourceId);
+      if (gi < 0) continue;
+      guess.set(sl, gi); result.set(sl, x.state);
+    }
+    n.turns.push({ open: [...Array(NEGO_SLOTS).keys()].filter((x) => !solved.has(x)), guess, result });
+    n.state = d.state || 'ongoing';
+    negoCalc();
+  }
+  function negoCalc() {
+    const n = S.nego;
+    if (!n || n.gbg || n.state !== 'ongoing' || !globalThis.FOE_NEGO) return;
+    n.calc = null;
+    setTimeout(() => { // výpočet mimo zpracování zprávy
+      try {
+        const left = S.resources.negotiation_game_turn;
+        n.calc = globalThis.FOE_NEGO.solve({ nGoods: n.goods.length, slots: NEGO_SLOTS, turns: n.turns, turnsLeft: left > 0 ? left : null });
+      } catch (e) { console.warn('[FoE Reader] vyjednávání', e); n.calc = { error: String(e) }; }
+      scheduleRender();
+    }, 0);
   }
 
   // Událost od jiného hráče. live = přišla právě teď; jinak jde o záznam z historie (jen doplnit do seznamu).
@@ -1202,6 +1244,34 @@
     SpaceAgeTitan: 'Titan', SpaceAgeSpaceHub: 'Vesmírný uzel', StellarAgeDiscovery: 'Hvězdný věk',
   };
   let fragFilter = 'ready';
+  function viewNego() {
+    const n = S.nego;
+    if (!n) return '<p class="muted">Začněte ve hře vyjednávání (expedice) – tady se ukáže návrh dalšího tahu.</p>';
+    if (n.gbg) return '<p class="muted">Vyjednávání v GBG: pomocník je tu záměrně vypnutý.</p>';
+    const name = (gi) => esc(resLabel(n.goods[gi]));
+    const CLS = { correct: 'ok', wrong_person: 'wp', not_needed: 'nn' };
+    const TXT = { correct: '✓', wrong_person: '↔', not_needed: '✗' };
+    const left = S.resources.negotiation_game_turn;
+    const head = `<tr><th></th>${[...Array(NEGO_SLOTS).keys()].map((i) => `<th>Postava ${i + 1}</th>`).join('')}</tr>`;
+    const rows = n.turns.map((t, i) => `<tr><td>Tah ${i + 1}</td>${[...Array(NEGO_SLOTS).keys()].map((sl) => t.guess.has(sl)
+      ? `<td class="ng ${CLS[t.result.get(sl)] || ''}">${TXT[t.result.get(sl)] || ''} ${name(t.guess.get(sl))}</td>` : '<td class="muted">–</td>').join('')}</tr>`).join('');
+    let sug = '';
+    const c = n.calc;
+    if (n.state === 'won') sug = '<p class="hi">Vyjednávání vyhráno 🎉</p>';
+    else if (n.state !== 'ongoing') sug = `<p class="muted">Konec vyjednávání (${esc(n.state)}).</p>`;
+    else if (!c) sug = '<p class="muted">Počítám…</p>';
+    else if (c.error) sug = `<p class="hi">Chyba výpočtu: ${esc(c.error)}</p>`;
+    else if (!c.suggestion) sug = '<p class="hi">Žádná kombinace neodpovídá výsledkům – pošlete mi prosím log.</p>';
+    let sugRow = '';
+    if (c && c.suggestion && n.state === 'ongoing') sugRow = `<tr class="sel"><td><b>Návrh</b></td>${[...Array(NEGO_SLOTS).keys()].map((sl) => c.fixed.has(sl)
+      ? `<td class="ng ok">✓ ${name(c.fixed.get(sl))}</td>` : `<td><b>${name(c.suggestion.get(sl))}</b></td>`).join('')}</tr>`;
+    if (sugRow) sug = `<p class="muted">Možných kombinací: ${fmt(c.cands)}${c.sure ? ' – <b>jisté řešení</b>' : ''}.</p>`;
+    const cost = n.goods.map((g) => `${esc(resLabel(g))} ${fmt(n.costs[g])}${S.resources[g] != null ? ` <span class="muted">(máte ${fmt(S.resources[g])})</span>` : ''}`).join(' · ');
+    return `<p>${left != null ? `Zbývá tahů: <b>${left}</b> · ` : ''}Zboží: ${cost}</p>
+      <table class="neg"><thead>${head}</thead><tbody>${rows}${sugRow}</tbody></table>${sug}
+      <p class="muted">✓ správně · ↔ chce jiná postava · ✗ nikdo další nechce. Návrh jen radí – tah zadáváte ve hře sami.</p>`;
+  }
+
   function viewStock() {
     const r = S.resources;
     let html = '';
@@ -1277,7 +1347,7 @@
   const TABS = [
     ['gb', 'Moje VB', viewGB], ['fgb', 'VB přátel', viewForeignGB], ['prod', 'Produkce', viewProduction],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
-    ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
+    ['neg', 'Vyjednávání', viewNego], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];
   let tab = 'gb';
   let open = false;
@@ -1330,6 +1400,8 @@
       table.stock td{vertical-align:top}
       .fbtn{background:#fff;border:1px solid #c9b48c;border-radius:4px;padding:1px 6px;margin-right:3px;cursor:pointer}
       .fbtn.on{background:#2b2116;color:#f3d9a4;border-color:#2b2116;font-weight:700}
+      table.neg{table-layout:fixed;width:100%}table.neg td,table.neg th{word-break:break-word;font-size:12px}table.neg td:first-child,table.neg th:first-child{width:52px}
+      td.ng.ok{background:#d6efc7}td.ng.wp{background:#fbe3b4}td.ng.nn{background:#e6e0d6;color:#7a6f60}
       .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
       .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}

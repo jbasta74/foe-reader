@@ -75,9 +75,14 @@
     const p = origFetch.apply(this, arguments);
     try {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (isGameJson(url)) {
+      if (isGameJson(url) || isMetadata(url)) {
         p.then((res) => res.clone().text())
-          .then((t) => { const d = parseJson(t); if (d) emit('http', url, d); })
+          .then((t) => {
+            const d = parseJson(t);
+            if (!d) return;
+            if (isGameJson(url)) emit('http', url, d);
+            else emit('metadata', url, [{ metadataId: url.split('id=')[1], data: d }]);
+          })
           .catch(() => {});
       }
     } catch { /* ignore */ }

@@ -32,6 +32,8 @@
   S.unread = 0;
   S.attrition = null;       // GuildBattlegroundAttrition
   S.timers = [];            // TimerService.getTimers
+  S.ent = new Map();        // metadata budov: id -> {w, l, road, type}
+  S.grids = {};             // gridId -> {unlocked, blocked} (odemčená plocha)
   S.inv = new Map();        // celý inventář: id -> {name, stock, item}
   S.ascKit = new Map();     // ID pozvednuté (limitované) budovy -> {id, name} sady, která ji vytvoří
   S.myTavern = null;        // {unlocked, sitting}
@@ -44,6 +46,7 @@
     'StartupService.getData'(d) {
       S.player = d.user_data || S.player;
       for (const e of d.city_map?.entities || []) S.entities.set(e.id, e);
+      if (d.city_map?.unlocked_areas) S.grids.main = { unlocked: d.city_map.unlocked_areas, blocked: d.city_map.blocked_areas || [] };
       for (const g of d.goodsList || []) { S.goodsEra.set(g.id, g.era); S.goodsName.set(g.id, g.name); }
     },
     'TimeService.updateTime'(d) {
@@ -154,6 +157,7 @@
     // Mapa jiné "mřížky" než hlavního města – osada (cultural_outpost) apod. Přijde po otevření osady.
     'CityMapService.getCityMap'(d) {
       if (!d || !Array.isArray(d.entities)) return;
+      if (d.unlocked_areas) S.grids[d.gridId] = { unlocked: d.unlocked_areas, blocked: d.blocked_areas || [] };
       if (d.gridId === 'main') { for (const e of d.entities) S.entities.set(e.id, e); return; }
       S.outpost = { gridId: d.gridId, entities: new Map(d.entities.map((e) => [e.id, e])), time: Date.now() };
     },
@@ -436,6 +440,14 @@
     const take = (o) => {
       if (!o || typeof o !== 'object') return;
       if (o.id && o.name) S.names.set(o.id, o.name);
+      // rozměry a potřeba cesty (starý formát width/length, nový components.AllAge)
+      const sz = o.components?.AllAge?.placement?.size;
+      if (o.id && (o.width || sz)) {
+        S.ent.set(o.id, {
+          w: +(o.width || sz?.x || 1), l: +(o.length || sz?.y || 1), type: o.type || '',
+          road: +(o.components?.AllAge?.streetConnectionRequirement?.requiredLevel || o.requirements?.street_connection_level || 0),
+        });
+      }
       // great_building_tiers: stupně VB (měď/stříbro/zlato) podle úrovně
       if (o.__class__ === 'GreatBuildingTierMetadata' && o.tier?.value) {
         S.gbTiers = (S.gbTiers || []).filter((t) => t.tier !== o.tier.value).concat({ tier: o.tier.value, name: o.name, from: o.startLevel, to: o.endLevel });
@@ -749,6 +761,91 @@
       ${free.length ? `<ul>${free.map((t) => `<li>${esc(name(t.ownerId))} <span class="muted">${t.state === 'alreadyVisited' ? 'znovu dostupná, pokud je volno' : `${t.sittingPlayerCount ?? '?'}/${t.unlockedChairCount ?? '?'}`}</span></li>`).join('')}</ul>` : '<p class="muted">nikde</p>'}
       <h4>Nejbližší znovu dostupné</h4>
       <ul>${soon.map((t) => `<li>${esc(name(t.ownerId))} <span class="muted">za ${dur(t.nextVisitTime - now)}</span></li>`).join('')}</ul>`;
+  }
+
+  // ===================== Mapa města / osady =====================
+  let mapGrid = 'main';
+  function mapModel(gridId) {
+    const g = S.grids[gridId];
+    const list = gridId === 'main' ? [...S.entities.values()].filter((e) => (e.player_id == null || e.player_id === myId()))
+      : (S.outpost?.gridId === gridId ? [...S.outpost.entities.values()] : []);
+    if (!g || !list.length) return null;
+    const tiles = new Set();
+    for (const a of g.unlocked) for (let x = 0; x < a.width; x++) for (let y = 0; y < a.length; y++) tiles.add(`${(a.x || 0) + x},${(a.y || 0) + y}`);
+    const occ = new Map(); // "x,y" -> entity
+    const items = [];
+    let missing = 0;
+    for (const e of list) {
+      const m = S.ent.get(e.cityentity_id);
+      if (!m) { missing++; continue; }
+      const x0 = e.x || 0, y0 = e.y || 0;
+      const isRoad = m.type === 'street' || /^S_/.test(e.cityentity_id);
+      const isImp = m.type === 'impediment' || /^I_/.test(e.cityentity_id);
+      const it = { e, m, x0, y0, isRoad, isImp, name: S.names.get(e.cityentity_id) || e.cityentity_id };
+      items.push(it);
+      for (let x = 0; x < m.w; x++) for (let y = 0; y < m.l; y++) occ.set(`${x0 + x},${y0 + y}`, it);
+    }
+    // cesty, které nevedou k žádné budově s potřebou cesty (slepé konce) – opakovaně odstraňujeme listy
+    const road = new Set([...occ].filter(([, it]) => it.isRoad).map(([k]) => k));
+    const nb = (k) => { const [x, y] = k.split(',').map(Number); return [`${x + 1},${y}`, `${x - 1},${y}`, `${x},${y + 1}`, `${x},${y - 1}`]; };
+    const needsRoadAt = (k) => nb(k).some((n) => { const it = occ.get(n); return it && !it.isRoad && !it.isImp && (it.m.road > 0 || it.m.type === 'main_building'); });
+    const alive = new Set(road);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const k of [...alive]) {
+        if (needsRoadAt(k)) continue;
+        if (nb(k).filter((n) => alive.has(n)).length <= 1) { alive.delete(k); changed = true; }
+      }
+    }
+    const deadRoads = [...road].filter((k) => !alive.has(k));
+    const free = [...tiles].filter((k) => !occ.has(k)).length;
+    const touchesRoad = (it) => {
+      for (let x = -1; x <= it.m.w; x++) for (let y = -1; y <= it.m.l; y++) {
+        if ((x === -1 || x === it.m.w) === (y === -1 || y === it.m.l)) continue; // jen hrany, ne rohy ani vnitřek
+        if (road.has(`${it.x0 + x},${it.y0 + y}`)) return true;
+      }
+      return false;
+    };
+    const noRoadAtRoad = items.filter((it) => !it.isRoad && !it.isImp && it.m.road === 0 && it.m.type !== 'main_building' && touchesRoad(it));
+    const notConnected = items.filter((it) => !it.isRoad && it.m.road > 0 && !it.e.connected);
+    const xs = [...tiles].map((k) => +k.split(',')[0]), ys = [...tiles].map((k) => +k.split(',')[1]);
+    return { tiles, items, occ, road, deadRoads, free, noRoadAtRoad, notConnected, missing,
+      minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+  }
+  function viewMap() {
+    const grids = Object.keys(S.grids);
+    if (!grids.length) return '<p class="muted">Načtěte hru (F5); pro osadu ji ve hře otevřete.</p>';
+    if (!grids.includes(mapGrid)) mapGrid = grids[0];
+    const GN = { main: 'Město', cultural_outpost: 'Osada', era_outpost: 'Kolonie', guild_raids: 'Kvantové invaze' };
+    const pick = grids.map((g) => `<button class="fbtn ${g === mapGrid ? 'on' : ''}" data-mapgrid="${g}">${GN[g] || g}</button>`).join('');
+    const M = mapModel(mapGrid);
+    if (!M) return `<p>${pick}</p><p class="muted">Pro tuto mapu zatím nejsou data (budovy nebo rozměry z metadat) – obnovte hru a mapu otevřete.</p>`;
+    const W = M.maxX - M.minX + 1, Hh = M.maxY - M.minY + 1;
+    const t = Math.max(3, Math.min(14, Math.floor(560 / W)));
+    const X = (x) => (x - M.minX) * t, Y = (y) => (y - M.minY) * t;
+    let svg = `<svg width="${W * t}" height="${Hh * t}" style="background:#3d3a33;display:block;max-width:100%">`;
+    for (const k of M.tiles) { const [x, y] = k.split(',').map(Number); svg += `<rect x="${X(x)}" y="${Y(y)}" width="${t}" height="${t}" fill="#efe6d2"/>`; }
+    const dead = new Set(M.deadRoads), bad = new Set(M.noRoadAtRoad), nc = new Set(M.notConnected);
+    for (const it of M.items) {
+      const col = it.isRoad ? '#8a8378' : it.isImp ? '#8b5a2b' : it.m.type === 'main_building' ? '#c0392b' : it.m.road > 1 ? '#2c5aa0' : it.m.road > 0 ? '#5b8fd6' : '#5aa05a';
+      const stroke = nc.has(it) ? ' stroke="#e00" stroke-width="2"' : bad.has(it) ? ' stroke="#e8a317" stroke-width="2"' : ' stroke="#2b2116" stroke-width="0.5"';
+      if (it.isRoad) {
+        for (let x = 0; x < it.m.w; x++) for (let y = 0; y < it.m.l; y++) { const k = `${it.x0 + x},${it.y0 + y}`;
+          svg += `<rect x="${X(it.x0 + x)}" y="${Y(it.y0 + y)}" width="${t}" height="${t}" fill="${dead.has(k) ? '#d9534f' : col}"/>`; }
+        continue;
+      }
+      svg += `<rect x="${X(it.x0) + 0.5}" y="${Y(it.y0) + 0.5}" width="${it.m.w * t - 1}" height="${it.m.l * t - 1}" fill="${col}"${stroke}><title>${esc(it.name)} (${it.m.w}×${it.m.l}${it.m.road ? ', cesta ' + it.m.road : ', bez cesty'})</title></rect>`;
+    }
+    svg += '</svg>';
+    const roadTiles = M.road.size, unl = M.tiles.size;
+    return `<p>${pick}</p>
+      <p><span class="chip">plocha ${fmt(unl)} polí</span><span class="chip">cesty ${fmt(roadTiles)} (${Math.round(roadTiles / unl * 100)} %)</span><span class="chip">volno ${fmt(M.free)}</span>
+      ${M.deadRoads.length ? `<span class="chip hi">zbytečné cesty ${M.deadRoads.length}</span>` : ''}
+      ${M.noRoadAtRoad.length ? `<span class="chip">bez potřeby cesty u cesty: ${M.noRoadAtRoad.length}</span>` : ''}
+      ${M.notConnected.length ? `<span class="chip hi">nepřipojeno ${M.notConnected.length}</span>` : ''}</p>
+      <div style="overflow:auto">${svg}</div>
+      <p class="muted">🟦 potřebuje cestu (tmavší = dvouproudou) · 🟩 cestu nepotřebuje · ⬛ cesta, <span style="color:#d9534f">červená</span> = slepá cesta k ničemu · 🟫 překážka · oranžový okraj = cestu nepotřebuje, a stojí u ní · červený okraj = nepřipojeno${M.missing ? ` · ${M.missing} budov bez rozměrů (chybí metadata)` : ''}</p>`;
   }
 
   function viewResources() {
@@ -1357,7 +1454,7 @@
   const TABS = [
     ['gb', 'Moje VB', viewGB], ['fgb', 'VB přátel', viewForeignGB], ['prod', 'Produkce', viewProduction],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
-    ['neg', 'Vyjednávání', viewNego], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
+    ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];
   let tab = 'gb';
   let open = false;
@@ -1433,6 +1530,8 @@
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
       const fg = ev.target.closest('[data-frag]');
       if (fg) { fragFilter = fg.dataset.frag; render(); return; }
+      const mg = ev.target.closest('[data-mapgrid]');
+      if (mg) { mapGrid = mg.dataset.mapgrid; render(); return; }
       const fb = ev.target.closest('[data-factor]');
       if (fb) { cfg.arcFactor = fb.dataset.factor === 'arc' ? 'arc' : +fb.dataset.factor; saveCfg(); render(); return; }
       const cp = ev.target.closest('[data-act="copy"]');
@@ -1523,7 +1622,11 @@
   }
 
   function download() {
-    const blob = new Blob([JSON.stringify(S.ring, null, 1)], { type: 'application/json' });
+    const ids = new Set([...S.entities.values(), ...(S.outpost?.entities?.values() || [])].map((e) => e.cityentity_id));
+    const sizes = {};
+    for (const id of ids) if (S.ent.has(id)) sizes[id] = { ...S.ent.get(id), name: S.names.get(id) };
+    const extra = { t: Date.now(), channel: 'meta', key: 'FoEReader.mapData', data: { sizes, grids: S.grids } };
+    const blob = new Blob([JSON.stringify([...S.ring, extra], null, 1)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `foe-log-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;

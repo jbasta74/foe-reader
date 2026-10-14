@@ -116,3 +116,9 @@ Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16
 - Zpětná vazba (ověřeno na 3 hrách z 13. 10.): correct = shoda; wrong_person = zboží chce jiná otevřená postava, která v tomto tahu správné zboží nedostala – BEZ omezení počtem (porifera na 2 slotech, chtěla ji jedna postava → oba ↔); not_needed jinak (bio na 3 slotech, chtěly ho 2 a ty byly v tahu správně → třetí ✗). Vyřešené sloty z dřívějších tahů se nepočítají.
 - GBG (`context:'guildBattleground'`): pomocník vypnutý (jako FoE Helper).
 - Ikony zboží: adresy assetů s hashi jsou ve skriptu klienta `ForgeHX` (JSON za `baseUrl,`), URL = `<CDN origin>/assets<cesta bez přípony>-<hash>.<přípona>`. Atlas `/shared/icons/goods_large/fine_goods_large_0.png` + `.json` (`frames: [[jméno, x, y, w, h, …, rotated?]]`, `size:{w,h}`), postup převzat z FoE Helperu (srcLinks.js). Jsou to jen statické soubory z CDN, žádný dotaz na herní server.
+
+## Mapa města / osady
+- Plocha: `StartupService.getData.city_map.unlocked_areas` (main) a `CityMapService.getCityMap` (`gridId`, `unlocked_areas`, `blocked_areas`, `entities`) pro osadu apod.; souřadnice 0 se neposílají (chybí x/y).
+- Rozměry a potřeba cesty: metadata `building_entity_<id>` (beta je načítá po jedné, i přes fetch): `width`/`length` + `requirements.street_connection_level`, nový formát `components.AllAge.placement.size.{x,y}` a `components.AllAge.streetConnectionRequirement.requiredLevel`.
+- Připojení k radnici: `CityMapEntity.connected` (1).
+- Export logu přidává záznam `FoEReader.mapData` s rozměry budov a plochami.

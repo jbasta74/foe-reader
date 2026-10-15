@@ -157,6 +157,7 @@
     // Mapa jiné "mřížky" než hlavního města – osada (cultural_outpost) apod. Přijde po otevření osady.
     'CityMapService.getCityMap'(d) {
       if (!d || !Array.isArray(d.entities)) return;
+      S.mapRev = (S.mapRev || 0) + 1;
       if (d.unlocked_areas) S.grids[d.gridId] = { unlocked: d.unlocked_areas, blocked: d.blocked_areas || [] };
       if (d.gridId === 'main') { for (const e of d.entities) S.entities.set(e.id, e); return; }
       S.outpost = { gridId: d.gridId, entities: new Map(d.entities.map((e) => [e.id, e])), time: Date.now() };
@@ -308,6 +309,7 @@
     if (!arr) return;
     for (const x of arr) {
       if (!x || x.__class__ !== 'CityMapEntity' || x.id == null) continue;
+      S.mapRev = (S.mapRev || 0) + 1;
       if (x.player_id != null && myId() != null && x.player_id !== myId()) {
         if (x.type === 'greatbuilding') {
           S.foreignGB = x; S.foreignGBAt = Date.now();
@@ -813,39 +815,152 @@
     return { tiles, items, occ, road, deadRoads, free, noRoadAtRoad, notConnected, missing,
       minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
   }
-  function viewMap() {
-    const grids = Object.keys(S.grids);
-    if (!grids.length) return '<p class="muted">Načtěte hru (F5); pro osadu ji ve hře otevřete.</p>';
-    if (!grids.includes(mapGrid)) mapGrid = grids[0];
-    const GN = { main: 'Město', cultural_outpost: 'Osada', era_outpost: 'Kolonie', guild_raids: 'Kvantové invaze' };
-    const pick = grids.map((g) => `<button class="fbtn ${g === mapGrid ? 'on' : ''}" data-mapgrid="${g}">${GN[g] || g}</button>`).join('');
-    const M = mapModel(mapGrid);
-    if (!M) return `<p>${pick}</p><p class="muted">Pro tuto mapu zatím nejsou data (budovy nebo rozměry z metadat) – obnovte hru a mapu otevřete.</p>`;
+  const GRID_NAMES = { main: 'Město', cultural_outpost: 'Osada', era_outpost: 'Kolonie', guild_raids: 'Kvantové invaze' };
+  function mapSvg(M, t) {
     const W = M.maxX - M.minX + 1, Hh = M.maxY - M.minY + 1;
-    const t = Math.max(3, Math.min(14, Math.floor(560 / W)));
     const X = (x) => (x - M.minX) * t, Y = (y) => (y - M.minY) * t;
-    let svg = `<svg width="${W * t}" height="${Hh * t}" style="background:#3d3a33;display:block;max-width:100%">`;
+    let svg = `<svg width="${W * t}" height="${Hh * t}" style="background:#3d3a33;display:block">`;
     for (const k of M.tiles) { const [x, y] = k.split(',').map(Number); svg += `<rect x="${X(x)}" y="${Y(y)}" width="${t}" height="${t}" fill="#efe6d2"/>`; }
     const dead = new Set(M.deadRoads), bad = new Set(M.noRoadAtRoad), nc = new Set(M.notConnected);
+    const sw = Math.max(1, t / 6);
     for (const it of M.items) {
       const col = it.isRoad ? '#8a8378' : it.isImp ? '#8b5a2b' : it.m.type === 'main_building' ? '#c0392b' : it.m.road > 1 ? '#2c5aa0' : it.m.road > 0 ? '#5b8fd6' : '#5aa05a';
-      const stroke = nc.has(it) ? ' stroke="#e00" stroke-width="2"' : bad.has(it) ? ' stroke="#e8a317" stroke-width="2"' : ' stroke="#2b2116" stroke-width="0.5"';
+      const stroke = nc.has(it) ? ` stroke="#e00" stroke-width="${sw * 1.5}"` : bad.has(it) ? ` stroke="#e8a317" stroke-width="${sw * 1.5}"` : ` stroke="#2b2116" stroke-width="${sw / 3}"`;
       if (it.isRoad) {
         for (let x = 0; x < it.m.w; x++) for (let y = 0; y < it.m.l; y++) { const k = `${it.x0 + x},${it.y0 + y}`;
           svg += `<rect x="${X(it.x0 + x)}" y="${Y(it.y0 + y)}" width="${t}" height="${t}" fill="${dead.has(k) ? '#d9534f' : col}"/>`; }
         continue;
       }
-      svg += `<rect x="${X(it.x0) + 0.5}" y="${Y(it.y0) + 0.5}" width="${it.m.w * t - 1}" height="${it.m.l * t - 1}" fill="${col}"${stroke}><title>${esc(it.name)} (${it.m.w}×${it.m.l}${it.m.road ? ', cesta ' + it.m.road : ', bez cesty'})</title></rect>`;
+      const tip = `${it.name} (${it.m.w}×${it.m.l}${it.m.road ? ', cesta ' + it.m.road : ', bez cesty'})`;
+      svg += `<rect x="${X(it.x0) + 0.5}" y="${Y(it.y0) + 0.5}" width="${it.m.w * t - 1}" height="${it.m.l * t - 1}" fill="${col}"${stroke}><title>${esc(tip)}</title></rect>`;
+      // název do větších budov, když je dost místa
+      if (t >= 14 && it.m.w * t >= 40) {
+        const fs = Math.min(11, t * 0.7);
+        const maxCh = Math.floor((it.m.w * t - 4) / (fs * 0.55));
+        const label = it.name.length > maxCh ? it.name.slice(0, Math.max(1, maxCh - 1)) + '…' : it.name;
+        svg += `<text x="${X(it.x0) + it.m.w * t / 2}" y="${Y(it.y0) + it.m.l * t / 2 + fs / 3}" font-size="${fs}" text-anchor="middle" fill="#fff" pointer-events="none" style="font-family:system-ui,sans-serif">${esc(label)}</text>`;
+      }
     }
-    svg += '</svg>';
+    return svg + '</svg>';
+  }
+  function mapStats(M) {
     const roadTiles = M.road.size, unl = M.tiles.size;
-    return `<p>${pick}</p>
-      <p><span class="chip">plocha ${fmt(unl)} polí</span><span class="chip">cesty ${fmt(roadTiles)} (${Math.round(roadTiles / unl * 100)} %)</span><span class="chip">volno ${fmt(M.free)}</span>
+    return `<span class="chip">plocha ${fmt(unl)} polí</span><span class="chip">cesty ${fmt(roadTiles)} (${Math.round(roadTiles / unl * 100)} %)</span><span class="chip">volno ${fmt(M.free)}</span>
       ${M.deadRoads.length ? `<span class="chip hi">zbytečné cesty ${M.deadRoads.length}</span>` : ''}
       ${M.noRoadAtRoad.length ? `<span class="chip">bez potřeby cesty u cesty: ${M.noRoadAtRoad.length}</span>` : ''}
-      ${M.notConnected.length ? `<span class="chip hi">nepřipojeno ${M.notConnected.length}</span>` : ''}</p>
-      <div style="overflow:auto">${svg}</div>
-      <p class="muted">🟦 potřebuje cestu (tmavší = dvouproudou) · 🟩 cestu nepotřebuje · ⬛ cesta, <span style="color:#d9534f">červená</span> = slepá cesta k ničemu · 🟫 překážka · oranžový okraj = cestu nepotřebuje, a stojí u ní · červený okraj = nepřipojeno${M.missing ? ` · ${M.missing} budov bez rozměrů (chybí metadata)` : ''}</p>`;
+      ${M.notConnected.length ? `<span class="chip hi">nepřipojeno ${M.notConnected.length}</span>` : ''}`;
+  }
+  const MAP_LEGEND = '🟦 potřebuje cestu (tmavší = dvouproudou) · 🟩 cestu nepotřebuje · ⬛ cesta, <span style="color:#d9534f">červená</span> = slepá cesta k ničemu · 🟫 překážka · oranžový okraj = cestu nepotřebuje, a stojí u ní · červený okraj = nepřipojeno';
+  function gridPicker() {
+    const grids = Object.keys(S.grids);
+    if (!grids.includes(mapGrid)) mapGrid = grids[0];
+    return grids.map((g) => `<button class="fbtn ${g === mapGrid ? 'on' : ''}" data-mapgrid="${g}">${GRID_NAMES[g] || g}</button>`).join('');
+  }
+  function viewMap() {
+    if (!Object.keys(S.grids).length) return '<p class="muted">Načtěte hru (F5); pro osadu ji ve hře otevřete.</p>';
+    const pick = gridPicker() + ' <button data-act="mapwin">Otevřít v okně ⤢</button>';
+    const M = mapModel(mapGrid);
+    if (!M) return `<p>${pick}</p><p class="muted">Pro tuto mapu zatím nejsou data (budovy nebo rozměry z metadat) – obnovte hru a mapu otevřete.</p>`;
+    const t = Math.max(3, Math.min(14, Math.floor(560 / (M.maxX - M.minX + 1))));
+    return `<p>${pick}</p><p>${mapStats(M)}</p><div style="overflow:auto">${mapSvg(M, t)}</div>
+      <p class="muted">${MAP_LEGEND}${M.missing ? ` · ${M.missing} budov bez rozměrů (chybí metadata)` : ''}</p>`;
+  }
+
+  // ---------- Samostatné okno mapy (přesun, změna velikosti, zoom kolečkem, posun tažením) ----------
+  const MAPWIN_KEY = 'foeReaderMapWin';
+  let mapWin = null;
+  function mapWinState() {
+    try { return { x: 80, y: 60, w: 900, h: 650, zoom: 12, ...JSON.parse(localStorage.getItem(MAPWIN_KEY) || '{}') }; }
+    catch { return { x: 80, y: 60, w: 900, h: 650, zoom: 12 }; }
+  }
+  function saveMapWin() {
+    if (!mapWin) return;
+    const r = mapWin.host.getBoundingClientRect();
+    try { localStorage.setItem(MAPWIN_KEY, JSON.stringify({ x: r.left, y: r.top, w: r.width, h: r.height, zoom: mapWin.zoom })); } catch { /* ignore */ }
+  }
+  function openMapWin() {
+    if (mapWin) { renderMapWin(); return; }
+    const st = mapWinState();
+    const h = document.createElement('div');
+    h.id = 'foe-reader-map';
+    h.style.cssText = `position:fixed;z-index:2147483646;left:${Math.max(0, st.x)}px;top:${Math.max(0, st.y)}px;width:${st.w}px;height:${st.h}px;resize:both;overflow:hidden;min-width:320px;min-height:240px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45)`;
+    const r = h.attachShadow({ mode: 'open' });
+    r.innerHTML = `<style>
+      *{box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;font-size:12px}
+      .wrap{display:flex;flex-direction:column;height:100%;color:#2b2116}
+      .head{display:flex;align-items:center;gap:6px;background:#2b2116;color:#f3d9a4;padding:5px 8px;cursor:move;user-select:none;flex-wrap:wrap}
+      .head b{margin-right:6px}
+      .head button{background:#4a3a26;color:#f3d9a4;border:1px solid #8a6a3a;border-radius:4px;padding:1px 7px;cursor:pointer}
+      .head button.on{background:#f3d9a4;color:#2b2116}
+      .head .sp{flex:1}
+      .stats{padding:4px 8px;background:#f3ead6}
+      .chip{display:inline-block;background:#efe3c8;border-radius:10px;padding:1px 8px;margin:0 4px 2px 0}
+      .chip.hi{color:#b0410f;font-weight:700}
+      .view{flex:1;overflow:auto;cursor:grab;background:#3d3a33}
+      .view.drag{cursor:grabbing}
+      .leg{padding:3px 8px;color:#7a6a50;font-size:11px}
+    </style><div class="wrap"><div class="head" id="head"></div><div class="stats" id="stats"></div><div class="view" id="view"></div><div class="leg">${MAP_LEGEND} · kolečko = zoom, tažení = posun</div></div>`;
+    document.documentElement.appendChild(h);
+    mapWin = { host: h, root: r, zoom: st.zoom };
+    const view = r.getElementById('view');
+    // přesun okna za hlavičku
+    r.getElementById('head').addEventListener('pointerdown', (ev) => {
+      if (ev.target.closest('button')) return;
+      const sx = ev.clientX, sy = ev.clientY, rect = h.getBoundingClientRect();
+      const mv = (e) => { h.style.left = Math.max(0, rect.left + e.clientX - sx) + 'px'; h.style.top = Math.max(0, rect.top + e.clientY - sy) + 'px'; };
+      const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); saveMapWin(); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    });
+    // posun mapy tažením
+    view.addEventListener('pointerdown', (ev) => {
+      const sx = ev.clientX, sy = ev.clientY, l = view.scrollLeft, t = view.scrollTop;
+      view.classList.add('drag');
+      const mv = (e) => { view.scrollLeft = l - (e.clientX - sx); view.scrollTop = t - (e.clientY - sy); };
+      const up = () => { view.classList.remove('drag'); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    });
+    // zoom kolečkem kolem kurzoru
+    view.addEventListener('wheel', (ev) => {
+      ev.preventDefault();
+      const rect = view.getBoundingClientRect();
+      const px = ev.clientX - rect.left + view.scrollLeft, py = ev.clientY - rect.top + view.scrollTop;
+      const old = mapWin.zoom;
+      mapWin.zoom = Math.max(3, Math.min(40, Math.round(old * (ev.deltaY < 0 ? 1.2 : 1 / 1.2))));
+      if (mapWin.zoom === old) return;
+      renderMapWin();
+      const k = mapWin.zoom / old;
+      view.scrollLeft = px * k - (ev.clientX - rect.left);
+      view.scrollTop = py * k - (ev.clientY - rect.top);
+      saveMapWin();
+    }, { passive: false });
+    r.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      if (b.dataset.mapgrid) { mapGrid = b.dataset.mapgrid; renderMapWin(true); render(); }
+      else if (b.dataset.z === 'in') { mapWin.zoom = Math.min(40, Math.round(mapWin.zoom * 1.25)); renderMapWin(); saveMapWin(); }
+      else if (b.dataset.z === 'out') { mapWin.zoom = Math.max(3, Math.round(mapWin.zoom / 1.25)); renderMapWin(); saveMapWin(); }
+      else if (b.dataset.z === 'fit') { renderMapWin(true); saveMapWin(); }
+      else if (b.dataset.z === 'close') { saveMapWin(); h.remove(); mapWin = null; }
+    });
+    new ResizeObserver(() => saveMapWin()).observe(h);
+    renderMapWin(!localStorage.getItem(MAPWIN_KEY));
+  }
+  function renderMapWin(fit) {
+    if (!mapWin) return;
+    const r = mapWin.root;
+    const M = Object.keys(S.grids).length ? mapModel(mapGrid) : null;
+    r.getElementById('head').innerHTML = `<b>FoE Reader – mapa</b>${Object.keys(S.grids).length ? gridPicker().replace(/class="fbtn /g, 'class="') : ''}
+      <span class="sp"></span><button data-z="out" title="Oddálit">−</button><button data-z="fit" title="Přizpůsobit oknu">⤢</button><button data-z="in" title="Přiblížit">+</button><button data-z="close" title="Zavřít">✕</button>`;
+    const view = r.getElementById('view');
+    if (!M) { r.getElementById('stats').innerHTML = ''; view.innerHTML = '<p style="color:#efe6d2;padding:10px">Pro tuto mapu zatím nejsou data.</p>'; return; }
+    if (fit) {
+      const W = M.maxX - M.minX + 1, Hh = M.maxY - M.minY + 1;
+      mapWin.zoom = Math.max(3, Math.min(40, Math.floor(Math.min((view.clientWidth || 800) / W, (view.clientHeight || 500) / Hh))));
+    }
+    r.getElementById('stats').innerHTML = mapStats(M) + (M.missing ? `<span class="chip">${M.missing} budov bez rozměrů</span>` : '');
+    const sl = view.scrollLeft, stp = view.scrollTop;
+    view.innerHTML = mapSvg(M, mapWin.zoom);
+    view.scrollLeft = sl; view.scrollTop = stp;
   }
 
   function viewResources() {
@@ -1530,8 +1645,9 @@
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
       const fg = ev.target.closest('[data-frag]');
       if (fg) { fragFilter = fg.dataset.frag; render(); return; }
+      if (ev.target.closest('[data-act="mapwin"]')) { openMapWin(); return; }
       const mg = ev.target.closest('[data-mapgrid]');
-      if (mg) { mapGrid = mg.dataset.mapgrid; render(); return; }
+      if (mg) { mapGrid = mg.dataset.mapgrid; render(); renderMapWin(); return; }
       const fb = ev.target.closest('[data-factor]');
       if (fb) { cfg.arcFactor = fb.dataset.factor === 'arc' ? 'arc' : +fb.dataset.factor; saveCfg(); render(); return; }
       const cp = ev.target.closest('[data-act="copy"]');
@@ -1656,7 +1772,10 @@
   function scheduleRender() {
     if (pending) return;
     pending = true;
-    setTimeout(() => { pending = false; render(); }, 500);
+    setTimeout(() => {
+      pending = false; render();
+      if (mapWin && mapWin.rev !== S.mapRev) { mapWin.rev = S.mapRev; renderMapWin(); }
+    }, 500);
   }
   setInterval(() => { if (open && ['tav', 'gbg', 'prod'].includes(tab)) render(); }, 15000);
 

@@ -307,9 +307,11 @@
           const ent = req && S.entities.get(req.entityId);
           if (ent?.type === 'greatbuilding') building = ent.cityentity_id;
           S.ownRanking = { rankings: rows, building, time: Date.now() };
+          gbOpened('own');
           return;
         }
         S.gbRanking = { rankings: rows, building, ownerName: ownerRow?.player?.name, time: Date.now() };
+        gbOpened('foreign');
         // Promítnout vlastní vklad a místo i do přehledu VB hráče.
         const me = rows.find((r) => r.player?.is_self || r.player?.player_id === myId());
         const row = S.foreignGB && S.otherGBs?.list?.find((g) => g.entity_id === S.foreignGB.id);
@@ -509,6 +511,7 @@
     arcFactor: 'arc', // 'arc' = podle bonusu vlastní Archy (mění se samo), jinak pevné číslo
     tradeOn: true, tradeSound: false, tradeExpired: true, gbContribOn: true,
     limOn: true, limLead: 24, limInv: true,
+    gbCalcPopup: true, // okno kalkulačky VB se otevře samo s otevřením budovy
   };
   const cfg = (() => {
     try { return { ...CFG_DEFAULT, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { ...CFG_DEFAULT }; }
@@ -745,17 +748,20 @@
   const entName = (id) => S.gbInfo.get(id)?.name || S.names.get(id) || id;
 
   // ===================== Pohledy =====================
+  // Kalkulačka náhozů pro naposledy otevřenou vlastní VB (null = není).
+  function ownCalcHtml() {
+    if (!S.ownRanking) return null;
+    const ent = [...S.entities.values()].find((e) => e.type === 'greatbuilding' && e.cityentity_id === S.ownRanking.building);
+    const c = ent && nahozCalc(S.ownRanking.rankings, ent, S.player?.user_name || '');
+    if (!c) return null;
+    return viewNahoz(c, 'Náhozy: ' + entName(ent.cityentity_id) + ` · úr. ${ent.level}→${ent.level + 1}`)
+      + (ent.max_level != null && ent.level >= ent.max_level ? '<p class="hi">Budova je na maximální odemčené úrovni – další úroveň je potřeba nejdřív odemknout plánky.</p>' : '');
+  }
   function viewGB() {
     const gbs = [...S.entities.values()].filter((e) => e.type === 'greatbuilding');
     if (!gbs.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
-    let calc = '<p class="muted">Kalkulačka náhozů: otevřete ve hře svou Velkou budovu.</p>';
-    if (S.ownRanking) {
-      const ent = gbs.find((e) => e.cityentity_id === S.ownRanking.building);
-      const c = nahozCalc(S.ownRanking.rankings, ent, S.player?.user_name || '');
-      if (c) calc = viewNahoz(c, 'Náhozy: ' + entName(ent.cityentity_id))
-        + (ent.max_level != null && ent.level >= ent.max_level ? '<p class="hi">Budova je na maximální odemčené úrovni – další úroveň je potřeba nejdřív odemknout plánky.</p>' : '')
-        + '<h4>Všechny moje VB</h4>';
-    }
+    const own = ownCalcHtml();
+    const calc = '<p><button data-act="calcwin">Kalkulačka v okně ⤢</button></p>' + (own ? own + '<h4>Všechny moje VB</h4>' : '<p class="muted">Kalkulačka náhozů: otevřete ve hře svou Velkou budovu.</p>');
     const rows = gbs.map((e) => {
       const max = e.max_level ?? S.gbInfo.get(e.cityentity_id)?.max_level;
       const inv = e.state?.invested_forge_points || 0;
@@ -891,6 +897,81 @@
     const t = Math.max(3, Math.min(14, Math.floor(560 / (M.maxX - M.minX + 1))));
     return `<p>${pick}</p><p>${mapStats(M)}</p><div style="overflow:auto">${mapSvg(M, t)}</div>
       <p class="muted">${MAP_LEGEND}${M.missing ? ` · ${M.missing} budov bez rozměrů (chybí metadata)` : ''}</p>`;
+  }
+
+  // ---------- Okno kalkulačky VB (jedna pro vlastní i cizí budovy) ----------
+  const CALCWIN_KEY = 'foeReaderCalcWin';
+  let calcWin = null;
+  S.lastGb = null; // 'own' | 'foreign' – co bylo otevřeno naposledy
+  function gbOpened(kind) {
+    S.lastGb = kind;
+    if (cfg.gbCalcPopup && !calcWin) setTimeout(openCalcWin, 50); // počkat, až dorazí i budova (cizí VB)
+    else if (calcWin) setTimeout(renderCalcWin, 50);
+  }
+  function calcWinHtml() {
+    const html = S.lastGb === 'foreign' ? foreignCalcHtml() : ownCalcHtml();
+    return html || '<p class="muted">Otevřete ve hře Velkou budovu (svou nebo jiného hráče).</p>';
+  }
+  function openCalcWin() {
+    if (calcWin) { renderCalcWin(); return; }
+    let st = { x: 120, y: 90 };
+    try { st = { ...st, ...JSON.parse(localStorage.getItem(CALCWIN_KEY) || '{}') }; } catch { /* ignore */ }
+    const h = document.createElement('div');
+    h.id = 'foe-reader-calc';
+    h.style.cssText = `position:fixed;z-index:2147483646;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w || 560}px;height:${st.h || 460}px;resize:both;overflow:hidden;min-width:360px;min-height:160px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45);display:flex;flex-direction:column`;
+    const r = h.attachShadow({ mode: 'open' });
+    const css = root.querySelector('style')?.textContent || '';
+    r.innerHTML = `<style>${css}
+      :host{all:initial}
+      .whead{display:flex;align-items:center;gap:8px;background:#2b2116;color:#f3d9a4;padding:5px 8px;cursor:move;user-select:none}
+      .whead b{flex:1}
+      .whead label{font-size:11px;cursor:pointer}
+      .whead button{background:#4a3a26;color:#f3d9a4;border:1px solid #8a6a3a;border-radius:4px;padding:0 7px;cursor:pointer}
+      .wbody{overflow:auto;padding:8px 10px;height:calc(100% - 30px)}
+    </style><div class="whead" id="whead"><b>Kalkulačka VB</b>
+      <label title="Otevřít samo s otevřením Velké budovy ve hře"><input type="checkbox" id="auto" ${cfg.gbCalcPopup ? 'checked' : ''}> otevírat samo</label>
+      <button id="close" title="Zavřít">✕</button></div><div class="wbody" id="wbody"></div>`;
+    document.documentElement.appendChild(h);
+    calcWin = { host: h, root: r };
+    const save = () => { const b = h.getBoundingClientRect(); try { localStorage.setItem(CALCWIN_KEY, JSON.stringify({ x: b.left, y: b.top, w: b.width, h: b.height })); } catch { /* ignore */ } };
+    r.getElementById('whead').addEventListener('pointerdown', (ev) => {
+      if (ev.target.closest('button,input,label')) return;
+      const sx = ev.clientX, sy = ev.clientY, b = h.getBoundingClientRect();
+      const mv = (e) => { h.style.left = Math.max(0, b.left + e.clientX - sx) + 'px'; h.style.top = Math.max(0, b.top + e.clientY - sy) + 'px'; };
+      const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); save(); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    });
+    r.getElementById('close').addEventListener('click', () => { save(); h.remove(); calcWin = null; });
+    r.getElementById('auto').addEventListener('change', (ev) => { cfg.gbCalcPopup = ev.target.checked; saveCfg(); render(); });
+    r.addEventListener('click', (ev) => {
+      const fb = ev.target.closest('[data-factor]');
+      if (fb) { cfg.arcFactor = fb.dataset.factor === 'arc' ? 'arc' : +fb.dataset.factor; saveCfg(); renderCalcWin(); render(); return; }
+      const cp = ev.target.closest('[data-act="copy"]');
+      if (cp) {
+        const done = () => { cp.textContent = 'Zkopírováno ✓'; setTimeout(() => { cp.textContent = 'Kopírovat'; }, 1500); };
+        (navigator.clipboard?.writeText(cp.dataset.text) || Promise.reject()).then(done).catch(() => {
+          const inp = cp.parentElement.querySelector('.copytext'); inp.select(); document.execCommand('copy'); done();
+        });
+      }
+    });
+    r.addEventListener('change', (ev) => {
+      const el = ev.target.closest('[data-cfg]');
+      if (el) { cfg[el.dataset.cfg] = +el.value; saveCfg(); renderCalcWin(); render(); }
+    });
+    new ResizeObserver(save).observe(h);
+    renderCalcWin();
+  }
+  function renderCalcWin() {
+    if (!calcWin) return;
+    const r = calcWin.root;
+    const act = r.activeElement;
+    if (act && act.tagName === 'INPUT' && !act.readOnly && act.type !== 'checkbox') return; // nepřepisovat rozepsanou hodnotu
+    const auto = r.getElementById('auto');
+    if (auto) auto.checked = !!cfg.gbCalcPopup;
+    const body = r.getElementById('wbody');
+    const keep = body.scrollTop;
+    body.innerHTML = calcWinHtml();
+    body.scrollTop = keep;
   }
 
   // ---------- Samostatné okno mapy (přesun, změna velikosti, zoom kolečkem, posun tažením) ----------
@@ -1287,6 +1368,12 @@
   }
 
   function viewForeignGB() {
+    let html = '<p><button data-act="calcwin">Kalkulačka v okně ⤢</button></p>' + (foreignCalcHtml() || '<p class="muted">Otevřete ve hře Velkou budovu jiného hráče.</p>');
+    if (S.otherGBs?.list?.length) html += otherGBsHtml();
+    return html;
+  }
+  // Kalkulátor pro naposledy otevřenou cizí VB (null = není).
+  function foreignCalcHtml() {
     let html = '';
     const gb = S.foreignGB;
     const rk = S.gbRanking?.rankings;
@@ -1322,14 +1409,18 @@
         html += '<p class="muted">Pořadí přišlo, ale bez odměn – pošlete mi log, upravím čtení.</p>';
       }
     } else {
-      html += '<p class="muted">Otevřete ve hře Velkou budovu jiného hráče.</p>';
+      return null;
     }
     if (gb && rk) {
       const c = nahozCalc(rk, gb, S.players.get(gb.player_id)?.name || S.gbRanking.ownerName || '');
       if (c && c.text) html += `<div class="cfg"><div><b>Text do vlákna</b> · koeficient ${factorPicker(c.gold)}</div>
         <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>`;
     }
-    if (S.otherGBs?.list?.length) {
+    return html;
+  }
+  function otherGBsHtml() {
+    let html = '';
+    {
       const list = S.otherGBs.list.map((g) => ({
         name: g.name || entName(g.city_entity_id || g.cityentity_id),
         level: g.level, max: g.maxLevel ?? g.max_level,
@@ -1464,7 +1555,7 @@
         <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
-        <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')}</div>
+        <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
         <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
         <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
       </div>
@@ -1702,6 +1793,7 @@
       const fg = ev.target.closest('[data-frag]');
       if (fg) { fragFilter = fg.dataset.frag; render(); return; }
       if (ev.target.closest('[data-act="mapwin"]')) { openMapWin(); return; }
+      if (ev.target.closest('[data-act="calcwin"]')) { openCalcWin(); return; }
       const mg = ev.target.closest('[data-mapgrid]');
       if (mg) { mapGrid = mg.dataset.mapgrid; render(); renderMapWin(); return; }
       const fb = ev.target.closest('[data-factor]');
@@ -1831,6 +1923,7 @@
     setTimeout(() => {
       pending = false; render();
       if (mapWin && mapWin.rev !== S.mapRev) { mapWin.rev = S.mapRev; renderMapWin(); }
+      renderCalcWin();
     }, 500);
   }
   setInterval(() => { if (open && ['tav', 'gbg', 'prod'].includes(tab)) render(); }, 15000);

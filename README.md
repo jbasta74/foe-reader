@@ -1,4 +1,4 @@
-# FoE Reader 0.3.30
+# FoE Reader 0.3.31
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -69,3 +69,10 @@ Klíče a tvar dat najdete v záložce **Log zpráv**, kde stačí kliknout na �
 - Odpovědi chodí v dávkách: k jednomu požadavku se může přibalit víc zpráv (např. `TimeService.updateTime`).
 - Stav hospody: bez `state` = volná židle, `isSitting` = už tam sedíte, `noChair` = plno, `alreadyVisited` = navštíveno (`nextVisitTime`).
 - Při běhu spolu s FoE Helperem se oba odposlechy řetězí a navzájem si nevadí.
+
+## Licence a poděkování
+FoE Reader je svobodný software pod licencí **GNU AGPL-3.0** (viz [LICENSE.md](LICENSE.md)). Smíte ho používat, upravovat a šířit; upravené verze musí zůstat pod stejnou licencí a se zdrojovým kódem.
+
+Část dat a postupů vychází z projektu [FoE Helper](https://github.com/mainIine/foe-helfer-extension) (AGPL-3.0): názvy a sousednost provincií GBG (`provinces.js`), způsob načítání ikon zboží z CDN hry a struktura dat vyjednávání. Děkujeme jeho autorům.
+
+Forge of Empires je ochranná známka společnosti InnoGames GmbH. Toto rozšíření s InnoGames nijak nesouvisí, nic neposílá na herní server a pouze čte data, která hra sama přijímá.

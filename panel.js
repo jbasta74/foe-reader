@@ -719,6 +719,19 @@
   setInterval(timeChecks, 5000);
 
   // ===================== Pomocné =====================
+  // Bonusy VB: beta posílá pole entity.bonuses, ostré servery jeden objekt entity.bonus (např. Archa 93,6 %).
+  // Nová pravidla VB (beta od 10/2026: měď/zlato, zaokrouhlení na pětky) poznáme podle tvaru dat Archy:
+  // nový formát má pole bonuses, starý (ostré servery) jeden objekt bonus. Bez Archy rozhodne svět (zz = beta).
+  function gbNewRules() {
+    for (const e of S.entities.values()) {
+      if (e.cityentity_id !== 'X_FutureEra_Landmark1') continue;
+      if (Array.isArray(e.bonuses) && e.bonuses.length) return true;
+      if (e.bonus) return false;
+    }
+    return /^zz/.test(location.hostname);
+  }
+  const roundReward = (x) => (gbNewRules() ? round5(x) : Math.round(x));
+  const entBonuses = (e) => [...(e.bonuses || []), ...(e.bonus && typeof e.bonus === 'object' ? [e.bonus] : [])];
   const nf = new Intl.NumberFormat('cs-CZ');
   const fmt = (n) => (n == null ? '–' : nf.format(n));
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1136,7 +1149,7 @@
     let gbSum = { aa: 0, ad: 0, da: 0, dd: 0 };
     for (const e of S.entities.values()) {
       if (e.type !== 'greatbuilding') continue;
-      for (const bo of e.bonuses || []) {
+      for (const bo of entBonuses(e)) {
         const parts = GB_BOOST_PARTS[bo.type];
         if (!parts || bo.bonusCategory?.value !== 'passiveBonus') continue;
         const feat = bo.targetedFeature || 'all';
@@ -1305,7 +1318,7 @@
     const places = rows.filter((r) => r.rank && r.reward?.strategy_point_amount > 0).sort((a, b) => a.rank - b.rank).map((r) => {
       const base = r.reward.strategy_point_amount || 0;
       // Hra odměnu s bonusem Archy zaokrouhluje na pětky (175 × 1,99 = 348,25 → 350). Pevné koeficienty cechu na celá čísla.
-      const val = arcMode ? round5((base * f1000) / 1000) : Math.round((base * f1000) / 1000);
+      const val = arcMode ? roundReward((base * f1000) / 1000) : Math.round((base * f1000) / 1000);
       const holder = r.player?.player_id != null ? { name: r.player.name, fp: r.forge_points || 0 } : null;
       return { rank: r.rank, base, val, holder, filled: !!holder && holder.fp >= val };
     });
@@ -1353,7 +1366,7 @@
   function arcBonus(gold) {
     const type = gold ? 'contribution_boost_gold' : 'contribution_boost';
     let sum = 0;
-    for (const e of S.entities.values()) for (const b of e.bonuses || []) if (b.type === type) sum += b.value || 0;
+    for (const e of S.entities.values()) for (const b of entBonuses(e)) if (b.type === type) sum += b.value || 0;
     return sum;
   }
   // Zaokrouhlení na násobky 5 jako ve hře (i základní odměny ze serveru jsou po 5).
@@ -1364,7 +1377,7 @@
     const tiers = new Set();
     for (const r of rows || []) for (const bp of r.reward?.blueprintRewards || []) if (bp.tier?.value) tiers.add(bp.tier.value);
     if (tiers.size) return tiers.has('gold');
-    return gb?.level != null && gb.level + 1 > 100;
+    return gbNewRules() && gb?.level != null && gb.level + 1 > 100; // staré servery zlatý bonus nemají
   }
 
   function viewForeignGB() {
@@ -1395,7 +1408,7 @@
           places.map((p, i) => {
             const holder = others[i]?.forge_points || 0;
             const base = p.reward.strategy_point_amount || 0;
-            const withArc = round5(base * (1 + arc / 100)); // stejně jako hra (prasátko)
+            const withArc = roundReward(base * (1 + arc / 100)); // stejně jako hra (prasátko)
             const cost = remaining != null ? Math.max(0, Math.ceil((remaining + holder - mine) / 2)) : null;
             const possible = cost != null && cost <= remaining;
             const profit = possible ? withArc - cost - mine : null; // celý vklad vč. již vloženého

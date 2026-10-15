@@ -126,3 +126,8 @@ Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16
 ## Příhody (incidents)
 - `HiddenRewardService.getOverview` → `{hiddenRewards:[{hiddenRewardId, type:'incident_…', startTime, expireTime, position:{context:'cityRoadSmall'|'nature'|'shore'|'water'|…}, rarity:'common'|'uncommon'|'rare', animated?}]}` – obsahuje i příhody s budoucím `startTime`. Bez souřadnic a bez odměny. Typ `ge_relic_*` s kontextem `guildExpedition` = relikvie expedice.
 - Vybrání: požadavek `HiddenRewardService.collectReward [id]` → odpověď jen `Success`; odměna přijde zvlášť jako `RewardService.collectReward` `[[GenericReward…], 'living_city']`.
+
+## Ostré servery vs. beta (log 15. 10., ostrý svět)
+- Ostrý server posílá bonus VB jako jeden objekt `CityMapEntity.bonus` (`{type:'contribution_boost', value:93.6}`, desetinné hodnoty), pole `bonuses` je prázdné. Beta posílá pole `bonuses` (včetně `contribution_boost_gold`).
+- Na ostrém serveru platí stará pravidla: jen měděné plánky v odměnách, bonus Archy celočíselné zaokrouhlení (jako FoE Helper). Rozšíření pozná nová pravidla podle tvaru dat Archy (pole `bonuses`), jinak podle světa (`zz` = beta).
+- `getConstruction` na ostrém serveru má navíc `next_passive_bonus` / `next_production_bonus`.

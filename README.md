@@ -21,7 +21,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - `panel.js`: běží v izolovaném světě. Třídí zprávy podle `requestClass.requestMethod` (objekt `H`), drží stav a kreslí panel ve Shadow DOM.
 
 ## Záložky
-- **Moje VB**: úroveň, vloženo/potřeba, kolik FP chybí. Po otevření vlastní VB ve hře **kalkulačka náhozů**: P1–P5 × koeficient (předvolby 1,8–2,0 nebo vlastní hodnota, pamatuje se; odměny se čtou živě ze serveru, takže platí pro beta i ostré servery), vlastní podíl a text do vlákna (`jiricek Galata Tower 77→78 P1(1083) P2(542) …`) s tlačítkem Kopírovat.
+- **Moje VB**: úroveň, vloženo/potřeba, kolik FP chybí. Po otevření vlastní VB ve hře **kalkulačka náhozů**: P1–P5 × koeficient (předvolby 1,8–2,0 nebo vlastní hodnota, pamatuje se; odměny se čtou živě ze serveru, takže platí pro beta i ostré servery), vlastní podíl a text do vlákna (`Hráč Galata Tower 77→78 P1(1083) P2(542) …`, jméno hráče se bere ze hry) s tlačítkem Kopírovat.
 - **VB přátel**: po otevření cizí VB ukáže, kolik FP chybí, odměny s bonusem Archy, cenu zajištění místa a zisk.
 - **Produkce**: co se vyrábí, souhrn FP/mincí/zásob/medailí/zboží za aktuální cyklus a kdy bude hotovo. Po otevření osady ve hře i přehled osady: suroviny, další odemčení (co chybí), kdy bude která produkce hotová, stojící a nepřipojené budovy. Dole je tabulka **Limitované budovy**: kdy která vyprší a co máte ve skladu na obnovu (sada, hotová budova, fragmenty).
 - **Bonusy**: útok a obrana útočníka i obránce podle oblasti (Všude, GBG, Expedice, QI) a ostatní bonusy.

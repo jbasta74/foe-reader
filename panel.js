@@ -53,6 +53,17 @@
       if (d && d.time) S.serverOffset = d.time - Date.now() / 1000;
     },
     'NegotiationGameService.submitTurn'(d) { negoTurn(d); },
+    // Příhody ve městě: typ, druh místa, vzácnost, čas objevení/zmizení (i budoucí). Odměna až po vybrání.
+    'HiddenRewardService.getOverview'(d) {
+      if (Array.isArray(d?.hiddenRewards)) S.incidents = { list: d.hiddenRewards, time: Date.now() };
+    },
+    // Odměna z vybrané příhody: [[GenericReward…], 'living_city']
+    'RewardService.collectReward'(d) {
+      if (!Array.isArray(d) || d[1] !== 'living_city' || !Array.isArray(d[0])) return;
+      const log = loadIncLog();
+      log.push({ t: Date.now(), r: d[0].map((x) => ({ id: x.subType || x.id, name: x.name, n: x.amount || 1 })) });
+      saveIncLog(log.slice(-300));
+    },
     'ResourceService.getPlayerResourceBag'(d) {
       Object.assign(S.resources, d?.resources?.resources || {});
     },
@@ -386,6 +397,22 @@
       scheduleRender();
     }, 0);
   }
+
+  // ===================== Příhody =====================
+  const INC_KEY = 'foeReaderIncidents';
+  const loadIncLog = () => { try { return JSON.parse(localStorage.getItem(INC_KEY) || '[]'); } catch { return []; } };
+  const saveIncLog = (l) => { try { localStorage.setItem(INC_KEY, JSON.stringify(l)); } catch { /* ignore */ } };
+  const INC_NAMES = {
+    fallen_tree: 'spadlý strom', fisherman: 'rybář', castaway: 'trosečník', flotsam: 'vyplavené zboží', fruit_vendor: 'prodavač ovoce',
+    kite: 'drak', treasure_chest: 'truhla s pokladem', sos: 'vzkaz v láhvi', crates: 'bedny', beehive: 'úl', broken_cart: 'rozbitý vůz',
+    chest: 'truhla', clothesline: 'šňůra s prádlem', wine_cask: 'sud vína', dinosaur_bones: 'kosti dinosaura', stick_hut: 'chýše z větví',
+    rubble: 'sutiny', pothole: 'výmol', broken_carriage: 'rozbitý kočár', statue: 'socha', whirlpool: 'vír', shipwreck: 'vrak lodi',
+  };
+  const INC_PLACES = { cityRoadSmall: 'cesta', cityRoadBig: 'dvouproudá cesta', nature: 'příroda', shore: 'pobřeží', water: 'voda' };
+  const incName = (type) => {
+    const k = String(type).replace(/^incident_/, '').replace(/_\d+x\d+$/, '');
+    return INC_NAMES[k] || k.replace(/_/g, ' ');
+  };
 
   // Událost od jiného hráče. live = přišla právě teď; jinak jde o záznam z historie (jen doplnit do seznamu).
   S.seenEvents = new Set();
@@ -1466,6 +1493,35 @@
     return `<span class="gicon" title="${esc(resLabel(id))}" style="width:${Math.round(w * k)}px;height:${Math.round(h * k)}px;background-image:url('${sp.png}');background-size:${sp.w * k}px ${sp.h * k}px;background-position:${-x * k}px ${-y * k}px${rot ? ';transform:rotate(-90deg)' : ''}"></span>`;
   }
 
+  function viewIncidents() {
+    const now = nowServer();
+    const list = (S.incidents?.list || []).filter((h) => /^incident_/.test(h.type)); // relikvie expedice sem nepatří
+    const act = list.filter((h) => h.startTime <= now && now < h.expireTime).sort((a, b) => a.expireTime - b.expireTime);
+    const fut = list.filter((h) => h.startTime > now).sort((a, b) => a.startTime - b.startTime);
+    const place = (h) => esc(INC_PLACES[h.position?.context] || h.position?.context || '');
+    const rare = (h) => (h.rarity === 'rare' ? ' <span class="hi">vzácná</span>' : h.rarity === 'uncommon' ? ' <span class="muted">neobvyklá</span>' : '');
+    const at = (t) => new Date((t - S.serverOffset) * 1000).toLocaleString('cs-CZ', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    const byPlace = {};
+    for (const h of act) { const p = INC_PLACES[h.position?.context] || h.position?.context; byPlace[p] = (byPlace[p] || 0) + 1; }
+    let html = !S.incidents ? '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>'
+      : `<p><span class="chip">čeká: <b>${act.length}</b></span>${Object.entries(byPlace).map(([p, n]) => `<span class="chip">${esc(p)} ${n}</span>`).join('')}${fut.length ? `<span class="chip">další: ${fut.length}</span>` : ''}</p>
+      <h4>Ve městě teď</h4>${act.length ? `<table><thead><tr><th>Příhoda</th><th>Místo</th><th>Zmizí za</th></tr></thead><tbody>${act.map((h) =>
+        `<tr><td>${esc(incName(h.type))}${rare(h)}</td><td>${place(h)}</td><td class="${h.expireTime - now < 3600 ? 'hi' : ''}">${dur(h.expireTime - now)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Nic.</p>'}
+      ${fut.length ? `<h4>Objeví se</h4><table><thead><tr><th>Kdy</th><th>Příhoda</th><th>Místo</th></tr></thead><tbody>${fut.map((h) =>
+        `<tr><td>${at(h.startTime)} <span class="muted">(za ${dur(h.startTime - now)})</span></td><td>${esc(incName(h.type))}${rare(h)}</td><td>${place(h)}</td></tr>`).join('')}</tbody></table>` : ''}`;
+    // deník vybraných odměn
+    const log = loadIncLog();
+    const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+    const today = log.filter((x) => x.t >= day0.getTime());
+    const sum = new Map();
+    for (const x of today) for (const r of x.r) { const k = r.id || r.name; const v = sum.get(k) || { name: r.name, n: 0 }; v.n += r.n; sum.set(k, v); }
+    html += `<h4>Vybrané odměny dnes (${today.length})</h4>${sum.size ? `<p>${[...sum.values()].map((v) => `<span class="chip">${esc(v.name.replace(/^\d[\d\s.,]*\s*/, ''))} <b>${fmt(v.n)}</b></span>`).join('')}</p>` : '<p class="muted">Zatím nic.</p>'}
+      ${log.length ? `<details><summary class="muted">Posledních ${Math.min(20, log.length)} odměn</summary><table><tbody>${log.slice(-20).reverse().map((x) =>
+        `<tr><td class="muted" style="white-space:nowrap">${new Date(x.t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${x.r.map((r) => esc(r.name)).join(', ')}</td></tr>`).join('')}</tbody></table></details>` : ''}
+      <p class="muted">Obsah odměny server prozradí až po vybrání příhody. Deník se ukládá v prohlížeči.</p>`;
+    return html;
+  }
+
   function viewNego() {
     const n = S.nego;
     if (!n) return '<p class="muted">Začněte ve hře vyjednávání (expedice) – tady se ukáže návrh dalšího tahu.</p>';
@@ -1569,7 +1625,7 @@
   const TABS = [
     ['gb', 'Moje VB', viewGB], ['fgb', 'VB přátel', viewForeignGB], ['prod', 'Produkce', viewProduction],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
-    ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
+    ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];
   let tab = 'gb';
   let open = false;

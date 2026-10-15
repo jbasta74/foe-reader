@@ -122,3 +122,7 @@ Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16
 - Rozměry a potřeba cesty: metadata `building_entity_<id>` (beta je načítá po jedné, i přes fetch): `width`/`length` + `requirements.street_connection_level`, nový formát `components.AllAge.placement.size.{x,y}` a `components.AllAge.streetConnectionRequirement.requiredLevel`.
 - Připojení k radnici: `CityMapEntity.connected` (1).
 - Export logu přidává záznam `FoEReader.mapData` s rozměry budov a plochami.
+
+## Příhody (incidents)
+- `HiddenRewardService.getOverview` → `{hiddenRewards:[{hiddenRewardId, type:'incident_…', startTime, expireTime, position:{context:'cityRoadSmall'|'nature'|'shore'|'water'|…}, rarity:'common'|'uncommon'|'rare', animated?}]}` – obsahuje i příhody s budoucím `startTime`. Bez souřadnic a bez odměny. Typ `ge_relic_*` s kontextem `guildExpedition` = relikvie expedice.
+- Vybrání: požadavek `HiddenRewardService.collectReward [id]` → odpověď jen `Success`; odměna přijde zvlášť jako `RewardService.collectReward` `[[GenericReward…], 'living_city']`.

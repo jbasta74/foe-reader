@@ -1,4 +1,4 @@
-# FoE Reader 0.3.29
+# FoE Reader 0.3.30
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -27,6 +27,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - **Bonusy**: útok a obrana útočníka i obránce podle oblasti (Všude, GBG, Expedice, QI) a ostatní bonusy.
 - **GBG**: cechy na mapě, kde útočíme a kde útočí na nás včetně rychlosti postupu za 1 a 5 minut (pozná se, jestli v provincii jede někdo s vámi), aktivita členů (přírůstek bitev, vyjednávání a opotřebení od minulého otevření žebříčku), opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), tabulka provincií s časem odemknutí, názvy (D4C…), označením provincií sousedících s našimi a ☆ pro sledování, žebříček členů.
 - **Mapa**: plánek města nebo osady – cesty, budovy podle potřeby cesty, volná pole, slepé cesty, budovy bez potřeby cesty stojící u cesty, nepřipojené budovy. Log ke stažení obsahuje i rozměry budov. Tlačítkem „Otevřít v okně“ se mapa otevře v samostatném okně: přesun za hlavičku, změna velikosti za roh, zoom kolečkem nebo +/−, posun tažením; při přiblížení se ukazují názvy budov.
+- **Příhody**: příhody ve městě (co, kde, vzácnost, kdy zmizí) i ty, které se teprve objeví; deník vybraných odměn s denním souhrnem. Obsah odměny server prozradí až po vybrání.
 - **Vyjednávání**: při vyjednávání na expedici ukáže dosavadní tahy a navrhne další (vyřazuje nemožné kombinace). Jen radí, tah zadáváte ve hře sami; v GBG je vypnuté.
 - **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
 - **Suroviny**, **Log**.

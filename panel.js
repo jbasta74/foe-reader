@@ -369,7 +369,8 @@
     const goods = Object.keys(costs);
     S.nego = { context: d.context, goods, costs, turns: [], state: 'ongoing', t: Date.now(), calc: null };
     negoCalc();
-    if (open && tab !== 'neg') tab = 'neg';
+    if (cfg.negoPopup) setTimeout(() => openTabWin('neg'), 50);
+    else if (open && tab !== 'neg' && tabVisible('neg')) tab = 'neg';
   }
   function negoTurn(d) {
     const n = S.nego;
@@ -521,7 +522,8 @@
     tradeOn: true, tradeSound: false, tradeExpired: true, gbContribOn: true,
     limOn: true, limLead: 24, limInv: true,
     hiddenTabs: [], // záložky vypnuté v Nastavení (ℹ️)
-    gbCalcPopup: true, // okno kalkulačky VB se otevře samo s otevřením budovy
+    gbCalcPopup: true,
+    negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy
   };
   const cfg = (() => {
     try { return { ...CFG_DEFAULT, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { ...CFG_DEFAULT }; }
@@ -1614,6 +1616,7 @@
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
         <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
+        <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')}</div>
         <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
         <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
       </div>

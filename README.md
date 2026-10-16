@@ -1,4 +1,4 @@
-# FoE Reader 0.3.35
+# FoE Reader 0.3.36
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -28,7 +28,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - **Bonusy**: útok a obrana útočníka i obránce podle oblasti (Všude, GBG, Expedice, QI) a ostatní bonusy.
 - **GBG**: cechy na mapě, kde útočíme a kde útočí na nás včetně rychlosti postupu za 1 a 5 minut (pozná se, jestli v provincii jede někdo s vámi), aktivita členů (přírůstek bitev, vyjednávání a opotřebení od minulého otevření žebříčku), opotřebení (úroveň, bonus obránců, násobitel vyjednávání, reset, počet bitev do zvolené úrovně), tabulka provincií s časem odemknutí, názvy (D4C…), označením provincií sousedících s našimi a ☆ pro sledování, žebříček členů.
 - **Mapa**: plánek města nebo osady – cesty, budovy podle potřeby cesty, volná pole, slepé cesty, budovy bez potřeby cesty stojící u cesty, nepřipojené budovy. Log ke stažení obsahuje i rozměry budov. Tlačítkem „Otevřít v okně“ se mapa otevře v samostatném okně: přesun za hlavičku, změna velikosti za roh, zoom kolečkem nebo +/−, posun tažením; při přiblížení se ukazují názvy budov.
-- **Příhody**: příhody ve městě (co, kde, vzácnost, kdy zmizí) i ty, které se teprve objeví; deník vybraných odměn s denním souhrnem. Obsah odměny server prozradí až po vybrání.
+- **Příhody**: příhody ve městě jako karty s obrázky (co, kde, vzácnost, kdy zmizí) i ty, které se teprve objeví; deník vybraných odměn s denním souhrnem. Obsah odměny server prozradí až po vybrání.
 - **Vyjednávání**: při vyjednávání na expedici ukáže dosavadní tahy a navrhne další (vyřazuje nemožné kombinace). Jen radí, tah zadáváte ve hře sami; v GBG je vypnuté.
 - **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
 - **Suroviny**, **Log**.
@@ -74,6 +74,6 @@ Klíče a tvar dat najdete v záložce **Log zpráv**, kde stačí kliknout na �
 ## Licence a poděkování
 FoE Reader je svobodný software pod licencí **GNU AGPL-3.0** (viz [LICENSE](LICENSE)). Smíte ho používat, upravovat a šířit; upravené verze musí zůstat pod stejnou licencí a se zdrojovým kódem.
 
-Část dat a postupů vychází z projektu [FoE Helper](https://github.com/mainIine/foe-helfer-extension) (AGPL-3.0): názvy a sousednost provincií GBG (`provinces.js`), způsob načítání ikon zboží z CDN hry a struktura dat vyjednávání. Děkujeme jeho autorům.
+Část dat a postupů vychází z projektu [FoE Helper](https://github.com/mainIine/foe-helfer-extension) (AGPL-3.0): názvy a sousednost provincií GBG (`provinces.js`), obrázky příhod (`img/incidents`), způsob načítání ikon zboží z CDN hry a struktura dat vyjednávání. Děkujeme jeho autorům.
 
 Forge of Empires je ochranná známka společnosti InnoGames GmbH. Toto rozšíření s InnoGames nijak nesouvisí, nic neposílá na herní server a pouze čte data, která hra sama přijímá.

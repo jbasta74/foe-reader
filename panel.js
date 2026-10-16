@@ -411,6 +411,13 @@
     rubble: 'sutiny', pothole: 'výmol', broken_carriage: 'rozbitý kočár', statue: 'socha', whirlpool: 'vír', shipwreck: 'vrak lodi',
   };
   const INC_PLACES = { cityRoadSmall: 'cesta', cityRoadBig: 'dvouproudá cesta', nature: 'příroda', shore: 'pobřeží', water: 'voda' };
+  // Obrázky příhod (převzaté z FoE Helperu, AGPL-3.0) jsou součástí rozšíření: img/incidents/<typ>.png
+  const INC_IMGS = new Set(["Shard_01", "Shard_02", "Shard_03", "ages_birthday_gift_1", "ages_birthday_gift_2", "ages_birthday_gift_3", "ge_relic_common", "ge_relic_rare", "ge_relic_uncommon", "incident_beach_gear", "incident_beehive", "incident_blocked_road_1x1", "incident_blocked_road_2x2", "incident_broken_cart", "incident_car_accident", "incident_castaway", "incident_chest", "incident_clothesline", "incident_crates", "incident_dinosaur_bones", "incident_empty_clothesline", "incident_fallen_tree_1x1", "incident_fallen_tree_2x2", "incident_fisherman", "incident_floating_chest", "incident_flotsam", "incident_fruit_vendor", "incident_hero", "incident_kite", "incident_mammoth_bones", "incident_musician", "incident_overgrowth", "incident_pothole_1x1", "incident_pothole_2x2", "incident_quicksand", "incident_rhino", "incident_sculptor", "incident_shipwreck", "incident_sos", "incident_statue", "incident_stick_hut", "incident_treasure_chest", "incident_wine_cask", "spring_cherry_tree"]);
+  function incImg(type, h = 44) {
+    const t = /outpost/.test(type) ? 'Shard_' + String(type).slice(-2) : type;
+    if (!INC_IMGS.has(t) || !globalThis.chrome?.runtime?.getURL) return '';
+    return `<img src="${chrome.runtime.getURL('img/incidents/' + t + '.png')}" alt="" style="max-height:${h}px;max-width:${h * 1.6}px;vertical-align:middle">`;
+  }
   const incName = (type) => {
     const k = String(type).replace(/^incident_/, '').replace(/_\d+x\d+$/, '');
     return INC_NAMES[k] || k.replace(/_/g, ' ');
@@ -1609,10 +1616,12 @@
     for (const h of act) { const p = INC_PLACES[h.position?.context] || h.position?.context; byPlace[p] = (byPlace[p] || 0) + 1; }
     let html = !S.incidents ? '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>'
       : `<p><span class="chip">čeká: <b>${act.length}</b></span>${Object.entries(byPlace).map(([p, n]) => `<span class="chip">${esc(p)} ${n}</span>`).join('')}${fut.length ? `<span class="chip">další: ${fut.length}</span>` : ''}</p>
-      <h4>Ve městě teď</h4>${act.length ? `<table><thead><tr><th>Příhoda</th><th>Místo</th><th>Zmizí za</th></tr></thead><tbody>${act.map((h) =>
-        `<tr><td>${esc(incName(h.type))}${rare(h)}</td><td>${place(h)}</td><td class="${h.expireTime - now < 3600 ? 'hi' : ''}">${dur(h.expireTime - now)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Nic.</p>'}
+      <h4>Ve městě teď</h4>${act.length ? `<div class="incgrid">${act.map((h) =>
+        `<div class="inccard ${h.rarity || ''}" title="${esc(incName(h.type))} · ${place(h)}">${incImg(h.type) || '<div class="noimg">?</div>'}
+          <div class="incname">${esc(incName(h.type))}</div><div class="muted">${place(h)}</div>
+          <div class="${h.expireTime - now < 3600 ? 'hi' : ''}">⏳ ${dur(h.expireTime - now)}</div></div>`).join('')}</div>` : '<p class="muted">Nic.</p>'}
       ${fut.length ? `<h4>Objeví se</h4><table><thead><tr><th>Kdy</th><th>Příhoda</th><th>Místo</th></tr></thead><tbody>${fut.map((h) =>
-        `<tr><td>${at(h.startTime)} <span class="muted">(za ${dur(h.startTime - now)})</span></td><td>${esc(incName(h.type))}${rare(h)}</td><td>${place(h)}</td></tr>`).join('')}</tbody></table>` : ''}`;
+        `<tr><td>${at(h.startTime)} <span class="muted">(za ${dur(h.startTime - now)})</span></td><td>${incImg(h.type, 26)} ${esc(incName(h.type))}${rare(h)}</td><td>${place(h)}</td></tr>`).join('')}</tbody></table>` : ''}`;
     // deník vybraných odměn
     const log = loadIncLog();
     const day0 = new Date(); day0.setHours(0, 0, 0, 0);
@@ -1784,6 +1793,13 @@
       .fbtn.on{background:#2b2116;color:#f3d9a4;border-color:#2b2116;font-weight:700}
       table.neg{table-layout:fixed;width:100%}table.neg td,table.neg th{word-break:break-word;font-size:12px}table.neg td:first-child,table.neg th:first-child{width:52px}
       .gicon{display:inline-block;vertical-align:middle;background-repeat:no-repeat}table.neg td{text-align:center}
+      .incgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}
+      .inccard{background:#f3ead6;border:1px solid #e0d2b4;border-radius:6px;padding:5px;text-align:center;font-size:11px;line-height:1.3}
+      .inccard img{display:block;margin:0 auto 3px;height:44px;object-fit:contain}
+      .inccard.rare{border-color:#b0410f;box-shadow:0 0 0 1px #b0410f inset;background:#fbe3c8}
+      .inccard.uncommon{border-color:#5b8fd6;background:#e6eefa}
+      .inccard .incname{font-weight:600}
+      .inccard .noimg{height:44px;line-height:44px;color:#9a8a70;font-size:20px}
       td.ng.ok{background:#d6efc7}td.ng.wp{background:#fbe3b4}td.ng.nn{background:#e6e0d6;color:#7a6f60}
       .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
       .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}

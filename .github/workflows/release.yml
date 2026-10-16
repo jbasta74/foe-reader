@@ -35,6 +35,7 @@ jobs:
           mkdir -p dist/foe-reader
           # všechny skripty uvedené v manifestu (ať se na žádný nezapomene)
           cp manifest.json README.md LICENSE $(jq -r '.content_scripts[].js[]' manifest.json | sort -u) dist/foe-reader/
+          cp -r img dist/foe-reader/
           for f in $(jq -r '.content_scripts[].js[]' manifest.json); do test -f "dist/foe-reader/$f" || { echo "chybí $f"; exit 1; }; done
           cd dist && zip -r "foe-reader-${{ steps.ver.outputs.version }}.zip" foe-reader
 

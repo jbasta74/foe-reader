@@ -1585,17 +1585,18 @@
     const isNeighbour = (id) => (gameProv(id)?.conn || data[id]?.[2] || []).some((n) => mine.has(n)); // sousedství ze hry, jinak z tabulky
     const list = provs.map((p) => {
       const id = p.id ?? 0, own = p.ownerId === me;
-      return { p, id, own, left: (p.lockedUntil || 0) - now, near: !own && isNeighbour(id) };
-    }).sort((a, b) => (watch.has(b.id) - watch.has(a.id)) || (a.own - b.own) || (b.near - a.near)
+      // isSpawnSpot = základna cechu (startovní provincie), na tu se útočit nedá
+      return { p, id, own, base: !!p.isSpawnSpot, left: (p.lockedUntil || 0) - now, near: !own && !p.isSpawnSpot && isNeighbour(id) };
+    }).sort((a, b) => (watch.has(b.id) - watch.has(a.id)) || (a.own - b.own) || (a.base - b.base) || (b.near - a.near)
       || (Math.max(0, a.left) - Math.max(0, b.left)) || (a.id - b.id));
     return `<h4>Provincie (★ = upozornit ${cfg.gbgWatchLead ? cfg.gbgWatchLead + ' min před' : 'při'} odemknutí)</h4>
       <table class="prov"><thead><tr><th></th><th>Název</th><th>Vlastník</th><th>Sousedí</th><th>Odemčeno</th><th>Opotř.</th><th>Body</th></tr></thead><tbody>${
-      list.map(({ p, id, left, own, near }) => `<tr class="${watch.has(id) ? 'sel' : own ? 'muted' : ''}">
-        <td>${own ? '' : `<button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button>`}</td>
+      list.map(({ p, id, left, own, near, base }) => `<tr class="${watch.has(id) ? 'sel' : own || base ? 'muted' : ''}">
+        <td>${own || base ? '' : `<button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button>`}</td>
         <td title="${esc(provFull(id))} · #${id}"><input type="text" class="pname" data-prov="${id}" value="${esc(names[id] || '')}" placeholder="#${id}" maxlength="30"></td>
         <td>${own ? 'my' : esc(pname(p.ownerId))}</td>
         <td>${near ? '<span class="hi">s námi</span>' : ''}</td>
-        <td class="num">${left > 0 ? 'za ' + dur(left) : '<b>teď</b>'}</td>
+        <td class="num">${base ? 'základna' : left > 0 ? 'za ' + dur(left) : own ? '' : '<b>teď</b>'}</td>
         <td class="num">${p.gainAttritionChance != null ? p.gainAttritionChance + ' %' : '–'}</td>
         <td class="num">${fmt(p.victoryPoints)}</td></tr>`).join('')
     }</tbody></table>

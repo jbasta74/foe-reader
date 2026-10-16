@@ -475,6 +475,8 @@
 
   function handleMetadata(m) {
     const d = m.data;
+    // Názvy provincií GBG přímo ze hry (metadata guild_battleground_maps, načítají se při otevření GBG)
+    if (/^guild_battleground_maps/.test(m.metadataId || '')) { S.gbgMapsMeta = d; parseGbgMaps(d); }
     const take = (o) => {
       if (!o || typeof o !== 'object') return;
       if (o.id && o.name) S.names.set(o.id, o.name);
@@ -556,8 +558,42 @@
       localStorage.setItem(NAMES_KEY, JSON.stringify(all));
     } catch { /* ignore */ }
   }
-  const provLabel = (id) => provNames()[id] || `#${id}`;
-  const provFull = (id) => provData()[id]?.[1] || '';
+  // Z metadat hry: pro každou mapu id provincie -> {short, name}. Tvar dat neznáme jistě, proto hledáme
+  // obecně: objekt mapy (id = název mapy) a v něm pole provincií s číselným id a textovým názvem.
+  S.gbgNames = {};
+  function parseGbgMaps(d) {
+    const out = {};
+    const walk = (o, mapId, depth) => {
+      if (!o || typeof o !== 'object' || depth > 6) return;
+      if (Array.isArray(o)) {
+        const provs = o.filter((x) => x && typeof x === 'object' && !Array.isArray(x) && (x.name || x.title || x.provinceName));
+        if (mapId && provs.length >= 20) {
+          for (const [i, x] of o.entries()) {
+            if (!x || typeof x !== 'object') continue;
+            const id = Number.isInteger(x.id) ? x.id : Number.isInteger(x.provinceId) ? x.provinceId : (x.id == null && x.provinceId == null ? i : null);
+            if (id == null) continue;
+            (out[mapId] ||= {})[id] = { short: x.shortName || x.short_name || x.abbreviation || '', name: x.name || x.title || x.provinceName };
+          }
+          return;
+        }
+        for (const x of o) walk(x, mapId, depth + 1);
+        return;
+      }
+      const mid = typeof o.id === 'string' && /archipelago|_map|island/i.test(o.id) ? o.id : mapId;
+      for (const [k, v] of Object.entries(o)) walk(v, /archipelago/.test(k) ? k : mid, depth + 1);
+    };
+    try { walk(d, null, 0); } catch { /* ignore */ }
+    if (Object.keys(out).length) S.gbgNames = out;
+  }
+  const gameProv = (id) => S.gbgNames?.[S.gbg?.map?.id || '']?.[id];
+  const provLabel = (id) => {
+    const own = (() => { try { return JSON.parse(localStorage.getItem(NAMES_KEY) || '{}')[S.gbg?.map?.id || '']?.[id]; } catch { return null; } })();
+    if (own) return own;
+    const g = gameProv(id);
+    if (g) return g.short || g.name;
+    return provNames()[id] || `#${id}`;
+  };
+  const provFull = (id) => gameProv(id)?.name || provData()[id]?.[1] || '';
 
   // Zvuk přes WebAudio – prohlížeč ho povolí až po prvním kliknutí na stránku/panel.
   let audio = null;
@@ -2028,7 +2064,7 @@
     const ids = new Set([...S.entities.values(), ...(S.outpost?.entities?.values() || [])].map((e) => e.cityentity_id));
     const sizes = {};
     for (const id of ids) if (S.ent.has(id)) sizes[id] = { ...S.ent.get(id), name: S.names.get(id) };
-    const extra = { t: Date.now(), channel: 'meta', key: 'FoEReader.mapData', data: { sizes, grids: S.grids } };
+    const extra = { t: Date.now(), channel: 'meta', key: 'FoEReader.mapData', data: { sizes, grids: S.grids, gbgMaps: S.gbgMapsMeta || null, gbgNames: S.gbgNames } };
     const blob = new Blob([JSON.stringify([...S.ring, extra], null, 1)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

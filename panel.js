@@ -518,6 +518,7 @@
     arcFactor: 'arc', // 'arc' = podle bonusu vlastní Archy (mění se samo), jinak pevné číslo
     tradeOn: true, tradeSound: false, tradeExpired: true, gbContribOn: true,
     limOn: true, limLead: 24, limInv: true,
+    hiddenTabs: [], // záložky vypnuté v Nastavení (ℹ️)
     gbCalcPopup: true, // okno kalkulačky VB se otevře samo s otevřením budovy
   };
   const cfg = (() => {
@@ -1712,6 +1713,11 @@
         <tr><td>Svět</td><td>${esc(world)}${S.player ? ` · ${esc(S.player.user_name)}` : ''}</td></tr>
         <tr><td>Zachyceno zpráv</td><td>${fmt([...S.log.values()].reduce((a, l) => a + l.count, 0))} (${S.log.size} druhů)</td></tr>
       </tbody></table>
+      <h4>Nastavení – zobrazené záložky</h4>
+      <div class="cfg"><div>${TABS.filter(([id]) => !FIXED_TABS.includes(id)).map(([id, l]) =>
+        `<label><input type="checkbox" data-tabtoggle="${id}" ${tabVisible(id) ? 'checked' : ''}> ${l}</label>`).join(' ')}</div>
+        <div class="muted">VB, Upozornění a ℹ️ zůstávají vždy. Vypnutá záložka jen zmizí z lišty – data se sbírají dál a upozornění fungují.</div>
+        <div><button data-act="resetsize">Obnovit výchozí velikost panelu</button> <span class="muted">Panel se dá roztáhnout tažením za pravý dolní roh.</span></div></div>
       <p class="muted">Aktualizace: stáhněte novou verzi (git pull nebo ZIP z Releases), v chrome://extensions klikněte u rozšíření na obnovit a ve hře dejte F5.</p>
       <p class="muted">Názvy a sousednost provincií GBG pocházejí z projektu FoE Helper (AGPL-3.0).</p>`;
   }
@@ -1761,7 +1767,8 @@
       .tabs{display:flex;flex-wrap:wrap;background:#2b2116}
       .tabs button{flex:1 0 auto;background:none;border:0;color:#d9c4a0;padding:7px 5px;cursor:pointer;white-space:nowrap}
       .tabs button.on{background:#fbf6ec;color:#2b2116;font-weight:700}
-      .body{overflow:auto;padding:8px 10px}
+      .body{overflow:auto;padding:8px 10px;flex:1;min-height:0}
+      .panel{resize:both;min-width:320px;min-height:180px}
       table{width:100%;border-collapse:collapse}
       th{text-align:left;font-weight:600;border-bottom:1px solid #d8c8a8;padding:3px 4px;position:sticky;top:0;background:#fbf6ec}
       td{padding:3px 4px;border-bottom:1px solid #eee3cd}
@@ -1803,10 +1810,12 @@
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>
     <button class="btn" id="toggle" title="FoE Reader ${VERSION} · klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
-    <div class="panel" id="panel"><div class="tabs">${TABS.map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')}<button data-act="popout" title="Otevřít tuto záložku v samostatném okně">⧉</button></div><div class="body" id="body"></div></div>`;
+    <div class="panel" id="panel"><div class="tabs" id="tabs"></div><div class="body" id="body"></div></div>`;
     body = root.getElementById('body');
+    renderTabs();
     setupDrag(root.getElementById('toggle'), () => {
-      open = !open; root.getElementById('panel').classList.toggle('open', open); render(); placePanel();
+      open = !open; root.getElementById('panel').classList.toggle('open', open); render();
+      placing = true; placePanel(); setTimeout(() => { placing = false; }, 400);
     });
     window.addEventListener('resize', () => { clampHost(); placePanel(); });
     root.addEventListener('click', (ev) => {
@@ -1821,6 +1830,7 @@
     // Hra si stránku po načtení přestavuje – když panel zmizí, vrátíme ho.
     setInterval(() => { if (!host.isConnected) attach(); }, 2000);
     restoreTabWins();
+    watchPanelSize();
     console.log('[FoE Reader] panel připraven');
   }
   // Společné ovládání pro panel i samostatná okna záložek.
@@ -1851,6 +1861,17 @@
         const set = loadWatch(), id = +w.dataset.watch;
         set.has(id) ? set.delete(id) : set.add(id);
         saveWatch(set); timeChecks(); render();
+      }
+      const tt = ev.target.closest('[data-tabtoggle]');
+      if (tt) {
+        const id = tt.dataset.tabtoggle, hid = new Set(cfg.hiddenTabs || []);
+        hid.has(id) ? hid.delete(id) : hid.add(id);
+        cfg.hiddenTabs = [...hid]; saveCfg(); renderTabs(); render();
+      }
+      if (ev.target.closest('[data-act="resetsize"]')) {
+        try { localStorage.removeItem(PSIZE_KEY); } catch { /* ignore */ }
+        const panel = root.getElementById('panel'); panel.style.width = ''; panel.style.height = '';
+        placing = true; placePanel(); setTimeout(() => { placing = false; }, 400);
       }
     }
   }
@@ -1948,14 +1969,31 @@
     const panel = root.getElementById('panel');
     const x = parseInt(host.style.left), y = parseInt(host.style.top);
     const btnW = root.getElementById('toggle').offsetWidth;
-    const pw = Math.min(580, window.innerWidth * 0.96);
+    const sz = loadPanelSize();
+    const pw = Math.min(sz.w || 580, window.innerWidth * 0.96);
+    panel.style.width = pw + 'px';
     panel.style.left = (x + pw > window.innerWidth ? Math.max(-x, btnW - pw) : 0) + 'px';
     const below = y < window.innerHeight / 2;
     panel.style.top = below ? 'calc(100% + 6px)' : 'auto';
     panel.style.bottom = below ? 'auto' : 'calc(100% + 6px)';
     const btnH = root.getElementById('toggle').offsetHeight;
-    panel.style.maxHeight = Math.max(200, below ? window.innerHeight - y - btnH - 16 : y - 16) + 'px';
+    const maxH = Math.max(200, below ? window.innerHeight - y - btnH - 16 : y - 16);
+    panel.style.maxHeight = maxH + 'px';
+    panel.style.height = sz.h ? Math.min(sz.h, maxH) + 'px' : '';
   }
+  // Velikost panelu (roztažení za pravý dolní roh) se pamatuje.
+  const PSIZE_KEY = 'foeReaderPanelSize';
+  const loadPanelSize = () => { try { return JSON.parse(localStorage.getItem(PSIZE_KEY) || '{}'); } catch { return {}; } };
+  function watchPanelSize() {
+    const panel = root.getElementById('panel');
+    let t = null;
+    new ResizeObserver(() => {
+      if (!open || !panel.offsetWidth || placing) return;
+      clearTimeout(t);
+      t = setTimeout(() => { try { localStorage.setItem(PSIZE_KEY, JSON.stringify({ w: panel.offsetWidth, h: panel.offsetHeight })); } catch { /* ignore */ } }, 300);
+    }).observe(panel);
+  }
+  let placing = false;
   function setupDrag(btn, onClick) {
     let start = null, moved = false;
     btn.addEventListener('pointerdown', (e) => {
@@ -1999,6 +2037,16 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
+  // Lišta záložek podle nastavení (vypnuté se nezobrazují; VB, Upozornění a ℹ️ vypnout nejdou).
+  const FIXED_TABS = ['gb', 'alerts', 'about'];
+  const tabVisible = (id) => FIXED_TABS.includes(id) || !(cfg.hiddenTabs || []).includes(id);
+  function renderTabs() {
+    const el = root?.getElementById('tabs');
+    if (!el) return;
+    if (!tabVisible(tab)) tab = 'gb';
+    el.innerHTML = TABS.filter(([id]) => tabVisible(id)).map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')
+      + '<button data-act="popout" title="Otevřít tuto záložku v samostatném okně">⧉</button>';
+  }
   function render() {
     if (!root) return;
     for (const id of tabWins.keys()) renderTabWin(id);

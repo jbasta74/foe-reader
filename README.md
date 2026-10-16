@@ -21,7 +21,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - `panel.js`: běží v izolovaném světě. Třídí zprávy podle `requestClass.requestMethod` (objekt `H`), drží stav a kreslí panel ve Shadow DOM.
 
 ## Záložky
-Každou záložku lze tlačítkem **⧉** (vpravo v liště záložek) otevřít v samostatném okně. Okna jdou přesouvat a zvětšovat, kliknuté okno jde dopředu a otevřená okna se po F5 obnoví na stejném místě.
+Hlavní panel se dá roztáhnout oběma směry za pravý dolní roh, velikost se pamatuje. V záložce **ℹ️** lze vypnout záložky, které nepoužíváte (VB, Upozornění a ℹ️ zůstávají vždy); data se sbírají dál. Každou záložku lze tlačítkem **⧉** (vpravo v liště záložek) otevřít v samostatném okně. Okna jdou přesouvat a zvětšovat, kliknuté okno jde dopředu a otevřená okna se po F5 obnoví na stejném místě.
 
 - **VB** (vlastní i cizí Velké budovy v jedné záložce): nahoře kalkulačka naposledy otevřené budovy – u vlastní **náhozy** P1–P7 × koeficient (předvolby 1,8–2,0, tlačítko Arc podle bonusu Archy nebo vlastní hodnota), vlastní podíl a text do vlákna (`Hráč Galata Tower 77→78 P1(1083) P2(542) …`, jméno hráče se bere ze hry); u cizí kolik FP chybí, odměny s bonusem Archy, cena zajištění místa a zisk. Pod tím přehled vlastních VB (úroveň, vloženo/potřeba, stupeň 🥉/🥇) a přehled VB naposledy navštíveného hráče.
 - **Kalkulačka VB v okně**: jedno plovoucí okno pro vlastní i cizí VB – ukazuje vždy naposledy otevřenou budovu (náhozy, zajištění míst, zisk, text do vlákna). Může se otevírat samo s otevřením budovy ve hře (přepínač „otevírat samo“ v okně nebo v záložce Upozornění).

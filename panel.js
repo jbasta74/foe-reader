@@ -1697,7 +1697,7 @@
     let sugRow = '';
     if (c && c.suggestion && n.state === 'ongoing') sugRow = `<tr class="sel"><td><b>Návrh</b></td>${[...Array(NEGO_SLOTS).keys()].map((sl) => c.fixed.has(sl)
       ? `<td class="ng ok">✓ ${name(c.fixed.get(sl))}</td>` : `<td><b>${name(c.suggestion.get(sl))}</b></td>`).join('')}</tr>`;
-    if (sugRow) sug = `<p class="muted">Možných kombinací: ${fmt(c.cands)}${c.sure ? ' – <b>jisté řešení</b>' : ''}.</p>`;
+    if (sugRow) sug = `<p class="muted">Možných kombinací: ${fmt(c.cands)}${c.sure ? ' – <b>jisté řešení</b>' : ''}${c.winP != null ? ` · šance na výhru se zbývajícími tahy: <b>${Math.round(c.winP * 100)} %</b>` : ''}.</p>`;
     const cost = n.goods.map((g) => `${goodIcon(g, 22)} ${fmt(n.costs[g])}${S.resources[g] != null ? ` <span class="muted">(máte ${fmt(S.resources[g])})</span>` : ''}`).join(' · ');
     return `<p>${left != null ? `Zbývá tahů: <b>${left}</b> · ` : ''}Zboží: ${cost}</p>
       <table class="neg"><thead>${head}</thead><tbody>${rows}${sugRow}</tbody></table>${sug}

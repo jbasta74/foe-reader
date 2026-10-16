@@ -75,6 +75,6 @@ Klíče a tvar dat najdete v záložce **Log zpráv**, kde stačí kliknout na �
 ## Licence a poděkování
 FoE Reader je svobodný software pod licencí **GNU AGPL-3.0** (viz [LICENSE](LICENSE)). Smíte ho používat, upravovat a šířit; upravené verze musí zůstat pod stejnou licencí a se zdrojovým kódem.
 
-Část dat a postupů vychází z projektu [FoE Helper](https://github.com/mainIine/foe-helfer-extension) (AGPL-3.0): názvy a sousednost provincií GBG (`provinces.js`), obrázky příhod (`img/incidents`), způsob načítání ikon zboží z CDN hry a struktura dat vyjednávání. Děkujeme jeho autorům.
+Část dat a postupů vychází z projektu [FoE Helper](https://github.com/mainIine/foe-helfer-extension) (AGPL-3.0): názvy a sousednost provincií GBG (`provinces.js`), obrázky příhod (`img/incidents`), přesný řešič vyjednávání (`nego-solver-helper.js`), způsob načítání ikon zboží z CDN hry a struktura dat vyjednávání. Děkujeme jeho autorům.
 
 Forge of Empires je ochranná známka společnosti InnoGames GmbH. Toto rozšíření s InnoGames nijak nesouvisí, nic neposílá na herní server a pouze čte data, která hra sama přijímá.

@@ -68,6 +68,36 @@
       res.slotProb[s] = cnt.map((n) => (cands.length ? n / cands.length : 0));
     }
     if (!cands.length || !open.length) return res;
+    // Přesný výpočet (řešič FoE Helperu): tah s nejvyšší pravděpodobností výhry ve zbývajících tazích.
+    const NS = globalThis.NegotiationSolver;
+    const R = game.turnsLeft != null && game.turnsLeft > 0 ? game.turnsLeft : 3;
+    if (NS && nGoods <= NS.MAX_GOODS) {
+      if (!turns.length && open.length === 5 && nGoods >= 5) {
+        // první tah: všechno zboží různé (tak volí i přesný řešič; výpočet od nuly by trval sekundy)
+        res.suggestion = new Map(open.map((s, i) => [s, i % nGoods]));
+        res.exact = true;
+        return res;
+      }
+      // Přesný výpočet je rychlý pro málo zbývajících tahů; při 4+ tazích a víc druhech zboží by trval
+      // desítky sekund (a zamrazil hru), tam volíme rychlý odhad a přesně počítáme až od dalšího kola.
+      // (změřeno: 5 druhů zboží a 3 tahy ~0,05 s, 6 druhů a 3 tahy až 25 s)
+      const fast = R <= 2 || (R === 3 && nGoods <= 5) || cands.length <= 20;
+      if (cands.length <= 2000 && fast) {
+        const k = open.length;
+        const enc = new Set();
+        for (const c of cands) { let v = 0; open.forEach((s, j) => { v |= c[s] << (4 * j); }); enc.add(v); }
+        const assigns = Int32Array.from(enc).sort();
+        const solver = (solve.cache ||= new Map()).get(nGoods) || new NS.Solver(nGoods);
+        solve.cache.set(nGoods, solver);
+        const r = solver.evalState(assigns, k, R, []);
+        if (r?.offer) {
+          res.suggestion = new Map(open.map((s, j) => [s, r.offer[j]]));
+          res.winP = r.p;
+          res.exact = true;
+          return res;
+        }
+      }
+    }
     if (cands.length === 1 || (game.turnsLeft != null && game.turnsLeft <= 1)) {
       res.suggestion = new Map(open.map((s) => [s, cands[0][s]]));
       res.sure = cands.length === 1;

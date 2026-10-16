@@ -574,7 +574,7 @@
             if (!x || typeof x !== 'object') continue;
             const id = Number.isInteger(x.id) ? x.id : Number.isInteger(x.provinceId) ? x.provinceId : (x.id == null && x.provinceId == null ? i : null);
             if (id == null) continue;
-            (out[mapId] ||= {})[id] = { short: x.shortName || x.short_name || x.abbreviation || '', name: x.name || x.title || x.provinceName };
+            (out[mapId] ||= {})[id] = { short: x.shortName || x.short_name || x.abbreviation || '', name: x.name || x.title || x.provinceName, conn: Array.isArray(x.connections) ? x.connections : null };
           }
           return;
         }
@@ -1582,7 +1582,7 @@
     const names = provNames();
     const data = provData();
     const mine = new Set(provs.filter((p) => p.ownerId === me).map((p) => p.id ?? 0));
-    const isNeighbour = (id) => (data[id]?.[2] || []).some((n) => mine.has(n));
+    const isNeighbour = (id) => (gameProv(id)?.conn || data[id]?.[2] || []).some((n) => mine.has(n)); // sousedství ze hry, jinak z tabulky
     const list = provs.map((p) => {
       const id = p.id ?? 0, own = p.ownerId === me;
       return { p, id, own, left: (p.lockedUntil || 0) - now, near: !own && isNeighbour(id) };

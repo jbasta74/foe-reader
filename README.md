@@ -1,4 +1,4 @@
-# FoE Reader 0.3.36
+# FoE Reader 0.3.37
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -21,6 +21,8 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - `panel.js`: běží v izolovaném světě. Třídí zprávy podle `requestClass.requestMethod` (objekt `H`), drží stav a kreslí panel ve Shadow DOM.
 
 ## Záložky
+Každou záložku lze tlačítkem **⧉** (vpravo v liště záložek) otevřít v samostatném okně. Okna jdou přesouvat a zvětšovat, kliknuté okno jde dopředu a otevřená okna se po F5 obnoví na stejném místě.
+
 - **Moje VB**: úroveň, vloženo/potřeba, kolik FP chybí. Po otevření vlastní VB ve hře **kalkulačka náhozů**: P1–P5 × koeficient (předvolby 1,8–2,0 nebo vlastní hodnota, pamatuje se; odměny se čtou živě ze serveru, takže platí pro beta i ostré servery), vlastní podíl a text do vlákna (`Hráč Galata Tower 77→78 P1(1083) P2(542) …`, jméno hráče se bere ze hry) s tlačítkem Kopírovat.
 - **Kalkulačka VB v okně**: jedno plovoucí okno pro vlastní i cizí VB – ukazuje vždy naposledy otevřenou budovu (náhozy, zajištění míst, zisk, text do vlákna). Může se otevírat samo s otevřením budovy ve hře (přepínač „otevírat samo“ v okně nebo v záložce Upozornění).
 - **VB přátel**: po otevření cizí VB ukáže, kolik FP chybí, odměny s bonusem Archy, cenu zajištění místa a zisk.

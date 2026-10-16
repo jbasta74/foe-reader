@@ -952,6 +952,7 @@
       <label title="Otevřít samo s otevřením Velké budovy ve hře"><input type="checkbox" id="auto" ${cfg.gbCalcPopup ? 'checked' : ''}> otevírat samo</label>
       <button id="close" title="Zavřít">✕</button></div><div class="wbody" id="wbody"></div>`;
     document.documentElement.appendChild(h);
+    toFront(h); h.addEventListener('pointerdown', () => toFront(h), true);
     calcWin = { host: h, root: r };
     const save = () => { const b = h.getBoundingClientRect(); try { localStorage.setItem(CALCWIN_KEY, JSON.stringify({ x: b.left, y: b.top, w: b.width, h: b.height })); } catch { /* ignore */ } };
     r.getElementById('whead').addEventListener('pointerdown', (ev) => {
@@ -1029,6 +1030,7 @@
       .leg{padding:3px 8px;color:#7a6a50;font-size:11px}
     </style><div class="wrap"><div class="head" id="head"></div><div class="stats" id="stats"></div><div class="view" id="view"></div><div class="leg">${MAP_LEGEND} · kolečko = zoom, tažení = posun</div></div>`;
     document.documentElement.appendChild(h);
+    toFront(h); h.addEventListener('pointerdown', () => toFront(h), true);
     mapWin = { host: h, root: r, zoom: st.zoom };
     const view = r.getElementById('view');
     // přesun okna za hlavičku
@@ -1806,7 +1808,7 @@
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>
     <button class="btn" id="toggle" title="FoE Reader ${VERSION} · klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
-    <div class="panel" id="panel"><div class="tabs">${TABS.map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')}</div><div class="body" id="body"></div></div>`;
+    <div class="panel" id="panel"><div class="tabs">${TABS.map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')}<button data-act="popout" title="Otevřít tuto záložku v samostatném okně">⧉</button></div><div class="body" id="body"></div></div>`;
     body = root.getElementById('body');
     setupDrag(root.getElementById('toggle'), () => {
       open = !open; root.getElementById('panel').classList.toggle('open', open); render(); placePanel();
@@ -1815,6 +1817,20 @@
     root.addEventListener('click', (ev) => {
       const t = ev.target.closest('[data-tab]');
       if (t) { tab = t.dataset.tab; render(); return; }
+      if (ev.target.closest('[data-act="popout"]')) { openTabWin(tab); return; }
+      onUiClick(ev);
+    });
+    root.addEventListener('input', () => { lastInputAt = Date.now(); });
+    root.addEventListener('change', onUiChange);
+    attach();
+    // Hra si stránku po načtení přestavuje – když panel zmizí, vrátíme ho.
+    setInterval(() => { if (!host.isConnected) attach(); }, 2000);
+    restoreTabWins();
+    console.log('[FoE Reader] panel připraven');
+  }
+  // Společné ovládání pro panel i samostatná okna záložek.
+  function onUiClick(ev) {
+    {
       const r = ev.target.closest('tr[data-key]');
       if (r) { selectedKey = r.dataset.key === selectedKey ? null : r.dataset.key; render(); return; }
       if (ev.target.closest('[data-act="download"]')) download();
@@ -1841,20 +1857,81 @@
         set.has(id) ? set.delete(id) : set.add(id);
         saveWatch(set); timeChecks(); render();
       }
+    }
+  }
+  function onUiChange(ev) {
+    const el = ev.target.closest('[data-cfg]');
+    if (el) { cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render(); }
+    const pn = ev.target.closest('[data-prov]');
+    if (pn) { setProvName(+pn.dataset.prov, pn.value); render(); }
+    const inp = ev.target.closest('[data-input="attrTarget"]');
+    if (inp) { attrTarget = +inp.value || null; render(); }
+  }
+
+  // ---------- Záložky v samostatných oknech (⧉) – otevřená okna se pamatují i po F5 ----------
+  const TABWIN_KEY = 'foeReaderTabWins';
+  const tabWins = new Map(); // id záložky -> {host, root, body}
+  let zTop = 2147400000; // panel (2147483647) zůstává vždy navrchu
+  const toFront = (el) => { el.style.zIndex = String(++zTop); }; // okno, na které kliknete, jde dopředu
+  const loadTabWinCfg = () => { try { return JSON.parse(localStorage.getItem(TABWIN_KEY) || '{}'); } catch { return {}; } };
+  const saveTabWinCfg = (c) => { try { localStorage.setItem(TABWIN_KEY, JSON.stringify(c)); } catch { /* ignore */ } };
+  function openTabWin(id, restore) {
+    const def = TABS.find((t) => t[0] === id);
+    if (!def) return;
+    if (tabWins.has(id)) { renderTabWin(id); return; }
+    const all = loadTabWinCfg();
+    const st = { x: 140 + tabWins.size * 30, y: 80 + tabWins.size * 30, w: 560, h: 480, ...(all[id] || {}) };
+    const h = document.createElement('div');
+    h.className = 'foe-reader-win';
+    h.style.cssText = `position:fixed;z-index:2147483645;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w}px;height:${st.h}px;resize:both;overflow:hidden;min-width:280px;min-height:140px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45)`;
+    const r = h.attachShadow({ mode: 'open' });
+    r.innerHTML = `<style>${root.querySelector('style')?.textContent || ''}
+      :host{all:initial}
+      .whead{display:flex;align-items:center;gap:8px;background:#2b2116;color:#f3d9a4;padding:5px 8px;cursor:move;user-select:none}
+      .whead b{flex:1}
+      .whead button{background:#4a3a26;color:#f3d9a4;border:1px solid #8a6a3a;border-radius:4px;padding:0 7px;cursor:pointer}
+      .wbody{overflow:auto;padding:8px 10px;height:calc(100% - 30px)}
+    </style><div class="whead"><b>${def[1]}</b><button data-w="close" title="Zavřít">✕</button></div><div class="wbody"></div>`;
+    document.documentElement.appendChild(h);
+    toFront(h);
+    h.addEventListener('pointerdown', () => toFront(h), true);
+    const w = { host: h, root: r, body: r.querySelector('.wbody') };
+    tabWins.set(id, w);
+    const save = (closed) => {
+      const c = loadTabWinCfg();
+      if (closed) { if (c[id]) c[id].open = false; }
+      else { const b = h.getBoundingClientRect(); c[id] = { x: b.left, y: b.top, w: b.width, h: b.height, open: true }; }
+      saveTabWinCfg(c);
+    };
+    r.querySelector('.whead').addEventListener('pointerdown', (ev) => {
+      if (ev.target.closest('button')) return;
+      const sx = ev.clientX, sy = ev.clientY, b = h.getBoundingClientRect();
+      const mv = (e) => { h.style.left = Math.max(0, b.left + e.clientX - sx) + 'px'; h.style.top = Math.max(0, b.top + e.clientY - sy) + 'px'; };
+      const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); save(); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     });
-    root.addEventListener('input', () => { lastInputAt = Date.now(); });
-    root.addEventListener('change', (ev) => {
-      const el = ev.target.closest('[data-cfg]');
-      if (el) { cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render(); }
-      const pn = ev.target.closest('[data-prov]');
-      if (pn) { setProvName(+pn.dataset.prov, pn.value); render(); }
-      const inp = ev.target.closest('[data-input="attrTarget"]');
-      if (inp) { attrTarget = +inp.value || null; render(); }
+    r.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-w="close"]')) { save(true); h.remove(); tabWins.delete(id); return; }
+      onUiClick(ev);
     });
-    attach();
-    // Hra si stránku po načtení přestavuje – když panel zmizí, vrátíme ho.
-    setInterval(() => { if (!host.isConnected) attach(); }, 2000);
-    console.log('[FoE Reader] panel připraven');
+    r.addEventListener('input', () => { lastInputAt = Date.now(); });
+    r.addEventListener('change', onUiChange);
+    new ResizeObserver(() => { if (tabWins.has(id)) save(); }).observe(h);
+    if (!restore) save();
+    renderTabWin(id);
+  }
+  function renderTabWin(id) {
+    const w = tabWins.get(id);
+    const def = TABS.find((t) => t[0] === id);
+    if (!w || !def) return;
+    const act = w.root.activeElement;
+    if (act && act.tagName === 'INPUT' && !act.readOnly && act.type !== 'checkbox' && Date.now() - lastInputAt < 2500) return;
+    const keep = w.body.scrollTop;
+    w.body.innerHTML = def[2]();
+    w.body.scrollTop = keep;
+  }
+  function restoreTabWins() {
+    for (const [id, c] of Object.entries(loadTabWinCfg())) if (c?.open) openTabWin(id, true);
   }
   // ---------- Přetahování ----------
   const POS_KEY = 'foeReaderPos';
@@ -1929,6 +2006,7 @@
 
   function render() {
     if (!root) return;
+    for (const id of tabWins.keys()) renderTabWin(id);
     root.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     if (open && tab === 'alerts' && S.unread) { S.unread = 0; S.unreadLoud = 0; updateBadge(); }
     if (!open) return;
@@ -1955,7 +2033,10 @@
       renderCalcWin();
     }, 500);
   }
-  setInterval(() => { if (open && ['tav', 'gbg', 'prod'].includes(tab)) render(); }, 15000);
+  setInterval(() => {
+    if (open && ['tav', 'gbg', 'prod', 'inc'].includes(tab)) render();
+    else for (const id of tabWins.keys()) if (['tav', 'gbg', 'prod', 'inc'].includes(id)) renderTabWin(id);
+  }, 15000);
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();

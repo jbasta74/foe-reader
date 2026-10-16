@@ -546,7 +546,9 @@
     const map = S.gbg?.map?.id || '';
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}')[map] || {}; } catch { /* ignore */ }
-    const built = Object.fromEntries(Object.entries(provData()).map(([id, v]) => [id, v[0]]));
+    // výchozí = celý název jako ve hře („B4: Bliclatan“); metadata hry mají přednost před tabulkou
+    const built = Object.fromEntries(Object.entries(provData()).map(([id, v]) => [id, v[1]]));
+    for (const [id, g] of Object.entries(S.gbgNames?.[map] || {})) if (g.name || g.short) built[id] = g.name || g.short;
     for (const [id, n] of Object.entries(saved)) if (n) built[id] = n;
     return built;
   }
@@ -589,9 +591,10 @@
   const provLabel = (id) => {
     const own = (() => { try { return JSON.parse(localStorage.getItem(NAMES_KEY) || '{}')[S.gbg?.map?.id || '']?.[id]; } catch { return null; } })();
     if (own) return own;
+    // Jako ve hře: „B4: Bliclatan“ (zkratky typu B4B jsou jen konvence FoE Helperu, hra je nezná).
     const g = gameProv(id);
-    if (g) return g.short || g.name;
-    return provNames()[id] || `#${id}`;
+    if (g) return g.name || g.short;
+    return provData()[id]?.[1] || provNames()[id] || `#${id}`;
   };
   const provFull = (id) => gameProv(id)?.name || provData()[id]?.[1] || '';
 
@@ -1589,7 +1592,7 @@
       <table class="prov"><thead><tr><th></th><th>Název</th><th>Vlastník</th><th>Sousedí</th><th>Odemčeno</th><th>Opotř.</th><th>Body</th></tr></thead><tbody>${
       list.map(({ p, id, left, own, near }) => `<tr class="${watch.has(id) ? 'sel' : own ? 'muted' : ''}">
         <td>${own ? '' : `<button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button>`}</td>
-        <td title="${esc(provFull(id))} · #${id}"><input type="text" class="pname" data-prov="${id}" value="${esc(names[id] || '')}" placeholder="#${id}" maxlength="12"></td>
+        <td title="${esc(provFull(id))} · #${id}"><input type="text" class="pname" data-prov="${id}" value="${esc(names[id] || '')}" placeholder="#${id}" maxlength="30"></td>
         <td>${own ? 'my' : esc(pname(p.ownerId))}</td>
         <td>${near ? '<span class="hi">s námi</span>' : ''}</td>
         <td class="num">${left > 0 ? 'za ' + dur(left) : '<b>teď</b>'}</td>
@@ -1823,7 +1826,7 @@
       .cfg{display:flex;flex-direction:column;gap:6px;background:#f3ead6;border-radius:6px;padding:8px}
       .cfg label{margin-right:10px;white-space:nowrap}
       input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
-      input.pname{width:70px}
+      input.pname{width:140px}
       .copyrow{display:flex;gap:6px}
       a{color:#8a4b12}
       .good{display:inline-block;margin:0 10px 1px 0;white-space:nowrap}

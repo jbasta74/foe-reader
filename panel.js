@@ -780,8 +780,8 @@
   function viewGB() {
     const gbs = [...S.entities.values()].filter((e) => e.type === 'greatbuilding');
     if (!gbs.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
-    const own = ownCalcHtml();
-    const calc = '<p><button data-act="calcwin">Kalkulačka v okně ⤢</button></p>' + (own ? own + '<h4>Všechny moje VB</h4>' : '<p class="muted">Kalkulačka náhozů: otevřete ve hře svou Velkou budovu.</p>');
+    // Jedna záložka pro vlastní i cizí VB: nahoře kalkulačka naposledy otevřené budovy, pod tím přehledy.
+    const calc = '<p><button data-act="calcwin">Kalkulačka v okně ⤢</button></p>' + calcWinHtml() + '<h4>Moje VB</h4>';
     const rows = gbs.map((e) => {
       const max = e.max_level ?? S.gbInfo.get(e.cityentity_id)?.max_level;
       const inv = e.state?.invested_forge_points || 0;
@@ -795,7 +795,7 @@
         <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''} ${gbTier(r.level, r.id)}</td>
         <td class="num">${r.atMax ? 'max' : `${fmt(r.inv)} / ${fmt(r.need)}`}</td>
         <td class="num ${!r.atMax && r.left != null && r.left <= 100 ? 'hi' : ''}">${r.atMax ? '' : fmt(r.left)}</td></tr>`).join('')
-    }</tbody></table>`;
+    }</tbody></table>` + (S.otherGBs?.list?.length ? otherGBsHtml() : '');
   }
 
   function viewTaverns() {
@@ -1389,11 +1389,6 @@
     return gbNewRules() && gb?.level != null && gb.level + 1 > 100; // staré servery zlatý bonus nemají
   }
 
-  function viewForeignGB() {
-    let html = '<p><button data-act="calcwin">Kalkulačka v okně ⤢</button></p>' + (foreignCalcHtml() || '<p class="muted">Otevřete ve hře Velkou budovu jiného hráče.</p>');
-    if (S.otherGBs?.list?.length) html += otherGBsHtml();
-    return html;
-  }
   // Kalkulátor pro naposledy otevřenou cizí VB (null = není).
   function foreignCalcHtml() {
     let html = '';
@@ -1738,7 +1733,7 @@
   }
 
   const TABS = [
-    ['gb', 'Moje VB', viewGB], ['fgb', 'VB přátel', viewForeignGB], ['prod', 'Produkce', viewProduction],
+    ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
     ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];

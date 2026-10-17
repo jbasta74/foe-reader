@@ -22,6 +22,7 @@
         "provinces.js",
         "nego-solver-helper.js",
         "nego.js",
+        "stats.js",
         "panel.js"
       ],
       "run_at": "document_start"
@@ -36,5 +37,8 @@
         "https://*.forgeofempires.com/*"
       ]
     }
+  ],
+  "permissions": [
+    "storage"
   ]
 }

@@ -132,3 +132,9 @@ Ověřeno simulací na datech z 1. 10.: původní kód = čísla FoE Helperu (16
 - Na ostrém serveru platí stará pravidla: jen měděné plánky v odměnách, bonus Archy celočíselné zaokrouhlení (jako FoE Helper). Rozšíření pozná nová pravidla podle tvaru dat Archy (pole `bonuses`), jinak podle světa (`zz` = beta).
 - `getConstruction` na ostrém serveru má navíc `next_passive_bonus` / `next_production_bonus`.
 - Řešič (od 10/2026): pro zbývající ≤ 2 tahy, 3 tahy s ≤ 5 druhy zboží nebo ≤ 20 kandidátů přesný výpočet FoE Helperu (`nego-solver-helper.js`, maximalizuje pravděpodobnost výhry), jinak rychlý odhad. Simulace přes všechna zadání: 5 druhů/3 tahy 83,1 % výher (dřívější vlastní odhad 77,3 %), 6/3 60,0 % (56,7 %), 5/4 99,8 %, 6/4 98,9 %, 7/3 36,0 %. Nejdelší výpočet tahu ~0,3 s.
+
+## Návštěva cizího města a bonusy budov (10/2026)
+- `OtherPlayerService.visitPlayer` → `{other_player:{player_id, name, era, clan_name?, score?…}, city_map:{entities, unlocked_areas}}` (tvar podle FoE Helperu, na našem logu zatím neověřeno).
+- `BoostService.getAllBoosts` obsahuje u každého bonusu `origin` (`building`, `ally`, `castle_system`, `friends_tavern_customization`, `building_chain_links`) a `entityId` budovy. Bonusy VB tam nejsou (jen `entity.bonuses` / `entity.bonus`).
+- Bonusy budov v metadatech `building_entity_<id>`: nový formát `components[<Věk>].boosts.boosts[{type, value, targetedFeature}]` (+ `components.AllAge`), starý `abilities[{__class__:'BoostAbility', boostHints:[{boostHintEraMap:{<Věk>:{…}}}]}]`.
+- Věk budovy: u `W_MultiAge_*` je `entity.level` = index věku (21 = SpaceAgeTitan); jinak jediný věk v metadatech, jinak věk hráče. Ověřeno na vlastním městě: odhad z metadat sedí s `getAllBoosts` (origin building) u 475 z 476 budov.

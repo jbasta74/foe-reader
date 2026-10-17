@@ -37,6 +37,10 @@
   S.inv = new Map();        // celý inventář: id -> {name, stock, item}
   S.ascKit = new Map();     // ID pozvednuté (limitované) budovy -> {id, name} sady, která ji vytvoří
   S.myTavern = null;        // {unlocked, sitting}
+  S.entBoost = new Map();   // metadata budov: id -> {Věk: [BoostHint]} (bonusy podle věku, pro odhad cizích měst)
+  S.metaSeen = new Set();   // id budov, jejichž metadata už přišla
+  S.metaRev = 0;
+  S.visit = null;           // naposledy navštívené město {pid, data, t}
   const myId = () => S.player?.player_id;
 
   // ===================== Handlery =====================
@@ -45,6 +49,7 @@
   const H = {
     'StartupService.getData'(d) {
       S.player = d.user_data || S.player;
+      if (S.player?.player_id && globalThis.FOE_STATS) FOE_STATS.init(location.hostname.split('.')[0], S.player.player_id, S.player.user_name);
       for (const e of d.city_map?.entities || []) S.entities.set(e.id, e);
       if (d.city_map?.unlocked_areas) S.grids.main = { unlocked: d.city_map.unlocked_areas, blocked: d.city_map.blocked_areas || [] };
       for (const g of d.goodsList || []) { S.goodsEra.set(g.id, g.era); S.goodsName.set(g.id, g.name); }
@@ -115,6 +120,16 @@
     },
     'BoostService.getAllBoosts'(d) {
       if (Array.isArray(d)) S.boosts = d;
+    },
+    // Návštěva cizího města: hráč + jeho mapa. Bonusy se odhadnou z metadat budov (hra je načítá postupně),
+    // proto se snímek přepočítává ještě chvíli po návštěvě (viz statsTick).
+    'OtherPlayerService.visitPlayer'(d) {
+      const op = d?.other_player || d?.otherPlayer;
+      const pid = op?.player_id;
+      if (pid == null || pid === myId() || !Array.isArray(d?.city_map?.entities)) return;
+      S.visit = { pid, data: d, t: Date.now(), rev: -1 };
+      const prev = S.players.get(pid) || {};
+      S.players.set(pid, { ...prev, name: op.name ?? prev.name });
     },
     // --- VB jiných hráčů (struktura podle FoE Helperu, ověřit na logu) ---
     'GreatBuildingsService.getConstruction'(d) {
@@ -478,9 +493,11 @@
     const d = m.data;
     // Názvy provincií GBG přímo ze hry (metadata guild_battleground_maps, načítají se při otevření GBG)
     if (/^guild_battleground_maps/.test(m.metadataId || '')) { S.gbgMapsMeta = d; parseGbgMaps(d); }
+    S.metaRev++;
     const take = (o) => {
       if (!o || typeof o !== 'object') return;
       if (o.id && o.name) S.names.set(o.id, o.name);
+      if (o.id && (o.components || o.abilities || o.width)) { S.metaSeen.add(o.id); const bm = boostMeta(o); if (bm) S.entBoost.set(o.id, bm); }
       // rozměry a potřeba cesty (starý formát width/length, nový components.AllAge)
       const sz = o.components?.AllAge?.placement?.size;
       if (o.id && (o.width || sz)) {
@@ -531,7 +548,13 @@
   // 0.3.20: koeficient „Arc“ se nově ukládá jako 'arc' (sleduje bonus Archy). Starší uložená hodnota z tlačítka Arc (např. 1,99) se převede.
   if (typeof cfg.arcFactor === 'number' && !cfg.arcMigrated && ![1.8, 1.85, 1.9, 1.92, 1.95, 2].includes(cfg.arcFactor)) cfg.arcFactor = 'arc';
   cfg.arcMigrated = true;
-  const saveCfg = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } };
+  const saveCfgLocal = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } };
+  // Nastavení se navíc synchronizuje přes účet prohlížeče a do složky se statistikami (viz stats.js).
+  const saveCfg = () => { cfg._t = Date.now(); saveCfgLocal(); globalThis.FOE_STATS?.saveSettings(cfg); };
+  globalThis.FOE_STATS?.initSettings(cfg, (nc) => {
+    for (const k of Object.keys(cfg)) if (!(k in nc)) delete cfg[k];
+    Object.assign(cfg, CFG_DEFAULT, nc); saveCfgLocal(); renderTabs(); scheduleRender();
+  });
 
   // Sledované provincie – platí pro jednu bitvu (mapa + konec sezóny).
   const watchKey = () => (S.gbg ? `${S.gbg.map?.id}|${S.gbg.endsAt}` : null);
@@ -1182,38 +1205,46 @@
     tavern_visit_fp_drop: 'Hospoda – FP při návštěvě', tavern_visit_silver_drop: 'Hospoda – stříbro při návštěvě',
   };
 
-  function viewBoosts() {
-    if (!S.boosts.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
-    const per = {};   // feature -> {aa,ad,da,dd}
-    const other = {}; // type|feature -> value
-    for (const b of S.boosts) {
+  // Sečte vojenské bonusy ze seznamu Boostů a pasivní bonusy Velkých budov.
+  // per[oblast] = {aa, ad, da, dd}, other['typ|oblast'] = hodnota.
+  function armyFrom(list, ents) {
+    const per = {}, other = {}, gbSum = { aa: 0, ad: 0, da: 0, dd: 0 };
+    for (const b of list) {
       const parts = BOOST_PARTS[b.type];
       if (parts) {
-        const f = (per[b.targetedFeature] ||= { aa: 0, ad: 0, da: 0, dd: 0 });
-        for (const p of parts) f[p] += b.value;
-      } else {
-        const k = `${b.type}|${b.targetedFeature}`;
-        other[k] = (other[k] || 0) + b.value;
+        const f = (per[b.targetedFeature || 'all'] ||= { aa: 0, ad: 0, da: 0, dd: 0 });
+        for (const p of parts) f[p] += b.value || 0;
+      } else if (b.type) {
+        const k = `${b.type}|${b.targetedFeature || 'all'}`;
+        other[k] = (other[k] || 0) + (b.value || 0);
       }
     }
-    // Přičíst pasivní bonusy vlastních Velkých budov.
-    let gbSum = { aa: 0, ad: 0, da: 0, dd: 0 };
-    for (const e of S.entities.values()) {
+    for (const e of ents) {
       if (e.type !== 'greatbuilding') continue;
       for (const bo of entBonuses(e)) {
         const parts = GB_BOOST_PARTS[bo.type];
         if (!parts || bo.bonusCategory?.value !== 'passiveBonus') continue;
         const feat = bo.targetedFeature || 'all';
         const f = (per[feat] ||= { aa: 0, ad: 0, da: 0, dd: 0 });
-        for (const p of parts) { f[p] += bo.value; if (feat === 'all') gbSum[p] += bo.value; }
+        for (const p of parts) { f[p] += bo.value || 0; if (feat === 'all') gbSum[p] += bo.value || 0; }
       }
     }
+    return { per, other, gbSum };
+  }
+  // Výsledná síla v oblasti = „Všude“ + bonus pro oblast (v Kvantových invazích jen vlastní bonusy).
+  const ARMY_AREAS = ['all', 'battleground', 'guild_expedition', 'guild_raids'];
+  function areaValues(per, f) {
     const base = per.all || { aa: 0, ad: 0, da: 0, dd: 0 };
+    if (f === 'all') return { ...base };
+    return Object.fromEntries(['aa', 'ad', 'da', 'dd'].map((k) => [k, (f === 'guild_raids' ? 0 : base[k]) + (per[f]?.[k] || 0)]));
+  }
+
+  function viewBoosts() {
+    if (!S.boosts.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
+    const { per, other, gbSum } = armyFrom(S.boosts, S.entities.values());
     const feats = ['all', ...Object.keys(per).filter((f) => f !== 'all')];
     const row = (f) => {
-      // V Kvantových invazích platí jen bonusy určené pro QI, ne „Všude“.
-      const v = f === 'all' ? base : Object.fromEntries(['aa', 'ad', 'da', 'dd'].map((k) =>
-        [k, (f === 'guild_raids' ? 0 : base[k]) + (per[f]?.[k] || 0)]));
+      const v = areaValues(per, f);
       return `<tr><td>${esc(FEATURE[f] || f)}</td>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(v[k])} %</td>`).join('')}</tr>`;
     };
     const others = Object.entries(other).sort((a, b) => a[0].localeCompare(b[0]));
@@ -1224,6 +1255,93 @@
       <table><tbody>${others.map(([k, v]) => { const [t, f] = k.split('|');
         return `<tr><td>${esc(BOOST_NAME[t] || t)}${f !== 'all' ? ` <span class="muted">(${esc(FEATURE[f] || f)})</span>` : ''}</td><td class="num">${fmt(v)}</td></tr>`; }).join('')}</tbody></table>
       <p class="muted">${S.boosts.length} bonusů ze seznamu + Velké budovy (útočník ${fmt(gbSum.aa)} / ${fmt(gbSum.ad)}, obránce ${fmt(gbSum.da)} / ${fmt(gbSum.dd)} „Všude“).</p>`;
+  }
+
+  // ---------- Statistiky: snímky vlastního města a navštívených měst ----------
+  const ERAS = ['StoneAge', 'BronzeAge', 'IronAge', 'EarlyMiddleAge', 'HighMiddleAge', 'LateMiddleAge', 'ColonialAge',
+    'IndustrialAge', 'ProgressiveEra', 'ModernEra', 'PostModernEra', 'ContemporaryEra', 'TomorrowEra', 'FutureEra',
+    'ArcticFuture', 'OceanicFuture', 'VirtualFuture', 'SpaceAgeMars', 'SpaceAgeAsteroidBelt', 'SpaceAgeVenus',
+    'SpaceAgeJupiterMoon', 'SpaceAgeTitan', 'SpaceAgeSpaceHub'];
+  // Bonusy budovy z metadat po věcích: nový formát components[Věk].boosts.boosts, starý abilities[BoostAbility].boostHints.
+  function boostMeta(o) {
+    let out = null;
+    for (const [era, c] of Object.entries(o.components || {})) {
+      const b = c?.boosts?.boosts;
+      if (Array.isArray(b) && b.length) (out ||= {})[era] = b.map((x) => ({ type: x.type, value: x.value || 0, targetedFeature: x.targetedFeature || 'all' }));
+    }
+    for (const ab of o.abilities || []) {
+      if (ab?.__class__ !== 'BoostAbility') continue;
+      for (const h of ab.boostHints || []) for (const [era, x] of Object.entries(h.boostHintEraMap || {})) {
+        if (x?.type && x.value) ((out ||= {})[era] ||= []).push({ type: x.type, value: x.value, targetedFeature: x.targetedFeature || 'all' });
+      }
+    }
+    return out;
+  }
+  // Bonusy jedné budovy ve městě. Víceérové budovy: entity.level = index věku; jinak věk z metadat nebo věk hráče.
+  // Ověřeno na vlastním městě proti BoostService.getAllBoosts (475 z 476 budov přesně).
+  function entityBoosts(e, era) {
+    const m = S.entBoost.get(e.cityentity_id);
+    if (!m) return [];
+    let ek = /MultiAge/.test(e.cityentity_id) && Number.isInteger(e.level) ? ERAS[e.level] : null;
+    if (!ek) { const ks = Object.keys(m).filter((k) => k !== 'AllAge'); ek = ks.length === 1 ? ks[0] : era; }
+    return [...(m[ek] || []), ...(ek !== 'AllAge' ? m.AllAge || [] : [])];
+  }
+  const dayKey = (t = Date.now()) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const AREA_SHORT = { all: 'all', battleground: 'gbg', guild_expedition: 'ge', guild_raids: 'qi' };
+  const packArmy = (per) => Object.fromEntries(ARMY_AREAS.map((f) => { const v = areaValues(per, f); return [AREA_SHORT[f], [v.aa, v.ad, v.da, v.dd]]; }));
+  function gbListOf(ents) {
+    const out = [];
+    for (const e of ents) {
+      if (e.type !== 'greatbuilding') continue;
+      out.push({ id: e.cityentity_id, n: S.gbInfo.get(e.cityentity_id)?.name || S.names.get(e.cityentity_id) || e.cityentity_id,
+        l: e.level || 0, m: e.max_level || null, inv: e.state?.invested_forge_points ?? null });
+    }
+    return out.sort((a, b) => b.l - a.l);
+  }
+  const arcOf = (ents) => { let c = 0, g = 0; for (const e of ents) for (const b of entBonuses(e)) { if (b.type === 'contribution_boost') c += b.value || 0; if (b.type === 'contribution_boost_gold') g += b.value || 0; } return { c, g }; };
+  const otherNum = (other, type) => other[`${type}|all`] || 0;
+
+  function ownSnapshot() {
+    const ents = [...S.entities.values()];
+    const { per, other } = armyFrom(S.boosts, ents);
+    const me = S.players.get(myId());
+    return { t: Date.now(), name: S.player.user_name, guild: S.player.clan_name || null, era: S.player.era || null,
+      score: me?.score ?? null, army: packArmy(per), fp: otherNum(other, 'forge_points_production'),
+      goods: otherNum(other, 'goods_production'), arc: arcOf(ents), gb: gbListOf(ents), buildings: ents.length };
+  }
+  function visitSnapshot(v) {
+    const d = v.data, op = d.other_player || d.otherPlayer || {};
+    const era = typeof op.era === 'string' ? op.era : op.era?.era || null;
+    const ents = d.city_map.entities;
+    const list = [];
+    let known = 0, unknown = 0;
+    for (const e of ents) {
+      if (e.type === 'greatbuilding' || e.type === 'street' || /^S_/.test(e.cityentity_id || '')) continue;
+      if (S.metaSeen.has(e.cityentity_id)) known++; else unknown++;
+      list.push(...entityBoosts(e, era));
+    }
+    const { per, other } = armyFrom(list, ents);
+    return { t: v.t, name: op.name || null, guild: op.clan_name || op.clan?.name || null, era,
+      score: op.score ?? op.points ?? null, army: packArmy(per), fp: otherNum(other, 'forge_points_production'),
+      goods: otherNum(other, 'goods_production'), arc: arcOf(ents), gb: gbListOf(ents), buildings: ents.length,
+      known, unknown, gbBonus: ents.some((e) => e.type === 'greatbuilding' && entBonuses(e).length) };
+  }
+  // Volá se z překreslování: snímek návštěvy se přepočítá, dokud přicházejí metadata (do 2 min),
+  // vlastní snímek nejvýš jednou za 10 minut (jeden záznam na den, platí poslední).
+  let lastOwnSnap = 0;
+  function statsTick() {
+    const st = globalThis.FOE_STATS;
+    if (!st?.ready()) return;
+    const v = S.visit;
+    if (v && v.rev !== S.metaRev && Date.now() - v.t < 120000) {
+      v.rev = S.metaRev;
+      v.snap = visitSnapshot(v);
+      st.putVisit(v.pid, dayKey(v.t), v.snap);
+    }
+    if (S.player && S.boosts.length && S.entities.size && Date.now() - lastOwnSnap > 600000) {
+      lastOwnSnap = Date.now();
+      st.putOwn(dayKey(), ownSnapshot());
+    }
   }
 
   // ---------- Produkce ----------
@@ -1744,6 +1862,155 @@
   // ---------- O rozšíření ----------
   const REPO = 'https://github.com/jbasta74/foe-reader';
   const VERSION = (() => { try { return chrome.runtime.getManifest().version; } catch { return '?'; } })();
+  // ---------- Záložka Statistiky ----------
+  let statSel = null, statMetric = 'gbg:0', statFilter = '', statMsg = '';
+  const OWN_METRICS = {
+    'all:0': 'Útok útočníka – Všude', 'all:1': 'Obrana útočníka – Všude', 'gbg:0': 'Útok útočníka – GBG', 'gbg:1': 'Obrana útočníka – GBG',
+    'ge:0': 'Útok útočníka – Expedice', 'ge:1': 'Obrana útočníka – Expedice', 'all:3': 'Obrana obránce – Všude',
+    gbl: 'Součet úrovní VB', fp: 'Bonus produkce FP',
+  };
+  const gbLevels = (sn) => (sn.gb || []).reduce((a, g) => a + (g.l || 0), 0);
+  function metricVal(sn, m) {
+    if (m === 'gbl') return gbLevels(sn);
+    if (m === 'fp') return sn.fp || 0;
+    const [a, i] = m.split(':');
+    return sn.army?.[a]?.[+i] ?? null;
+  }
+  const shortDate = (d) => { const [y, mo, da] = d.split('-'); return `${+da}. ${+mo}.${y !== String(new Date().getFullYear()) ? ' ' + y : ''}`; };
+  const pair = (arr, i = 0) => (arr ? `${fmt(arr[i])} / ${fmt(arr[i + 1])}` : '–');
+  const diff = (a, b) => { if (a == null || b == null || a === b) return ''; const d = a - b; return ` <span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${fmt(d)}</span>`; };
+
+  // Jednoduchý spojnicový graf (SVG) – body = dny.
+  function lineChart(points) {
+    if (points.length < 2) return '<p class="muted">Graf bude, až budou data aspoň ze dvou dnů.</p>';
+    const W = 520, H = 120, P = 6;
+    const vals = points.map((p) => p[1]);
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+    const xy = points.map((p, i) => [P + (i * (W - 2 * P)) / (points.length - 1), H - P - ((p[1] - lo) * (H - 2 * P)) / span]);
+    return `<svg viewBox="0 0 ${W} ${H + 16}" style="width:100%;max-width:${W}px;display:block;background:#f3ead6;border-radius:6px">
+      <polyline fill="none" stroke="#b0410f" stroke-width="2" points="${xy.map((q) => q.map((n) => n.toFixed(1)).join(',')).join(' ')}"/>
+      ${xy.map((q, i) => `<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="2.5" fill="#2b2116"><title>${esc(shortDate(points[i][0]))}: ${fmt(points[i][1])}</title></circle>`).join('')}
+      <text x="${P}" y="12" font-size="10" fill="#7a6a50">${fmt(hi)}</text><text x="${P}" y="${H - 8}" font-size="10" fill="#7a6a50">${fmt(lo)}</text>
+      <text x="${P}" y="${H + 12}" font-size="10" fill="#7a6a50">${esc(shortDate(points[0][0]))}</text>
+      <text x="${W - P}" y="${H + 12}" font-size="10" fill="#7a6a50" text-anchor="end">${esc(shortDate(points[points.length - 1][0]))}</text></svg>`;
+  }
+  function armyTable(a) {
+    return `<table><thead><tr><th>Oblast</th><th>Útok útočníka</th><th>Obrana útočníka</th><th>Útok obránce</th><th>Obrana obránce</th></tr></thead><tbody>${
+      [['all', 'Všude'], ['gbg', 'GBG'], ['ge', 'Expedice'], ['qi', 'Kvantové invaze']].map(([k, l]) =>
+        `<tr><td>${l}</td>${(a?.[k] || []).map((v) => `<td class="num">${fmt(v)} %</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  }
+  function gbChips(sn, prev) {
+    const pl = new Map((prev?.gb || []).map((g) => [g.id, g.l]));
+    return (sn.gb || []).map((g) => `<span class="chip">${esc(g.n)} <b>${g.l}</b>${pl.has(g.id) && pl.get(g.id) !== g.l ? `<span class="up"> +${g.l - pl.get(g.id)}</span>` : ''}</span>`).join('') || '<span class="muted">žádné</span>';
+  }
+  function visitCard(sn, prev) {
+    const arc = sn.arc?.c ? ` · Archa ${fmt(sn.arc.c)} %${sn.arc.g ? ` (zlatá ${fmt(sn.arc.g)} %)` : ''}` : '';
+    return `<div class="cfg"><div><b>${esc(sn.name || '?')}</b>${sn.guild ? ` · ${esc(sn.guild)}` : ''}${sn.era ? ` · ${esc(ERA[sn.era] || sn.era)}` : ''}${sn.score != null ? ` · ${fmt(sn.score)} bodů` : ''}${arc}</div>
+      ${armyTable(sn.army)}
+      <div>VB (${(sn.gb || []).length}, Σ úrovní ${fmt(gbLevels(sn))}): ${gbChips(sn, prev)}</div>
+      <div class="muted">Odhad z budov ve městě${sn.gbBonus ? ' a bonusů VB' : ' (bonusy VB hra u cizích měst neposlala)'} – bez spojenců, předmětů a hradu.
+        ${sn.unknown ? `Chybí metadata u ${sn.unknown} z ${sn.known + sn.unknown} budov (hra je načítá postupně, odhad se může ještě zpřesnit).` : ''}</div></div>`;
+  }
+  function viewStats() {
+    const st = globalThis.FOE_STATS;
+    if (!st?.ready()) return '<p class="muted">Statistiky se začnou ukládat po načtení hry (F5).</p>';
+    const D = st.data(), f = st.folder();
+    const store = f.name ? (f.perm === 'granted' ? `složka <b>${esc(f.name)}</b>${f.last ? ` (synchronizováno ${new Date(f.last).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })})` : ''}`
+      : `složka <b>${esc(f.name)}</b> – <button data-act="stgrant">Povolit přístup</button>`) : 'jen v tomto prohlížeči (složku pro sdílení mezi počítači nastavíte v ℹ️)';
+    let h = `<p class="muted">Ukládání: ${store}${f.error ? ` · <span class="hi">${esc(f.error)}</span>` : ''}</p>${statMsg ? `<p class="hi">${esc(statMsg)}</p>` : ''}`;
+    // --- navštívená města ---
+    if (S.visit?.snap) {
+      const hist = D.visits[S.visit.pid];
+      const days = hist ? Object.keys(hist.days).sort() : [];
+      const prev = days.length > 1 ? hist.days[days[days.length - 2]] : null;
+      h += `<h4>Právě navštívené město</h4>${visitCard(S.visit.snap, prev)}`;
+    }
+    const q = statFilter.trim().toLowerCase();
+    const players = Object.entries(D.visits).map(([pid, v]) => {
+      const days = Object.keys(v.days).sort();
+      return { pid, name: v.name, days, last: v.days[days[days.length - 1]] };
+    }).filter((p) => p.last && (!q || `${p.name} ${p.last.guild || ''}`.toLowerCase().includes(q)))
+      .sort((a, b) => b.last.t - a.last.t);
+    h += `<h4>Navštívená města (${Object.keys(D.visits).length})</h4>
+      <div class="copyrow" style="margin-bottom:4px"><input class="pname" data-input="statFilter" placeholder="Hledat hráče nebo cech" value="${esc(statFilter)}"></div>`;
+    if (!players.length) h += '<p class="muted">Zatím žádná – navštivte město jiného hráče (otevřít jeho město ve hře).</p>';
+    else {
+      h += `<table class="log"><thead><tr><th>Hráč</th><th>Cech</th><th class="num">GBG útok / obr.</th><th class="num">Exp. útok / obr.</th><th class="num">VB Σ</th><th>Naposledy</th></tr></thead><tbody>${
+        players.slice(0, 200).map((p) => `<tr data-statpid="${esc(p.pid)}" class="${String(statSel) === p.pid ? 'sel' : ''}"><td>${esc(p.name || '?')}</td><td>${esc(p.last.guild || '')}</td>
+          <td class="num">${pair(p.last.army?.gbg)}</td><td class="num">${pair(p.last.army?.ge)}</td><td class="num">${fmt(gbLevels(p.last))}</td>
+          <td class="muted">${esc(shortDate(p.days[p.days.length - 1]))}${p.days.length > 1 ? ` (${p.days.length}×)` : ''}</td></tr>`).join('')}</tbody></table>`;
+      const sel = statSel != null && D.visits[statSel];
+      if (sel) {
+        const days = Object.keys(sel.days).sort();
+        const last = sel.days[days[days.length - 1]];
+        const isNow = S.visit?.snap && String(S.visit.pid) === String(statSel);
+        h += `<h4>${esc(sel.name || '?')} – vývoj</h4>${isNow ? '' : visitCard(last, days.length > 1 ? sel.days[days[days.length - 2]] : null)}`;
+        if (days.length < 2) h += '<p class="muted">Zatím jen jedna návštěva – vývoj bude vidět po další návštěvě v jiný den.</p>';
+        if (days.length > 1) {
+          h += `<table><thead><tr><th>Den</th><th class="num">GBG útok / obr.</th><th class="num">Exp. útok / obr.</th><th class="num">Všude útok / obr.</th><th class="num">VB Σ</th></tr></thead><tbody>${
+            days.slice().reverse().map((d, i, arr) => { const sn = sel.days[d], pv = sel.days[arr[i + 1]];
+              return `<tr><td>${esc(shortDate(d))}</td><td class="num">${pair(sn.army?.gbg)}${diff(sn.army?.gbg?.[0], pv?.army?.gbg?.[0])}</td>
+                <td class="num">${pair(sn.army?.ge)}</td><td class="num">${pair(sn.army?.all)}</td><td class="num">${fmt(gbLevels(sn))}${diff(gbLevels(sn), pv && gbLevels(pv))}</td></tr>`; }).join('')}</tbody></table>`;
+        }
+      }
+    }
+    // --- vlastní vývoj ---
+    const days = Object.keys(D.own).sort();
+    h += `<h4>Můj vývoj (${days.length} ${days.length === 1 ? 'den' : days.length < 5 ? 'dny' : 'dní'})</h4>`;
+    if (days.length) {
+      h += `<div style="margin-bottom:4px">${Object.entries(OWN_METRICS).map(([k, l]) => `<button class="fbtn ${k === statMetric ? 'on' : ''}" data-statmetric="${k}">${l}</button>`).join('')}</div>
+        ${lineChart(days.map((d) => [d, metricVal(D.own[d], statMetric)]).filter((p) => p[1] != null))}
+        <table><thead><tr><th>Den</th><th class="num">Všude útok / obr.</th><th class="num">GBG útok / obr.</th><th class="num">Exp. útok / obr.</th><th class="num">VB Σ</th><th class="num">Bonus FP</th></tr></thead><tbody>${
+        days.slice().reverse().slice(0, 60).map((d, i, arr) => { const sn = D.own[d], pv = D.own[arr[i + 1]];
+          return `<tr><td>${esc(shortDate(d))}</td><td class="num">${pair(sn.army?.all)}${diff(sn.army?.all?.[0], pv?.army?.all?.[0])}</td>
+            <td class="num">${pair(sn.army?.gbg)}${diff(sn.army?.gbg?.[0], pv?.army?.gbg?.[0])}</td><td class="num">${pair(sn.army?.ge)}</td>
+            <td class="num">${fmt(gbLevels(sn))}${diff(gbLevels(sn), pv && gbLevels(pv))}</td><td class="num">${fmt(sn.fp)}</td></tr>`; }).join('')}</tbody></table>`;
+    } else h += '<p class="muted">První záznam se uloží chvíli po načtení hry.</p>';
+    h += `<p style="margin-top:8px"><button data-act="stcsvown">CSV – můj vývoj</button> <button data-act="stcsvvis">CSV – navštívená města</button>
+      <button data-act="stjson">Záloha (JSON)</button> <button data-act="stimport">Načíst zálohu…</button><input type="file" accept=".json,application/json" data-stimport style="display:none"></p>
+      <p class="muted">CSV se otevře v Excelu (oddělovač středník). Záloha i načtení slučují data – nic se nepřepíše starším.</p>`;
+    return h;
+  }
+  function saveText(name, text, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  const csvCell = (v) => { const s = v == null ? '' : String(v); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csvArmy = (a) => ['all', 'gbg', 'ge', 'qi'].flatMap((k) => a?.[k] || ['', '', '', '']);
+  const CSV_ARMY_HEAD = ['Všude', 'GBG', 'Expedice', 'QI'].flatMap((a) => [`${a} útok útočníka`, `${a} obrana útočníka`, `${a} útok obránce`, `${a} obrana obránce`]);
+  function exportCsv(kind) {
+    const D = FOE_STATS.data();
+    const rows = [];
+    if (kind === 'own') {
+      rows.push(['Den', 'Věk', ...CSV_ARMY_HEAD, 'Počet VB', 'Součet úrovní VB', 'FP bonus', 'Zboží bonus', 'Archa %', ...[]]);
+      for (const d of Object.keys(D.own).sort()) { const s = D.own[d]; rows.push([d, s.era, ...csvArmy(s.army), (s.gb || []).length, gbLevels(s), s.fp, s.goods, s.arc?.c]); }
+    } else {
+      rows.push(['Hráč', 'ID', 'Den', 'Cech', 'Věk', 'Body', ...CSV_ARMY_HEAD, 'Počet VB', 'Součet úrovní VB', 'Archa %']);
+      for (const [pid, v] of Object.entries(D.visits)) for (const d of Object.keys(v.days).sort()) {
+        const s = v.days[d]; rows.push([s.name || v.name, pid, d, s.guild, s.era, s.score, ...csvArmy(s.army), (s.gb || []).length, gbLevels(s), s.arc?.c]);
+      }
+    }
+    saveText(`foe-reader-${D.world}-${kind === 'own' ? 'muj-vyvoj' : 'navstivena-mesta'}-${dayKey()}.csv`, '﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n'), 'text/csv');
+  }
+  function storageSettingsHtml() {
+    const st = globalThis.FOE_STATS;
+    if (!st) return '';
+    const f = st.folder();
+    const status = !f.supported
+      ? `<div class="muted">Tento prohlížeč výběr složky nepodporuje. V Brave ho zapnete v <code>brave://flags/#file-system-access-api</code> (pak restart prohlížeče). Do té doby použijte v Statistikách Zálohu / Načíst zálohu.</div>`
+      : f.name
+        ? `<div>Složka: <b>${esc(f.name)}</b> · ${f.perm === 'granted' ? `přístup povolen${f.last ? `, synchronizováno ${new Date(f.last).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}` : '<span class="hi">přístup je potřeba znovu povolit</span>'}</div>
+           <div>${f.perm === 'granted' ? '<button data-act="stsync">Synchronizovat teď</button>' : '<button data-act="stgrant">Povolit přístup</button>'} <button data-act="stpick">Změnit složku…</button> <button data-act="stforget">Odpojit složku</button></div>`
+        : `<div><button data-act="stpick">Vybrat složku…</button> <span class="muted">např. složka ve OneDrive, Google Drive nebo iCloud Drive</span></div>`;
+    return `<h4>Nastavení – ukládání statistik</h4>
+      <div class="cfg">${status}${f.error ? `<div class="hi">${esc(f.error)}</div>` : ''}
+        <div class="muted">Data se ukládají vždy v prohlížeči. Ve vybrané složce je navíc soubor <code>${esc(st.fileName() || 'foe-reader-<svět>-<hráč>.json')}</code> a <code>foe-reader-nastaveni.json</code>;
+        když stejnou (synchronizovanou) složku vyberete i na druhém počítači, data se při každém uložení sloučí. Po restartu prohlížeče může Chrome chtít přístup povolit znovu
+        (při povolení zvolte „Povolit při každé návštěvě“). Nastavení panelu se navíc synchronizuje přes účet prohlížeče.</div></div>`;
+  }
+
   function viewAbout() {
     const world = location.hostname.split('.')[0];
     return `<h4>FoE Reader ${esc(VERSION)}</h4>
@@ -1761,6 +2028,7 @@
         `<label><input type="checkbox" data-tabtoggle="${id}" ${tabVisible(id) ? 'checked' : ''}> ${l}</label>`).join(' ')}</div>
         <div class="muted">VB, Upozornění a ℹ️ zůstávají vždy. Vypnutá záložka jen zmizí z lišty – data se sbírají dál a upozornění fungují.</div>
         <div><button data-act="resetsize">Obnovit výchozí velikost panelu</button> <span class="muted">Panel se dá roztáhnout tažením za pravý dolní roh.</span></div></div>
+      ${storageSettingsHtml()}
       <p class="muted">Aktualizace: stáhněte novou verzi (git pull nebo ZIP z Releases), v chrome://extensions klikněte u rozšíření na obnovit a ve hře dejte F5.</p>
       <p class="muted">Názvy a sousednost provincií GBG pocházejí z projektu FoE Helper (AGPL-3.0).</p>`;
   }
@@ -1784,7 +2052,7 @@
   const TABS = [
     ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
-    ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
+    ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['stat', 'Statistiky', viewStats], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];
   let tab = 'gb';
   let open = false;
@@ -1850,6 +2118,7 @@
       td.ng.ok{background:#d6efc7}td.ng.wp{background:#fbe3b4}td.ng.nn{background:#e6e0d6;color:#7a6f60}
       .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
       .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
+      .up{color:#2e7d32;font-weight:600}.down{color:#b0410f;font-weight:600}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>
     <button class="btn" id="toggle" title="FoE Reader ${VERSION} · klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
@@ -1882,6 +2151,24 @@
       const r = ev.target.closest('tr[data-key]');
       if (r) { selectedKey = r.dataset.key === selectedKey ? null : r.dataset.key; render(); return; }
       if (ev.target.closest('[data-act="download"]')) download();
+      const sp = ev.target.closest('tr[data-statpid]');
+      if (sp) { statSel = statSel === sp.dataset.statpid ? null : sp.dataset.statpid; render(); return; }
+      const sm = ev.target.closest('[data-statmetric]');
+      if (sm) { statMetric = sm.dataset.statmetric; render(); return; }
+      const sa = ev.target.closest('[data-act^="st"]')?.dataset.act;
+      if (sa && globalThis.FOE_STATS) {
+        const st = FOE_STATS, done = () => render();
+        if (sa === 'stpick') st.pickFolder().then(done);
+        else if (sa === 'stgrant') st.grant().then(done);
+        else if (sa === 'stsync') st.sync().then(done);
+        else if (sa === 'stforget') st.forgetFolder().then(done);
+        else if (sa === 'stcsvown' && st.ready()) exportCsv('own');
+        else if (sa === 'stcsvvis' && st.ready()) exportCsv('visits');
+        else if (sa === 'stjson' && st.ready()) saveText(`foe-reader-${st.data().world}-zaloha-${dayKey()}.json`, st.exportJson(), 'application/json');
+        else if (sa === 'stimport') ev.target.closest('p')?.querySelector('[data-stimport]')?.click();
+        if (sa !== 'stimport') render();
+        return;
+      }
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
       const fg = ev.target.closest('[data-frag]');
       if (fg) { fragFilter = fg.dataset.frag; render(); return; }
@@ -1923,6 +2210,12 @@
     if (el) { cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render(); }
     const pn = ev.target.closest('[data-prov]');
     if (pn) { setProvName(+pn.dataset.prov, pn.value); render(); }
+    const sf = ev.target.closest('[data-input="statFilter"]');
+    if (sf) { statFilter = sf.value; render(); }
+    const fi = ev.target.closest('[data-stimport]');
+    if (fi?.files?.[0]) {
+      fi.files[0].text().then((t) => { try { FOE_STATS.importJson(t); statMsg = 'Záloha načtena a sloučena.'; } catch (e) { statMsg = 'Zálohu se nepodařilo načíst: ' + e.message; } render(); });
+    }
     const inp = ev.target.closest('[data-input="attrTarget"]');
     if (inp) { attrTarget = +inp.value || null; render(); }
   }
@@ -2114,7 +2407,9 @@
     if (pending) return;
     pending = true;
     setTimeout(() => {
-      pending = false; render();
+      pending = false;
+      try { statsTick(); } catch (e) { console.warn('[FoE Reader] statistiky', e); }
+      render();
       if (mapWin && mapWin.rev !== S.mapRev) { mapWin.rev = S.mapRev; renderMapWin(); }
       renderCalcWin();
     }, 500);

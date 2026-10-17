@@ -1,4 +1,6 @@
-# FoE Reader 0.3.40
+# FoE Reader
+
+[![Poslední verze](https://img.shields.io/github/v/release/jbasta74/foe-reader?label=verze)](https://github.com/jbasta74/foe-reader/releases/latest)
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.

@@ -44,8 +44,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Popis změn z RELEASE_NOTES.md (připravuje se spolu se změnami); automatický seznam změn se přidá za něj.
+          NOTES=()
+          if [ -s RELEASE_NOTES.md ]; then NOTES=(--notes-file RELEASE_NOTES.md); fi
           gh release create "v${{ steps.ver.outputs.version }}" \
             "dist/foe-reader-${{ steps.ver.outputs.version }}.zip" \
             --title "FoE Reader ${{ steps.ver.outputs.version }}" \
+            "${NOTES[@]}" \
             --generate-notes \
             --target "$GITHUB_SHA"

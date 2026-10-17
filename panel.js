@@ -1223,7 +1223,7 @@
       if (e.type !== 'greatbuilding') continue;
       for (const bo of entBonuses(e)) {
         const parts = GB_BOOST_PARTS[bo.type];
-        if (!parts || bo.bonusCategory?.value !== 'passiveBonus') continue;
+        if (!parts || bo.bonusCategory?.value !== 'passiveBonus' || bo.isBonusMultiplier) continue;
         const feat = bo.targetedFeature || 'all';
         const f = (per[feat] ||= { aa: 0, ad: 0, da: 0, dd: 0 });
         for (const p of parts) { f[p] += bo.value || 0; if (feat === 'all') gbSum[p] += bo.value || 0; }

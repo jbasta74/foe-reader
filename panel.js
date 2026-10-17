@@ -1863,6 +1863,7 @@
   const REPO = 'https://github.com/jbasta74/foe-reader';
   const VERSION = (() => { try { return chrome.runtime.getManifest().version; } catch { return '?'; } })();
   // ---------- Záložka Statistiky ----------
+  let bonusMsg = '', bonusCode = '';
   let statSel = null, statMetric = 'gbg:0', statFilter = '', statMsg = '';
   const OWN_METRICS = {
     'all:0': 'Útok útočníka – Všude', 'all:1': 'Obrana útočníka – Všude', 'gbg:0': 'Útok útočníka – GBG', 'gbg:1': 'Obrana útočníka – GBG',
@@ -2024,11 +2025,14 @@
         <tr><td>Zachyceno zpráv</td><td>${fmt([...S.log.values()].reduce((a, l) => a + l.count, 0))} (${S.log.size} druhů)</td></tr>
       </tbody></table>
       <h4>Nastavení – zobrazené záložky</h4>
-      <div class="cfg"><div>${TABS.filter(([id]) => !FIXED_TABS.includes(id)).map(([id, l]) =>
+      <div class="cfg"><div>${TABS.filter(([id]) => !FIXED_TABS.includes(id) && (!BONUS_TABS.includes(id) || bonusOn())).map(([id, l]) =>
         `<label><input type="checkbox" data-tabtoggle="${id}" ${tabVisible(id) ? 'checked' : ''}> ${l}</label>`).join(' ')}</div>
         <div class="muted">VB, Upozornění a ℹ️ zůstávají vždy. Vypnutá záložka jen zmizí z lišty – data se sbírají dál a upozornění fungují.</div>
         <div><button data-act="resetsize">Obnovit výchozí velikost panelu</button> <span class="muted">Panel se dá roztáhnout tažením za pravý dolní roh.</span></div></div>
-      ${storageSettingsHtml()}
+      ${bonusOn() ? storageSettingsHtml() : ''}
+      <h4>Bonusové funkce</h4>
+      <div class="cfg">${bonusOn() ? '<div>Odemčeno ✓ – záložka Statistiky a ukládání do složky.</div>'
+        : `<div class="copyrow"><input class="pname" data-input="bonusCode" placeholder="Bonusový kód" value="${esc(bonusCode)}"> <button data-act="bonusunlock">Odemknout</button></div>${bonusMsg ? `<div class="hi">${esc(bonusMsg)}</div>` : ''}`}</div>
       <p class="muted">Aktualizace: stáhněte novou verzi (git pull nebo ZIP z Releases), v chrome://extensions klikněte u rozšíření na obnovit a ve hře dejte F5.</p>
       <p class="muted">Názvy a sousednost provincií GBG pocházejí z projektu FoE Helper (AGPL-3.0).</p>`;
   }
@@ -2155,6 +2159,11 @@
       if (sp) { statSel = statSel === sp.dataset.statpid ? null : sp.dataset.statpid; render(); return; }
       const sm = ev.target.closest('[data-statmetric]');
       if (sm) { statMetric = sm.dataset.statmetric; render(); return; }
+      if (ev.target.closest('[data-act="bonusunlock"]')) {
+        const inp = ev.target.closest('.copyrow')?.querySelector('[data-input="bonusCode"]');
+        bonusUnlock(inp?.value).then((ok) => { bonusMsg = ok ? '' : 'Neplatný kód.'; if (ok) tab = 'stat'; render(); });
+        return;
+      }
       const sa = ev.target.closest('[data-act^="st"]')?.dataset.act;
       if (sa && globalThis.FOE_STATS) {
         const st = FOE_STATS, done = () => render();
@@ -2210,6 +2219,8 @@
     if (el) { cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render(); }
     const pn = ev.target.closest('[data-prov]');
     if (pn) { setProvName(+pn.dataset.prov, pn.value); render(); }
+    const bc = ev.target.closest('[data-input="bonusCode"]');
+    if (bc) { bonusCode = bc.value; bonusUnlock(bonusCode).then((ok) => { if (ok) { bonusCode = ''; bonusMsg = ''; tab = 'stat'; render(); } }); }
     const sf = ev.target.closest('[data-input="statFilter"]');
     if (sf) { statFilter = sf.value; render(); }
     const fi = ev.target.closest('[data-stimport]');
@@ -2229,7 +2240,7 @@
   const saveTabWinCfg = (c) => { try { localStorage.setItem(TABWIN_KEY, JSON.stringify(c)); } catch { /* ignore */ } };
   function openTabWin(id, restore) {
     const def = TABS.find((t) => t[0] === id);
-    if (!def) return;
+    if (!def || (BONUS_TABS.includes(id) && !bonusOn())) return;
     if (tabWins.has(id)) { renderTabWin(id); return; }
     const all = loadTabWinCfg();
     const st = { x: 140 + tabWins.size * 30, y: 80 + tabWins.size * 30, w: 560, h: 480, ...(all[id] || {}) };
@@ -2375,7 +2386,21 @@
 
   // Lišta záložek podle nastavení (vypnuté se nezobrazují; VB, Upozornění a ℹ️ vypnout nejdou).
   const FIXED_TABS = ['gb', 'alerts', 'about'];
-  const tabVisible = (id) => FIXED_TABS.includes(id) || !(cfg.hiddenTabs || []).includes(id);
+  // Bonusové funkce (Statistiky + ukládání do složky) se ukážou až po zadání kódu v ℹ️.
+  // V kódu je jen otisk SHA-256 kódu (velká písmena bez pomlček a mezer). Data se sbírají i bez kódu, jen se neukazují.
+  const BONUS_TABS = ['stat'];
+  const BONUS_HASH = '291ed068b7e9dd970be786fc6d67af2a700fb9d9dd16541f2b7cd0357cf32da9';
+  const bonusOn = () => cfg.bonusKey === BONUS_HASH;
+  async function bonusUnlock(code) {
+    const norm = String(code || '').toUpperCase().replace(/[\s-]+/g, '');
+    if (!norm || !crypto?.subtle) return false;
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(norm));
+    const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    if (hex !== BONUS_HASH) return false;
+    cfg.bonusKey = hex; saveCfg(); renderTabs();
+    return true;
+  }
+  const tabVisible = (id) => (!BONUS_TABS.includes(id) || bonusOn()) && (FIXED_TABS.includes(id) || !(cfg.hiddenTabs || []).includes(id));
   function renderTabs() {
     const el = root?.getElementById('tabs');
     if (!el) return;

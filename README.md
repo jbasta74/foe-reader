@@ -1,6 +1,6 @@
 # FoE Reader
 
-[![Poslední verze](https://img.shields.io/github/v/release/jbasta74/foe-reader?label=verze)](https://github.com/jbasta74/foe-reader/releases/latest)
+[![Poslední verze](https://img.shields.io/github/v/release/jbasta74/foe-reader?label=verze)](https://github.com/jbasta74/foe-reader/releases/latest) [![Ko-fi](https://img.shields.io/badge/Ko--fi-podpořit-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/jbasta74)
 
 Rozšíření pro Chrome (Manifest V3), které **pouze čte** komunikaci Forge of Empires.
 Nic neodesílá a nic nemění.
@@ -73,6 +73,11 @@ Klíče a tvar dat najdete v záložce **Log zpráv**, kde stačí kliknout na �
 - Odpovědi chodí v dávkách: k jednomu požadavku se může přibalit víc zpráv (např. `TimeService.updateTime`).
 - Stav hospody: bez `state` = volná židle, `isSitting` = už tam sedíte, `noChair` = plno, `alreadyVisited` = navštíveno (`nextVisitTime`).
 - Při běhu spolu s FoE Helperem se oba odposlechy řetězí a navzájem si nevadí.
+
+## Podpořte vývoj
+Rozšíření je zdarma a bude zdarma. Pokud vám pomáhá a chcete autorovi poslat kafe, můžete přes Ko-fi – je to čistě dobrovolné:
+
+[![Podpořit na Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jbasta74)
 
 ## Licence a poděkování
 FoE Reader je svobodný software pod licencí **GNU AGPL-3.0** (viz [LICENSE](LICENSE)). Smíte ho používat, upravovat a šířit; upravené verze musí zůstat pod stejnou licencí a se zdrojovým kódem.

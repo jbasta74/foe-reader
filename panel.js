@@ -135,9 +135,7 @@
     'GreatBuildingsService.getConstruction'(d) {
       // Pořadí třídí genericScan (moje vs. cizí VB) – tady ho nepřepisovat.
       // Stupeň VB přímo z odměn (plánky mají tier); platí pro budovu z právě odeslaného dotazu.
-      const tiers = new Set();
-      for (const r of d?.rankings || []) for (const bp of r.reward?.blueprintRewards || []) if (bp.tier?.value) tiers.add(bp.tier.value);
-      const top = [...tiers].sort((a, b) => (TIER_RANK[b] || 0) - (TIER_RANK[a] || 0))[0];
+      const top = rankingTier(d?.rankings);
       if (top && S.gbReq && Date.now() - S.gbReq.time < 15000) {
         const ent = S.entities.get(S.gbReq.entityId);
         (S.gbTierSeen ||= new Map()).set(S.gbReq.entityId, { tier: top, level: ent?.level });
@@ -823,10 +821,20 @@
   // Stupeň platný pro stavbu další úrovně (při překryvu rozsahů vyhrává vyšší).
   const TIER_RANK = { copper: 1, silver: 2, gold: 3 };
   const TIER_ICON = { copper: '🥉', silver: '🥈', gold: '🥇' };
+  // Stupeň úrovně podle plánků v odměnách: rozhoduje stupeň, který dostává nejvíc míst.
+  // (Na úrovni 100 → 101 dostane P1 navíc zlatý plánek, ostatní místa jen měděné – úroveň je ještě měděná; log 17. 10.)
+  function rankingTier(rows) {
+    const cnt = {};
+    for (const r of rows || []) {
+      const t = new Set((r.reward?.blueprintRewards || []).map((bp) => bp.tier?.value).filter(Boolean));
+      for (const v of t) cnt[v] = (cnt[v] || 0) + 1;
+    }
+    return Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a] || (TIER_RANK[b] || 0) - (TIER_RANK[a] || 0))[0] || null;
+  }
   function gbTier(level, entityId) {
     const seen = S.gbTierSeen?.get(entityId);
     if (seen && (seen.level == null || seen.level === level)) return `<span title="podle odměn">${TIER_ICON[seen.tier] || ''}</span>`;
-    const l = level + 1;
+    const l = level; // zlatá od úrovně 101 (budova na úrovni 100 se staví ještě za měděné odměny)
     const hit = (S.gbTiers || []).filter((t) => l >= t.from && l <= t.to).sort((a, b) => (TIER_RANK[b.tier] || 0) - (TIER_RANK[a.tier] || 0))[0];
     return hit ? `<span title="${esc(hit.name)} (úr. ${hit.from}–${hit.to})">${TIER_ICON[hit.tier] || esc(hit.name)}</span>` : '';
   }
@@ -1543,10 +1551,9 @@
   // Zlatý stupeň: rozhodují plánky v odměnách (věkové VB, např. Saturn VI Gate, zůstávají měděné i nad úr. 100).
   // Bez pořadí odhad podle úrovně (cílová úroveň nad 100).
   function isGoldLevel(gb, rows) {
-    const tiers = new Set();
-    for (const r of rows || []) for (const bp of r.reward?.blueprintRewards || []) if (bp.tier?.value) tiers.add(bp.tier.value);
-    if (tiers.size) return tiers.has('gold');
-    return gbNewRules() && gb?.level != null && gb.level + 1 > 100; // staré servery zlatý bonus nemají
+    const t = rankingTier(rows);
+    if (t) return t === 'gold';
+    return gbNewRules() && gb?.level != null && gb.level > 100; // zlatá od úrovně 101; staré servery zlatý bonus nemají
   }
 
   // Kalkulátor pro naposledy otevřenou cizí VB (null = není).

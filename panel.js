@@ -548,10 +548,26 @@
   cfg.arcMigrated = true;
   const saveCfgLocal = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } };
   // Nastavení se navíc synchronizuje přes účet prohlížeče a do složky se statistikami (viz stats.js).
-  const saveCfg = () => { cfg._t = Date.now(); saveCfgLocal(); globalThis.FOE_STATS?.saveSettings(cfg); };
+  // Každá položka má čas poslední změny (cfg._kt), synchronizace pak slučuje po položkách:
+  // z jiného počítače se převezme jen to, co se tam změnilo později (dřív celé nastavení přepsalo i třeba koeficient Archy).
+  const cfgSnap = () => JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(cfg).filter(([k]) => k !== '_t' && k !== '_kt'))));
+  let cfgLast = cfgSnap();
+  const saveCfg = () => {
+    const now = Date.now(), kt = (cfg._kt ||= {});
+    for (const k of Object.keys(cfg)) if (k !== '_t' && k !== '_kt' && JSON.stringify(cfg[k]) !== JSON.stringify(cfgLast[k])) kt[k] = now;
+    cfg._t = now; cfgLast = cfgSnap();
+    saveCfgLocal(); globalThis.FOE_STATS?.saveSettings(cfg);
+  };
   globalThis.FOE_STATS?.initSettings(cfg, (nc) => {
-    for (const k of Object.keys(cfg)) if (!(k in nc)) delete cfg[k];
-    Object.assign(cfg, CFG_DEFAULT, nc); saveCfgLocal(); renderTabs(); scheduleRender();
+    const kt = (cfg._kt ||= {});
+    let changed = false;
+    for (const [k, v] of Object.entries(nc || {})) {
+      if (k === '_t' || k === '_kt') continue;
+      const t = nc._kt?.[k] || 0;
+      if (t > (kt[k] || 0)) { cfg[k] = v; kt[k] = t; changed = true; }
+    }
+    if (!changed) return;
+    cfgLast = cfgSnap(); saveCfgLocal(); renderTabs(); scheduleRender();
   });
 
   // Sledované provincie – platí pro jednu bitvu (mapa + konec sezóny).

@@ -99,8 +99,8 @@
       await writeFile(fileName, D);
       if (settings.cfg) {
         const other = await readFile('foe-reader-nastaveni.json');
-        if (other?.cfg && (other.t || 0) > (settings.t || 0)) applySettings(other);
-        else await writeFile('foe-reader-nastaveni.json', { t: settings.t, cfg: settings.cfg });
+        if (other?.cfg) applySettings(other);
+        await writeFile('foe-reader-nastaveni.json', { t: settings.t, cfg: settings.cfg });
       }
       await local.set(key, D);
       fs.last = Date.now(); fs.error = null; dirty = false;
@@ -118,9 +118,9 @@
 
   // ---------- Nastavení ----------
   const settings = { t: 0, cfg: null, apply: null };
+  // Sloučení po jednotlivých položkách (každá má vlastní čas změny cfg._kt) – starší hodnota z jiného počítače nic nepřepíše.
   function applySettings(s) {
-    settings.t = s.t; settings.cfg = s.cfg;
-    if (settings.apply) settings.apply(s.cfg);
+    if (s?.cfg && settings.apply) settings.apply(s.cfg);
   }
 
   const safe = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.-]+/g, '_').slice(0, 40);
@@ -175,16 +175,16 @@
       merge(D, o); prune(); schedule(); changed();
     },
     // --- nastavení ---
-    // apply(cfg) se zavolá, když se odjinud (synchronizace účtu / složka) načte novější nastavení.
+    // apply(cfg) se zavolá s nastavením odjinud (synchronizace účtu / složka); slučuje panel.js po položkách.
     async initSettings(cfg, apply) {
       settings.apply = apply; settings.cfg = cfg; settings.t = cfg._t || 0;
       try {
         if (chrome?.storage?.sync) {
           const s = (await chrome.storage.sync.get('settings')).settings;
-          if (s?.cfg && (s.t || 0) > settings.t) applySettings(s);
+          if (s?.cfg) applySettings(s);
           chrome.storage.onChanged?.addListener((ch, area) => {
             const nv = area === 'sync' && ch.settings?.newValue;
-            if (nv?.cfg && (nv.t || 0) > settings.t) applySettings(nv);
+            if (nv?.cfg) applySettings(nv);
           });
         }
       } catch { /* bez rozšíření */ }

@@ -1857,7 +1857,11 @@
       ? `<td class="ng ok">✓ ${name(c.fixed.get(sl))}</td>` : `<td><b>${name(c.suggestion.get(sl))}</b></td>`).join('')}</tr>`;
     if (sugRow) sug = `<p class="muted">Možných kombinací: ${fmt(c.cands)}${c.sure ? ' – <b>jisté řešení</b>' : ''}${c.winP != null ? ` · šance na výhru se zbývajícími tahy: <b>${Math.round(c.winP * 100)} %</b>` : ''}.</p>`;
     const cost = n.goods.map((g) => `${goodIcon(g, 22)} ${fmt(n.costs[g])}${S.resources[g] != null ? ` <span class="muted">(máte ${fmt(S.resources[g])})</span>` : ''}`).join(' · ');
-    return `<p>${left != null ? `Zbývá tahů: <b>${left}</b> · ` : ''}Zboží: ${cost}</p>
+    // Tahy zdarma = zdroj negotiation_game_turn (3 + bonus z hospody); pak hra nabízí další tah za diamanty (cenu server předem neposílá).
+    const turnsInfo = left == null ? '' : n.state === 'ongoing' && left === 0
+      ? '<span class="hi">Tahy zdarma došly – další tah už je za diamanty.</span> · '
+      : `Tahy zdarma: <b>${left}</b>${n.turns.length ? ` z ${left + n.turns.length}` : ''}${n.state === 'ongoing' && left === 1 ? ' <span class="hi">(poslední zdarma)</span>' : ''} · `;
+    return `<p>${turnsInfo}Zboží: ${cost}</p>
       <table class="neg"><thead>${head}</thead><tbody>${rows}${sugRow}</tbody></table>${sug}
       <p class="muted">✓ správně · ↔ chce jiná postava · ✗ nikdo další nechce. Návrh jen radí – tah zadáváte ve hře sami.</p>`;
   }

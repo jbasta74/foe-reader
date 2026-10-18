@@ -1859,9 +1859,9 @@
     const cost = n.goods.map((g) => `${goodIcon(g, 22)} ${fmt(n.costs[g])}${S.resources[g] != null ? ` <span class="muted">(máte ${fmt(S.resources[g])})</span>` : ''}`).join(' · ');
     // Tahy zdarma = zdroj negotiation_game_turn (3 + bonus z hospody); pak hra nabízí další tah za diamanty (cenu server předem neposílá).
     const turnsInfo = left == null ? '' : n.state === 'ongoing' && left === 0
-      ? '<span class="hi">Tahy zdarma došly – další tah už je za diamanty.</span> · '
-      : `Tahy zdarma: <b>${left}</b>${n.turns.length ? ` z ${left + n.turns.length}` : ''}${n.state === 'ongoing' && left === 1 ? ' <span class="hi">(poslední zdarma)</span>' : ''} · `;
-    return `<p>${turnsInfo}Zboží: ${cost}</p>
+      ? '<div class="turns out">💎 Tahy zdarma došly – další tah už je za diamanty</div>'
+      : `<div class="turns${n.state === 'ongoing' && left === 1 ? ' last' : ''}">Tahy zdarma: <b>${left}</b>${n.turns.length ? ` z ${left + n.turns.length}` : ''}${n.state === 'ongoing' && left === 1 ? ' – poslední zdarma!' : ''}</div>`;
+    return `${turnsInfo}<p>Zboží: ${cost}</p>
       <table class="neg"><thead>${head}</thead><tbody>${rows}${sugRow}</tbody></table>${sug}
       <p class="muted">✓ správně · ↔ chce jiná postava · ✗ nikdo další nechce. Návrh jen radí – tah zadáváte ve hře sami.</p>`;
   }
@@ -2167,6 +2167,8 @@
       .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
       .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
       tr.safe td{background:#d6efc7}
+      .turns{display:inline-block;font-size:15px;padding:4px 12px;margin:2px 0 4px;border-radius:6px;background:#d6efc7;color:#1f4d1f}.turns b{font-size:17px}
+      .turns.last{background:#fbe3b4;color:#7a4a00}.turns.out{background:#b0410f;color:#fff;font-weight:700}
       .up{color:#2e7d32;font-weight:600}.down{color:#b0410f;font-weight:600}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>

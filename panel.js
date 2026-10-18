@@ -1499,6 +1499,22 @@
       const holder = r.player?.player_id != null ? { name: r.player.name, fp: r.forge_points || 0 } : null;
       return { rank: r.rank, base, val, holder, filled: !!holder && holder.fp >= val };
     });
+    // Zajištění míst: místo je jisté, když po vložení náhozů (v pořadí P1, P2, …) zbývá v budově tak málo FP,
+    // že ho nikdo nepředběhne – ani nejsilnější dosavadní přispěvatel na nižších místech (remíza zůstává tomu, kdo vložil dřív).
+    // Majitel zajišťuje vlastním vkladem: needOwner = kolik FP ještě musí vložit, aby místo zezelenalo.
+    const invested = Math.max(entity.state?.invested_forge_points || 0, rows.reduce((a, r) => a + (r.forge_points || 0), 0));
+    if (total != null) {
+      let left = total - invested;
+      for (const x of places) {
+        if (x.filled) { x.safe = true; x.needOwner = 0; continue; }
+        left -= x.val - (x.holder?.fp || 0);
+        const rival = Math.max(0, ...rows.filter((r) => r.player?.player_id != null && r.rank != null && r.rank > x.rank
+          && r.player.player_id !== ownerRow?.player?.player_id).map((r) => r.forge_points || 0));
+        x.fits = left >= 0;
+        x.needOwner = Math.max(0, rival + left - x.val);
+        x.safe = x.fits && x.needOwner === 0;
+      }
+    }
     const sumP = places.reduce((a, x) => a + x.val, 0);
     const ownShare = total != null ? Math.max(0, total - sumP) : null;
     const free = places.filter((x) => !x.filled && x.val > 0);
@@ -1529,11 +1545,12 @@
     if (!c) return '';
     return `<div class="cfg"><div><b>${esc(title)}</b> · koeficient ${factorPicker(c.gold)}</div>
       <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>
-      <table><thead><tr><th>Místo</th><th>Odměna</th><th>Nához</th><th>Stav</th></tr></thead><tbody>${
-        c.places.map((x) => `<tr class="${x.filled ? 'muted' : ''}"><td>P${x.rank}</td><td class="num">${fmt(x.base)}</td><td class="num"><b>${fmt(x.val)}</b></td>
-          <td>${x.holder ? `${esc(x.holder.name)} ${fmt(x.holder.fp)}${x.filled ? ' ✓' : ' (málo)'}` : 'volné'}</td></tr>`).join('')}
+      <table><thead><tr><th>Místo</th><th>Odměna</th><th>Nához</th><th>Stav</th><th>Zajištění</th></tr></thead><tbody>${
+        c.places.map((x) => `<tr class="${x.filled ? 'muted' : x.safe ? 'safe' : ''}"><td>P${x.rank}</td><td class="num">${fmt(x.base)}</td><td class="num"><b>${fmt(x.val)}</b></td>
+          <td>${x.holder ? `${esc(x.holder.name)} ${fmt(x.holder.fp)}${x.filled ? ' ✓' : ' (málo)'}` : 'volné'}</td>
+          <td>${x.filled ? '' : x.safe ? '🔒 zajištěno' : x.fits === false ? '<span class="muted">nevejde se</span>' : x.needOwner != null ? `vložte ještě <b>${fmt(x.needOwner)}</b>` : ''}</td></tr>`).join('')}
         <tr><td colspan="2">Vlastní podíl (celkem ${fmt(c.total)} − náhozy ${fmt(c.sumP)})</td><td class="num"><b>${fmt(c.ownShare)}</b></td>
-          <td>vloženo ${fmt(c.ownerFp)}, zbývá <b>${fmt(c.ownLeft)}</b></td></tr>
+          <td colspan="2">vloženo ${fmt(c.ownerFp)}, zbývá <b>${fmt(c.ownLeft)}</b></td></tr>
       </tbody></table>`;
   }
 
@@ -2129,6 +2146,7 @@
       td.ng.ok{background:#d6efc7}td.ng.wp{background:#fbe3b4}td.ng.nn{background:#e6e0d6;color:#7a6f60}
       .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
       .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
+      tr.safe td{background:#d6efc7}
       .up{color:#2e7d32;font-weight:600}.down{color:#b0410f;font-weight:600}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>

@@ -1778,7 +1778,6 @@
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
         <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
         <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')} ${chk('negoGbg', 'pomocník i v GBG')}</div>
-        <div class="muted">Pomocník v GBG je ve výchozím stavu vypnutý (stejně jako ve FoE Helperu): GBG je soutěž mezi cechy a InnoGames u nástrojů hlídá férovost přísněji. Zapnutí je na vaše riziko.</div>
         <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
         <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
       </div>
@@ -1841,7 +1840,7 @@
   function viewNego() {
     const n = S.nego;
     if (!n) return '<p class="muted">Začněte ve hře vyjednávání (expedice) – tady se ukáže návrh dalšího tahu.</p>';
-    if (n.gbg) return '<p class="muted">Vyjednávání v GBG: pomocník je ve výchozím stavu vypnutý (jako ve FoE Helperu). Zapnout ho jde v záložce 🔔 → Vyjednávání – na vlastní riziko.</p>';
+    if (n.gbg) return '<p class="muted">Vyjednávání v GBG: pomocník je vypnutý – zapnete ho v záložce 🔔 → Vyjednávání.</p>';
     const name = (gi) => goodIcon(n.goods[gi]);
     const CLS = { correct: 'ok', wrong_person: 'wp', not_needed: 'nn' };
     const TXT = { correct: '✓', wrong_person: '↔', not_needed: '✗' };

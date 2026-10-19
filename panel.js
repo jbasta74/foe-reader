@@ -409,7 +409,7 @@
     n.calc = null;
     setTimeout(() => { // výpočet mimo zpracování zprávy
       try {
-        const left = n.inGbg ? null : S.resources.negotiation_game_turn; // počet tahů v GBG zatím neověřen – počítá se se 3
+        const left = S.resources.negotiation_game_turn; // i v GBG (log 19. 10.: hra ho při zahájení nastaví na 3)
         n.calc = globalThis.FOE_NEGO.solve({ nGoods: n.goods.length, slots: NEGO_SLOTS, turns: n.turns, turnsLeft: left > 0 ? left : null });
       } catch (e) { console.warn('[FoE Reader] vyjednávání', e); n.calc = { error: String(e) }; }
       scheduleRender();
@@ -1844,7 +1844,7 @@
     const name = (gi) => goodIcon(n.goods[gi]);
     const CLS = { correct: 'ok', wrong_person: 'wp', not_needed: 'nn' };
     const TXT = { correct: '✓', wrong_person: '↔', not_needed: '✗' };
-    const left = n.inGbg ? null : S.resources.negotiation_game_turn;
+    const left = S.resources.negotiation_game_turn;
     const head = `<tr><th></th>${[...Array(NEGO_SLOTS).keys()].map((i) => `<th>Postava ${i + 1}</th>`).join('')}</tr>`;
     const rows = n.turns.map((t, i) => `<tr><td>Tah ${i + 1}</td>${[...Array(NEGO_SLOTS).keys()].map((sl) => t.guess.has(sl)
       ? `<td class="ng ${CLS[t.result.get(sl)] || ''}">${TXT[t.result.get(sl)] || ''} ${name(t.guess.get(sl))}</td>` : '<td class="muted">–</td>').join('')}</tr>`).join('');

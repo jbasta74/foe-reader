@@ -1,2 +1,2 @@
 ## Novinky
-- Vyjednávání: nový přepínač **„pomocník i v GBG“** (🔔 → Vyjednávání). Počet tahů v GBG zatím není ověřený (počítá se se 3).
+- Vyjednávání: nový přepínač **„pomocník i v GBG“** (🔔 → Vyjednávání). Tahy zdarma se v GBG počítají stejně jako na expedici (ověřeno na logu).

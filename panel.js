@@ -373,14 +373,16 @@
   }
 
   // ===================== Vyjednávání =====================
-  // Jen radí – tah zadává hráč ve hře. V GBG je vypnuté (stejně jako ve FoE Helperu).
+  // Jen radí – tah zadává hráč ve hře. V GBG je ve výchozím stavu vypnuté (stejně jako ve FoE Helperu),
+  // zapnout jde v nastavení (cfg.negoGbg) – GBG je soutěžní režim, riziko vůči pravidlům Inno nese hráč.
   S.nego = null;
   const NEGO_SLOTS = 5;
   function negoStart(d) {
-    if (d.context === 'guildBattleground') { S.nego = { gbg: true, t: Date.now() }; return; }
+    const inGbg = d.context === 'guildBattleground';
+    if (inGbg && !cfg.negoGbg) { S.nego = { gbg: true, t: Date.now() }; return; }
     const costs = d.possibleCosts?.resources || {};
     const goods = Object.keys(costs);
-    S.nego = { context: d.context, goods, costs, turns: [], state: 'ongoing', t: Date.now(), calc: null };
+    S.nego = { context: d.context, inGbg, goods, costs, turns: [], state: 'ongoing', t: Date.now(), calc: null };
     negoCalc();
     if (cfg.negoPopup) setTimeout(() => openTabWin('neg'), 50);
     else if (open && tab !== 'neg' && tabVisible('neg')) tab = 'neg';
@@ -407,7 +409,7 @@
     n.calc = null;
     setTimeout(() => { // výpočet mimo zpracování zprávy
       try {
-        const left = S.resources.negotiation_game_turn;
+        const left = n.inGbg ? null : S.resources.negotiation_game_turn; // počet tahů v GBG zatím neověřen – počítá se se 3
         n.calc = globalThis.FOE_NEGO.solve({ nGoods: n.goods.length, slots: NEGO_SLOTS, turns: n.turns, turnsLeft: left > 0 ? left : null });
       } catch (e) { console.warn('[FoE Reader] vyjednávání', e); n.calc = { error: String(e) }; }
       scheduleRender();
@@ -538,6 +540,7 @@
     limOn: true, limLead: 24, limInv: true,
     hiddenTabs: [], // záložky vypnuté v Nastavení (ℹ️)
     gbCalcPopup: true,
+    negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
     negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy
   };
   const cfg = (() => {
@@ -1774,7 +1777,8 @@
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
         <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
-        <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')}</div>
+        <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')} ${chk('negoGbg', 'pomocník i v GBG')}</div>
+        <div class="muted">Pomocník v GBG je ve výchozím stavu vypnutý (stejně jako ve FoE Helperu): GBG je soutěž mezi cechy a InnoGames u nástrojů hlídá férovost přísněji. Zapnutí je na vaše riziko.</div>
         <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
         <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
       </div>
@@ -1837,11 +1841,11 @@
   function viewNego() {
     const n = S.nego;
     if (!n) return '<p class="muted">Začněte ve hře vyjednávání (expedice) – tady se ukáže návrh dalšího tahu.</p>';
-    if (n.gbg) return '<p class="muted">Vyjednávání v GBG: pomocník je tu záměrně vypnutý.</p>';
+    if (n.gbg) return '<p class="muted">Vyjednávání v GBG: pomocník je ve výchozím stavu vypnutý (jako ve FoE Helperu). Zapnout ho jde v záložce 🔔 → Vyjednávání – na vlastní riziko.</p>';
     const name = (gi) => goodIcon(n.goods[gi]);
     const CLS = { correct: 'ok', wrong_person: 'wp', not_needed: 'nn' };
     const TXT = { correct: '✓', wrong_person: '↔', not_needed: '✗' };
-    const left = S.resources.negotiation_game_turn;
+    const left = n.inGbg ? null : S.resources.negotiation_game_turn;
     const head = `<tr><th></th>${[...Array(NEGO_SLOTS).keys()].map((i) => `<th>Postava ${i + 1}</th>`).join('')}</tr>`;
     const rows = n.turns.map((t, i) => `<tr><td>Tah ${i + 1}</td>${[...Array(NEGO_SLOTS).keys()].map((sl) => t.guess.has(sl)
       ? `<td class="ng ${CLS[t.result.get(sl)] || ''}">${TXT[t.result.get(sl)] || ''} ${name(t.guess.get(sl))}</td>` : '<td class="muted">–</td>').join('')}</tr>`).join('');
@@ -1861,7 +1865,8 @@
     const turnsInfo = left == null ? '' : n.state === 'ongoing' && left === 0
       ? '<div class="turns out">💎 Tahy zdarma došly – další tah už je za diamanty</div>'
       : `<div class="turns${n.state === 'ongoing' && left === 1 ? ' last' : ''}">Tahy zdarma: <b>${left}</b>${n.turns.length ? ` z ${left + n.turns.length}` : ''}${n.state === 'ongoing' && left === 1 ? ' – poslední zdarma!' : ''}</div>`;
-    return `${turnsInfo}<p>Zboží: ${cost}</p>
+    const gbgWarn = n.inGbg ? '<p class="hi">⚠ GBG je soutěžní režim – pomocník je zapnutý na vaše riziko (pravidla InnoGames).</p>' : '';
+    return `${gbgWarn}${turnsInfo}<p>Zboží: ${cost}</p>
       <table class="neg"><thead>${head}</thead><tbody>${rows}${sugRow}</tbody></table>${sug}
       <p class="muted">✓ správně · ↔ chce jiná postava · ✗ nikdo další nechce. Návrh jen radí – tah zadáváte ve hře sami.</p>`;
   }

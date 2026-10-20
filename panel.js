@@ -1242,6 +1242,7 @@
     defender_attack_boost: ['da'],           // Archa (GBG), Blue Galaxy (Exp.)
     defense_boost: ['dd'],                   // Observatory (GBG), Zeus (Exp.)
     attacker_attack_boost: ['aa'], defender_defense_boost: ['dd'],
+    attack_boost: ['aa'],                    // Zeus – násobitel útoku v expedici
   };
   const FEATURE = { all: 'Všude', battleground: 'GBG', guild_expedition: 'Expedice', guild_raids: 'Kvantové invaze' };
   const BOOST_NAME = {
@@ -1261,7 +1262,8 @@
   // Sečte vojenské bonusy ze seznamu Boostů a pasivní bonusy Velkých budov.
   // per[oblast] = {aa, ad, da, dd}, other['typ|oblast'] = hodnota.
   function armyFrom(list, ents) {
-    const per = {}, other = {}, gbSum = { aa: 0, ad: 0, da: 0, dd: 0 };
+    const per = {}, other = {}, gbSum = { aa: 0, ad: 0, da: 0, dd: 0 }, mult = {};
+    Object.defineProperty(per, 'mult', { value: mult, enumerable: false });
     for (const b of list) {
       const parts = BOOST_PARTS[b.type];
       if (parts) {
@@ -1276,8 +1278,11 @@
       if (e.type !== 'greatbuilding') continue;
       for (const bo of entBonuses(e)) {
         const parts = GB_BOOST_PARTS[bo.type];
-        if (!parts || bo.bonusCategory?.value !== 'passiveBonus' || bo.isBonusMultiplier) continue;
+        if (!parts || bo.bonusCategory?.value !== 'passiveBonus') continue;
         const feat = bo.targetedFeature || 'all';
+        // Násobitel (isBonusMultiplier): navýší celkový bonus v oblasti o value % – ověřeno proti radnici 20. 10.
+        // (expedice: Zeus 2 + Virtual Future 1 → útok útočníka ×1,03: 33 222 → 34,2K jako ve hře)
+        if (bo.isBonusMultiplier) { const m = (mult[feat] ||= { aa: 0, ad: 0, da: 0, dd: 0 }); for (const p of parts) m[p] += bo.value || 0; continue; }
         const f = (per[feat] ||= { aa: 0, ad: 0, da: 0, dd: 0 });
         for (const p of parts) { f[p] += bo.value || 0; if (feat === 'all') gbSum[p] += bo.value || 0; }
       }
@@ -1288,20 +1293,22 @@
   const ARMY_AREAS = ['all', 'battleground', 'guild_expedition', 'guild_raids'];
   function areaValues(per, f) {
     const base = per.all || { aa: 0, ad: 0, da: 0, dd: 0 };
-    if (f === 'all') return { ...base };
-    return Object.fromEntries(['aa', 'ad', 'da', 'dd'].map((k) => [k, (f === 'guild_raids' ? 0 : base[k]) + (per[f]?.[k] || 0)]));
+    const m = per.mult || {};
+    const factor = (k) => 1 + ((m.all?.[k] || 0) + (f !== 'all' ? m[f]?.[k] || 0 : 0)) / 100;
+    if (f === 'all') return Object.fromEntries(['aa', 'ad', 'da', 'dd'].map((k) => [k, Math.round(base[k] * factor(k))]));
+    return Object.fromEntries(['aa', 'ad', 'da', 'dd'].map((k) => [k, Math.round(((f === 'guild_raids' ? 0 : base[k]) + (per[f]?.[k] || 0)) * factor(k))]));
   }
 
   function viewBoosts() {
     if (!S.boosts.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
     const { per, other, gbSum } = armyFrom(S.boosts, S.entities.values());
-    const feats = ['all', ...Object.keys(per).filter((f) => f !== 'all')];
+    const feats = ['all', ...new Set([...Object.keys(per), ...Object.keys(per.mult)].filter((f) => f !== 'all'))];
     const row = (f) => {
-      const v = areaValues(per, f);
-      return `<tr><td>${esc(FEATURE[f] || f)}</td>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(v[k])} %</td>`).join('')}</tr>`;
+      const v = areaValues(per, f), m = per.mult[f] || {};
+      return `<tr><td>${esc(FEATURE[f] || f)}</td>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(v[k])} %${m[k] ? ` <span class="muted" title="násobitel z Velkých budov">×${(1 + m[k] / 100).toFixed(2).replace('.', ',')}</span>` : ''}</td>`).join('')}</tr>`;
     };
     const others = Object.entries(other).sort((a, b) => a[0].localeCompare(b[0]));
-    return `<h4>Armáda (oblast = „Všude“ + bonus pro oblast; QI jen vlastní)</h4>
+    return `<h4>Armáda (oblast = „Všude“ + bonus pro oblast, × násobitel z VB; QI jen vlastní)</h4>
       <table><thead><tr><th>Oblast</th><th>Útok útočníka</th><th>Obrana útočníka</th><th>Útok obránce</th><th>Obrana obránce</th></tr></thead>
       <tbody>${feats.map(row).join('')}</tbody></table>
       <h4>Ostatní bonusy</h4>

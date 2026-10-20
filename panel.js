@@ -58,6 +58,9 @@
       if (d && d.time) S.serverOffset = d.time - Date.now() / 1000;
     },
     'NegotiationGameService.submitTurn'(d) { negoTurn(d); },
+    // Zprávy: kategorie konverzace (social = soukromé, guild = cechovní) chodí těsně před samotnou zprávou.
+    'ConversationService.getConversationUpdate'(d) { if (d?.conversationId != null && d.category) (S.convCat ||= new Map()).set(d.conversationId, d.category); },
+    'ConversationService.getNewMessage'(d) { newMessage(d); },
     // Příhody ve městě: typ, druh místa, vzácnost, čas objevení/zmizení (i budoucí). Odměna až po vybrání.
     'HiddenRewardService.getOverview'(d) {
       if (Array.isArray(d?.hiddenRewards)) S.incidents = { list: d.hiddenRewards, time: Date.now() };
@@ -484,6 +487,7 @@
       S.ring.push({ t: Date.now(), channel: 'req', key: `${r.requestClass}.${r.requestMethod}`, data: r.requestData });
       if (S.ring.length > RING_MAX) S.ring.shift();
     }
+    if (r?.requestClass === 'ConversationService' && ['markMessageRead', 'getConversation'].includes(r.requestMethod) && Array.isArray(r.requestData)) messageRead(r.requestData[0]);
     if (r?.requestClass === 'GreatBuildingsService' && r.requestMethod === 'getConstruction' && Array.isArray(r.requestData)) {
       S.gbReq = { entityId: r.requestData[0], playerId: r.requestData[1], time: Date.now() };
     }
@@ -540,6 +544,7 @@
     limOn: true, limLead: 24, limInv: true,
     hiddenTabs: [], // záložky vypnuté v Nastavení (ℹ️)
     gbCalcPopup: true,
+    msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
     negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
     negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy
   };
@@ -677,6 +682,24 @@
     if (tb) tb.textContent = S.unread ? `🔔 ${S.unread}` : '🔔';
     clampHost();
   }
+
+  // --- Nová zpráva (soukromá / cechovní). Když konverzaci máte ve hře otevřenou (hra ji hned označí jako přečtenou),
+  // upozornění se nezobrazí. ---
+  const msgPending = new Map(); // conversationId -> timeout
+  function newMessage(d) {
+    const sender = d?.sender;
+    if (!d || d.deleted || !sender || sender.player_id === myId()) return;
+    const cat = S.convCat?.get(d.conversationId);
+    const on = cat === 'guild' ? cfg.msgGuild : cat === 'social' ? cfg.msgSocial : false;
+    if (!on) return;
+    clearTimeout(msgPending.get(d.conversationId));
+    msgPending.set(d.conversationId, setTimeout(() => {
+      msgPending.delete(d.conversationId);
+      const txt = String(d.text || (d.attachment ? '📎 příloha' : '')).replace(/\s+/g, ' ').slice(0, 90);
+      alert('msg', `✉ ${cat === 'guild' ? 'Cech' : 'Zpráva'} – ${sender.name}: ${txt}`, false, !cfg.msgSound);
+    }, 4000));
+  }
+  function messageRead(convId) { clearTimeout(msgPending.get(convId)); msgPending.delete(convId); }
 
   // --- GBG: změna provincie (přes WebSocket) ---
   function gbgMe() { return S.gbg?.currentParticipantId ?? S.gbg?.currentPlayerParticipantId; }
@@ -1781,6 +1804,7 @@
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
         <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
         <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')} ${chk('negoGbg', 'pomocník i v GBG')}</div>
+        <div><b>Zprávy:</b> ${chk('msgSocial', 'soukromé')} ${chk('msgGuild', 'cechovní')} ${chk('msgSound', 'se zvukem')}</div>
         <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
         <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
       </div>

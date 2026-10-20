@@ -36,7 +36,7 @@ Hlavní panel se dá roztáhnout oběma směry za pravý dolní roh, velikost se
 - **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
 - **Suroviny**, **Log**.
 - **Sklad**: zboží všech věků (po věcích, se součtem a zvýrazněním nejslabšího zboží) a části (fragmenty) – kolik máte, kolik je potřeba, kolikrát jde sestavit a co chybí.
-- **🔔 Upozornění**: historie upozornění a nastavení.
+- **🔔 Upozornění**: historie upozornění a nastavení (mj. nové soukromé a cechovní zprávy).
 - **ℹ️ O rozšíření**: verze, odkazy na GitHub (kód, vydání, hlášení chyb).
 
 ## Upozornění

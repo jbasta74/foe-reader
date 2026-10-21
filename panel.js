@@ -1603,6 +1603,94 @@
     return h;
   }
 
+  // ---------- Rating efektivity budov (postup jako FoE Helper: hodnota na pole / očekávaná hodnota na pole) ----------
+  // Výchozí očekávané hodnoty na pole převzaty z FoE Helperu (AGPL). Klíč: druh produkce nebo bonusu.
+  const RATE_TYPES = [
+    ['strategy_points', 'FP', 8, true], ['forge_points_production', 'Bonus produkce FP', 0.25, true],
+    ['g_prev', 'Zboží – předchozí věk', 7, true], ['g_cur', 'Zboží – aktuální věk', 6, true], ['g_next', 'Zboží – další věk', 5, true],
+    ['goods_production', 'Bonus produkce zboží', 0.25, true], ['guild', 'Cechovní pokladna', 10, true], ['units', 'Jednotky', 4, true],
+    ['frags', 'Fragmenty', 0.8, false], ['money', 'Mince', 0, false], ['supplies', 'Zásoby', 0, false], ['medals', 'Medaile', 0, false],
+    ['aa-all', 'Útok útočníka – všude', 8, true], ['ad-all', 'Obrana útočníka – všude', 8, true],
+    ['da-all', 'Útok obránce – všude', 8, true], ['dd-all', 'Obrana obránce – všude', 8, true],
+    ['aa-battleground', 'Útok útočníka – GBG', 10, true], ['ad-battleground', 'Obrana útočníka – GBG', 10, true],
+    ['da-battleground', 'Útok obránce – GBG', 10, true], ['dd-battleground', 'Obrana obránce – GBG', 10, true],
+    ['aa-guild_expedition', 'Útok útočníka – expedice', 11, true], ['ad-guild_expedition', 'Obrana útočníka – expedice', 11, true],
+    ['da-guild_expedition', 'Útok obránce – expedice', 11, true], ['dd-guild_expedition', 'Obrana obránce – expedice', 11, true],
+    ['guild_raids_action_points_collection', 'QI akce – sběr', 8, true], ['guild_raids_coins_start', 'QI mince – start', 5000, true],
+    ['guild_raids_supplies_start', 'QI zásoby – start', 5000, true],
+    ['aa-guild_raids', 'Útok útočníka – QI', 0, false], ['ad-guild_raids', 'Obrana útočníka – QI', 0, false],
+  ];
+  const rateW = () => { const w = cfg.ratingW || {}; return RATE_TYPES.map(([k, l, d, on]) => ({ k, l, per: w[k]?.per ?? d, on: w[k]?.on ?? on })); };
+  const RATE_SKIP = ['street', 'off_grid', 'hub_part', 'hub_main', 'main_building', 'greatbuilding', 'military', 'friends_tavern', 'outpost_ship'];
+  let rateSel = { size: 0, q: '', asc: true, settings: false };
+  // Hodnoty budovy podle druhů ratingu (produkce za den + bonusy).
+  function rateValues(e) {
+    const b = buildingDaily(e), v = { ...b.res };
+    for (const x of entityBoosts(e, S.player?.era)) {
+      const parts = BOOST_PARTS[x.type];
+      if (parts) for (const p of parts) { const k = `${p}-${x.targetedFeature || 'all'}`; v[k] = (v[k] || 0) + (x.value || 0); }
+      else v[x.type] = (v[x.type] || 0) + (x.value || 0);
+    }
+    return { v, src: b.src || (S.entBoost.has(e.cityentity_id) ? 'meta' : '') };
+  }
+  function ratedBuildings() {
+    const W = rateW().filter((t) => t.on && t.per > 0);
+    const groups = new Map();
+    for (const e of S.entities.values()) {
+      if (RATE_SKIP.includes(e.type)) continue;
+      const sz = S.ent.get(e.cityentity_id);
+      if (!sz) continue;
+      const m = S.entProd.get(e.cityentity_id) || S.entBoost.get(e.cityentity_id);
+      const era = m ? entEra(e, m, S.player?.era) : '';
+      const key = `${e.cityentity_id}|${era}`;
+      const g = groups.get(key);
+      if (g) { g.n++; continue; }
+      const { v, src } = rateValues(e);
+      // pole: plocha + podíl cesty (polovina u budov širokých 1 pole), jako FoE Helper
+      const road = sz.road ? (sz.w === 1 || sz.l === 1 ? 0.5 : 1) * sz.road : 0;
+      const tiles = sz.w * sz.l + road;
+      const parts = W.map((t) => [t, (v[t.k] || 0) / tiles / t.per]).filter(([, x]) => x > 0);
+      groups.set(key, { id: e.cityentity_id, era, name: S.names.get(e.cityentity_id) || entName(e.cityentity_id), n: 1, w: sz.w, l: sz.l, road, tiles, v, src,
+        score: parts.reduce((a, [, x]) => a + x, 0), parts: parts.sort((a, b) => b[1] - a[1]) });
+    }
+    const out = [...groups.values()];
+    // stejná budova v různých věcích: do názvu přidat věk
+    const cnt = {};
+    for (const b of out) cnt[b.name] = (cnt[b.name] || 0) + 1;
+    for (const b of out) if (cnt[b.name] > 1 && b.era) b.name += ` (${ERA[b.era] || b.era})`;
+    return out;
+  }
+  function viewRating() {
+    if (!S.entities.size) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
+    const all = ratedBuildings();
+    const sizes = [...new Set(all.map((b) => b.w * b.l))].sort((a, b) => a - b);
+    const q = rateSel.q.trim().toLowerCase();
+    const list = all.filter((b) => (!rateSel.size || b.w * b.l === rateSel.size) && (!q || b.name.toLowerCase().includes(q)))
+      .sort((a, b) => (rateSel.asc ? a.score - b.score : b.score - a.score));
+    const r2 = (x) => (Math.round(x * 100) / 100).toLocaleString('cs-CZ');
+    const goods = (v) => (v.g_prev || 0) + (v.g_cur || 0) + (v.g_next || 0);
+    let h = `<div style="margin-bottom:4px"><button class="fbtn ${!rateSel.settings ? 'on' : ''}" data-rate="list">Výsledky</button><button class="fbtn ${rateSel.settings ? 'on' : ''}" data-rate="settings">Nastavení hodnot</button></div>`;
+    if (rateSel.settings) {
+      return h + `<p class="muted">Kolik dané věci má budova vyrobit na jedno pole (včetně podílu cesty), aby za ni dostala 1 bod. Skóre = součet bodů.</p>
+        <table><thead><tr><th>Započítat</th><th>Druh</th><th class="num">Na pole</th></tr></thead><tbody>${rateW().map((t) =>
+          `<tr><td><input type="checkbox" data-ratew="${t.k}" data-f="on" ${t.on ? 'checked' : ''}></td><td>${esc(t.l)}</td>
+           <td class="num"><input type="number" step="0.05" min="0" style="width:80px" data-ratew="${t.k}" data-f="per" value="${t.per}"></td></tr>`).join('')}</tbody></table>
+        <p><button data-act="ratereset">Obnovit výchozí hodnoty</button></p>`;
+    }
+    h += `<div class="copyrow" style="margin-bottom:4px;flex-wrap:wrap;align-items:center">
+        <input class="pname" data-input="rateQ" placeholder="Hledat budovu" value="${esc(rateSel.q)}">
+        <span><button class="fbtn ${!rateSel.size ? 'on' : ''}" data-ratesize="0">vše</button>${sizes.map((z) => `<button class="fbtn ${rateSel.size === z ? 'on' : ''}" data-ratesize="${z}">${z}</button>`).join('')}</span>
+        <button class="fbtn" data-rate="sort">${rateSel.asc ? 'nejhorší nahoře ▲' : 'nejlepší nahoře ▼'}</button></div>
+      <table><thead><tr><th>Budova</th><th class="num">Polí</th><th class="num">Skóre</th><th class="num">FP/den</th><th class="num">Zboží/den</th><th>Skladba skóre</th></tr></thead><tbody>${
+      list.map((b) => `<tr title="${esc(b.id)}"><td>${esc(b.name)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td>
+        <td class="num">${b.w}×${b.l}${b.road ? `+${r2(b.road)}` : ''}</td><td class="num"><b>${r2(b.score)}</b></td>
+        <td class="num">${b.v.strategy_points ? fmt(Math.round(b.v.strategy_points)) : ''}</td><td class="num">${goods(b.v) ? fmt(Math.round(goods(b.v))) : ''}</td>
+        <td class="muted" style="font-size:11px">${b.parts.slice(0, 3).map(([t, x]) => `${esc(t.l)} ${r2(x)}`).join(' · ')}</td></tr>`).join('')}</tbody></table>
+      <p class="muted">Postup jako FoE Helper: hodnota na pole (plocha + podíl cesty) / očekávaná hodnota na pole, sečteno přes zapnuté druhy. Produkce za 24 h s motivací,
+        bez bonusů sad a řetězů. Stejné budovy stejného věku jsou v jednom řádku. Hodnoty si upravíte v „Nastavení hodnot“.</p>`;
+    return h;
+  }
+
   function viewProduction() {
     const sw = `<p>${[['cycle', 'Aktuální cyklus'], ['daily', 'Denní přehled']].map(([k, l]) => `<button class="fbtn ${prodView === k ? 'on' : ''}" data-prodview="${k}">${l}</button>`).join('')}</p>`;
     if (prodView === 'daily') return sw + (S.entities.size ? viewDaily() : '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>');
@@ -2267,9 +2355,9 @@
   }
 
   // Ikony nástrojové lišty
-  const ICONS = { gb: '🏛️', prod: '🏭', boost: '💪', gbg: '⚔️', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', log: '📜', alerts: '🔔', about: 'ℹ️' };
+  const ICONS = { gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', log: '📜', alerts: '🔔', about: 'ℹ️' };
   const TABS = [
-    ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction],
+    ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction], ['rate', 'Rating', viewRating],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
     ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['stat', 'Statistiky', viewStats], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];
@@ -2407,6 +2495,11 @@
         return;
       }
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
+      const ra = ev.target.closest('[data-rate]');
+      if (ra) { const a = ra.dataset.rate; if (a === 'sort') rateSel.asc = !rateSel.asc; else rateSel.settings = a === 'settings'; render(); return; }
+      const rz = ev.target.closest('[data-ratesize]');
+      if (rz) { rateSel.size = +rz.dataset.ratesize; render(); return; }
+      if (ev.target.closest('[data-act="ratereset"]')) { cfg.ratingW = {}; saveCfg(); render(); return; }
       const pv = ev.target.closest('[data-prodview]');
       if (pv) { prodView = pv.dataset.prodview; render(); return; }
       const pc = ev.target.closest('tr[data-prodcat]');
@@ -2456,6 +2549,14 @@
     if (pn) { setProvName(+pn.dataset.prov, pn.value); render(); }
     const bc = ev.target.closest('[data-input="bonusCode"]');
     if (bc) { bonusCode = bc.value; bonusUnlock(bonusCode).then((ok) => { if (ok) { bonusCode = ''; bonusMsg = ''; tab = 'stat'; render(); } }); }
+    const rq = ev.target.closest('[data-input="rateQ"]');
+    if (rq) { rateSel.q = rq.value; render(); }
+    const rw = ev.target.closest('[data-ratew]');
+    if (rw) {
+      const w = (cfg.ratingW = { ...(cfg.ratingW || {}) }), k = rw.dataset.ratew;
+      w[k] = { ...(w[k] || {}), [rw.dataset.f]: rw.type === 'checkbox' ? rw.checked : Math.max(0, +rw.value || 0) };
+      saveCfg(); render();
+    }
     const sf = ev.target.closest('[data-input="statFilter"]');
     if (sf) { statFilter = sf.value; render(); }
     const fi = ev.target.closest('[data-stimport]');

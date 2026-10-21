@@ -1862,16 +1862,19 @@
       html += `<p><b>${esc(gb ? entName(gb.cityentity_id) : 'Otevřená VB')}</b> · ${esc(owner)}${gb ? ` · úr. ${gb.level}` : ''}<br>
         Chybí: <b>${remaining != null ? fmt(remaining) : '?'}</b> FP · bonus Archy ${fmt(arc)} % (${gold ? 'zlatý' : 'měděný'}) · váš vklad ${fmt(mine)}${S.packageFP != null ? ` · máte ${fmt((S.resources.strategy_points || 0) + S.packageFP)} FP` : ''}</p>`;
       if (places.length) {
-        html += `<table><thead><tr><th>Místo</th><th>Drží (bez vás)</th><th>Odměna FP</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
+        html += `<table><thead><tr><th>Místo</th><th>Drží (bez vás)</th><th>Odměna FP</th><th>Medaile</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
           places.map((p, i) => {
             const holder = others[i]?.forge_points || 0;
             const base = p.reward.strategy_point_amount || 0;
             const withArc = roundReward(base * (1 + arc / 100)); // stejně jako hra (prasátko)
+            const medBase = p.reward.resources?.medals || 0;
+            const medArc = Math.round(medBase * (1 + arc / 100)); // bonus Archy platí i na medaile
             const cost = remaining != null ? Math.max(0, Math.ceil((remaining + holder - mine) / 2)) : null;
             const possible = cost != null && cost <= remaining;
             const profit = possible ? withArc - cost - mine : null; // celý vklad vč. již vloženého
             return `<tr class="${possible ? '' : 'muted'}"><td>${p.rank}.</td><td class="num">${fmt(holder)}</td>
               <td class="num">${fmt(base)} → <b>${fmt(withArc)}</b></td>
+              <td class="num" title="${medBase ? `${fmt(medBase)} bez bonusu Archy` : ''}">${medBase ? fmt(medArc) : ''}</td>
               <td class="num">${possible ? fmt(cost) : 'nelze'}</td>
               <td class="num ${profit > 0 ? 'hi' : ''}">${profit != null ? (profit > 0 ? '+' : '') + fmt(profit) : ''}</td></tr>`;
           }).join('')}</tbody></table>
@@ -2451,6 +2454,7 @@
     body = root.getElementById('body');
     renderTabs();
     renderIcons();
+    updateBadge(); // v režimu lišty jen ⠿
     setupDrag(root.getElementById('toggle'), () => {
       open = !open; root.getElementById('panel').classList.toggle('open', open); render();
       placing = true; placePanel(); setTimeout(() => { placing = false; }, 400);

@@ -37,6 +37,7 @@
   S.inv = new Map();        // celý inventář: id -> {name, stock, item}
   S.ascKit = new Map();     // ID pozvednuté (limitované) budovy -> {id, name} sady, která ji vytvoří
   S.myTavern = null;        // {unlocked, sitting}
+  S.entProd = new Map();    // metadata budov: id -> {Věk: [{time, products}]} (produkce podle věku)
   S.entBoost = new Map();   // metadata budov: id -> {Věk: [BoostHint]} (bonusy podle věku, pro odhad cizích měst)
   S.metaSeen = new Set();   // id budov, jejichž metadata už přišla
   S.metaRev = 0;
@@ -504,7 +505,7 @@
     const take = (o) => {
       if (!o || typeof o !== 'object') return;
       if (o.id && o.name) S.names.set(o.id, o.name);
-      if (o.id && (o.components || o.abilities || o.width)) { S.metaSeen.add(o.id); const bm = boostMeta(o); if (bm) S.entBoost.set(o.id, bm); }
+      if (o.id && (o.components || o.abilities || o.width)) { S.metaSeen.add(o.id); const bm = boostMeta(o); if (bm) S.entBoost.set(o.id, bm); const pm = prodMeta(o); if (pm) S.entProd.set(o.id, pm); }
       // rozměry a potřeba cesty (starý formát width/length, nový components.AllAge)
       const sz = o.components?.AllAge?.placement?.size;
       if (o.id && (o.width || sz)) {
@@ -1486,7 +1487,128 @@
     return html + '<p class="muted">Stav osady se obnoví při jejím otevření ve hře a při výběru nebo spuštění produkce.</p>';
   }
 
+  // ---------- Denní produkce budov (z metadat podle věku budovy) – podklad pro Přehled výroby a Rating ----------
+  function prodMeta(o) {
+    let out = null;
+    for (const [era, c] of Object.entries(o.components || {})) {
+      const opts = c?.production?.options;
+      if (Array.isArray(opts) && opts.length) (out ||= {})[era] = opts.map((op) => ({ time: op.time || 86400, products: op.products || [] }));
+    }
+    return out;
+  }
+  // Věk budovy: víceérové budovy mají v entity.level index věku, jinak jediný věk v metadatech, jinak věk hráče.
+  function entEra(e, m, era) {
+    if (/MultiAge/.test(e.cityentity_id) && Number.isInteger(e.level) && ERAS[e.level]) return ERAS[e.level];
+    const ks = Object.keys(m || {}).filter((k) => k !== 'AllAge');
+    return ks.length === 1 ? ks[0] : ks.includes(era) ? era : ks[ks.length - 1];
+  }
+  const GOOD_KEY = {
+    random_good_of_age: 'g_cur', all_goods_of_age: 'g_cur', random_good_of_previous_age: 'g_prev', all_goods_of_previous_age: 'g_prev',
+    random_good_of_next_age: 'g_next', all_goods_of_next_age: 'g_next', random_special_good_up_to_age: 'g_spec',
+  };
+  // Konkrétní zboží (živá data) podle věku vůči věku hráče.
+  function goodKey(id) {
+    if (GOOD_KEY[id]) return GOOD_KEY[id];
+    const ge = S.goodsEra.get(id);
+    if (!ge) return id;
+    const d = ERAS.indexOf(ge) - ERAS.indexOf(S.player?.era);
+    return d === 0 ? 'g_cur' : d === -1 ? 'g_prev' : d === 1 ? 'g_next' : 'g_other';
+  }
+  // Přičte jeden produkt (formát metadat i živého stavu) do denního souhrnu bag s násobkem k.
+  function addProduct(bag, p, k) {
+    if (!p) return;
+    if (p.type === 'random' && Array.isArray(p.products)) { for (const x of p.products) addProduct(bag, x.product, k * (x.dropChance || 0)); return; }
+    const pr = p.playerResources?.resources;
+    if (pr) for (const [id, v] of Object.entries(pr)) { const key = goodKey(id); bag.res[key] = (bag.res[key] || 0) + v * k; }
+    const gr = p.guildResources?.resources;
+    if (gr) for (const v of Object.values(gr)) bag.res.guild = (bag.res.guild || 0) + v * k;
+    if (p.type === 'unit') bag.res.units = (bag.res.units || 0) + (p.amount || 0) * k;
+    const rid = p.reward?.id;
+    if (rid) {
+      const parts = String(rid).split('#');
+      const n = +parts[parts.length - 1] || 1;
+      if (parts[0] === 'fragment') { const it = parts.slice(1, -1).join('#') || parts[1]; bag.frags[it] = (bag.frags[it] || 0) + n * k; bag.res.frags = (bag.res.frags || 0) + n * k; }
+      else if (parts[0] === 'era_unit' || /unit_chest(\d+)$/.test(parts[0])) bag.res.units = (bag.res.units || 0) + (parts[0] === 'era_unit' ? n : +parts[0].match(/(\d+)$/)[1]) * k;
+      else if (parts[0] === 'blueprint') bag.res.blueprints = (bag.res.blueprints || 0) + n * k;
+      else { const nm = p.reward.name || parts[0]; bag.other[nm] = (bag.other[nm] || 0) + k; }
+    }
+  }
+  // Denní produkce budovy (vše za 24 h, s motivací – jako FoE Helper). Velké budovy a budovy s volbou výroby (zboží, zásoby)
+  // podle živého stavu, ostatní z metadat podle věku budovy; bez metadat ze živého stavu.
+  function buildingDaily(e, era = S.player?.era) {
+    const bag = { res: {}, frags: {}, other: {}, src: '' };
+    const st = e.state || {};
+    const m = S.entProd.get(e.cityentity_id);
+    const opts = m ? m[entEra(e, m, era)] || m.AllAge : null;
+    if (e.type !== 'greatbuilding' && opts?.length === 1) {
+      for (const p of opts[0].products) addProduct(bag, p, 86400 / (opts[0].time || 86400));
+      bag.src = 'meta';
+    } else if (st.productionOption?.products) {
+      for (const p of st.productionOption.products) addProduct(bag, p, 86400 / (st.productionOption.time || 86400));
+      bag.src = 'live';
+    } else if (st.current_product) {
+      const cp = st.current_product, k = 86400 / (cp.production_time || 86400);
+      for (const p of cp.products || [cp]) {
+        if (p.goods) bag.res.guild = (bag.res.guild || 0) + p.goods.reduce((a, g) => a + (g.value || 0), 0) * k;
+        const r = p.product?.resources || p.resources?.resources;
+        if (r) for (const [id, v] of Object.entries(r)) { const key = goodKey(id); bag.res[key] = (bag.res[key] || 0) + v * k; }
+      }
+      bag.src = 'live';
+    }
+    return bag;
+  }
+  const PROD_CATS = [
+    ['strategy_points', 'FP'], ['g_prev', 'Zboží – předchozí věk'], ['g_cur', 'Zboží – aktuální věk'], ['g_next', 'Zboží – další věk'],
+    ['g_spec', 'Speciální zboží'], ['g_other', 'Zboží – jiné věky'], ['guild', 'Cechovní pokladna'], ['money', 'Mince'], ['supplies', 'Zásoby'],
+    ['medals', 'Medaile'], ['units', 'Jednotky'], ['frags', 'Fragmenty'], ['blueprints', 'Plánky'],
+  ];
+  let prodView = 'cycle', prodCat = 'strategy_points';
+  function dailyOverview() {
+    const tot = {}, per = {}; // per[kat] = Map(název -> {n, v})
+    let noData = 0;
+    const frags = {}, other = {};
+    for (const e of S.entities.values()) {
+      if (['street', 'off_grid', 'hub_part', 'hub_main', 'decoration'].includes(e.type)) continue;
+      const b = buildingDaily(e);
+      if (!b.src) { if (S.ent.has(e.cityentity_id) && !S.metaSeen.has(e.cityentity_id)) noData++; continue; }
+      const name = S.names.get(e.cityentity_id) || entName(e.cityentity_id);
+      for (const [k, v] of Object.entries(b.res)) {
+        if (!v) continue;
+        tot[k] = (tot[k] || 0) + v;
+        const mp = (per[k] ||= new Map()), x = mp.get(name) || { n: 0, v: 0 };
+        x.n++; x.v += v; mp.set(name, x);
+      }
+      for (const [k, v] of Object.entries(b.frags)) frags[k] = (frags[k] || 0) + v;
+      for (const [k, v] of Object.entries(b.other)) other[k] = (other[k] || 0) + v;
+    }
+    return { tot, per, frags, other, noData };
+  }
+  const fragName = (id) => [...(S.frags?.values() || [])].find((f) => f.rid && (f.rid === id || f.rid.startsWith(id)))?.name || id.replace(/_/g, ' ');
+  function viewDaily() {
+    const o = dailyOverview();
+    const r1 = (v) => fmt(Math.round(v * 10) / 10);
+    let h = `<table class="log"><thead><tr><th>Druh</th><th class="num">Za den</th><th class="num">Budov</th></tr></thead><tbody>${
+      PROD_CATS.filter(([k]) => o.tot[k]).map(([k, l]) => `<tr data-prodcat="${k}" class="${k === prodCat ? 'sel' : ''}"><td>${l}</td><td class="num"><b>${r1(o.tot[k])}</b></td>
+        <td class="num">${[...o.per[k].values()].reduce((a, x) => a + x.n, 0)}</td></tr>`).join('')}</tbody></table>`;
+    const list = o.per[prodCat];
+    if (list) {
+      const lab = PROD_CATS.find(([k]) => k === prodCat)?.[1] || prodCat;
+      h += `<h4>${esc(lab)} – podle budov</h4><table><thead><tr><th>Budova</th><th class="num">Počet</th><th class="num">1 budova</th><th class="num">Celkem</th></tr></thead><tbody>${
+        [...list.entries()].sort((a, b) => b[1].v - a[1].v).map(([n, x]) => `<tr><td>${esc(n)}</td><td class="num">${x.n}</td><td class="num">${r1(x.v / x.n)}</td><td class="num">${r1(x.v)}</td></tr>`).join('')}</tbody></table>`;
+      if (prodCat === 'frags' && Object.keys(o.frags).length) h += `<p class="muted">${Object.entries(o.frags).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(fragName(k))}: ${r1(v)}`).join(' · ')}</p>`;
+    }
+    if (Object.keys(o.other).length) h += `<h4>Ostatní odměny (průměr za den)</h4><p>${Object.entries(o.other).map(([k, v]) => `${esc(k)}: ${r1(v)}`).join(' · ')}</p>`;
+    h += `<p class="muted">Za 24 h s motivací (jako FoE Helper), náhodné odměny jako průměr. Bez bonusů k produkci (FP, mince, zásoby, zboží) a bez bonusů sad a řetězů.
+      Velké budovy a budovy s volbou výroby podle toho, co právě vyrábějí.${o.noData ? ` Chybí metadata u ${o.noData} budov.` : ''}</p>`;
+    return h;
+  }
+
   function viewProduction() {
+    const sw = `<p>${[['cycle', 'Aktuální cyklus'], ['daily', 'Denní přehled']].map(([k, l]) => `<button class="fbtn ${prodView === k ? 'on' : ''}" data-prodview="${k}">${l}</button>`).join('')}</p>`;
+    if (prodView === 'daily') return sw + (S.entities.size ? viewDaily() : '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>');
+    return sw + viewCycle();
+  }
+  function viewCycle() {
     const ents = [...S.entities.values()];
     if (!ents.length) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
     const now = nowServer();
@@ -2285,6 +2407,10 @@
         return;
       }
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
+      const pv = ev.target.closest('[data-prodview]');
+      if (pv) { prodView = pv.dataset.prodview; render(); return; }
+      const pc = ev.target.closest('tr[data-prodcat]');
+      if (pc) { prodCat = pc.dataset.prodcat; render(); return; }
       const fg = ev.target.closest('[data-frag]');
       if (fg) { fragFilter = fg.dataset.frag; render(); return; }
       if (ev.target.closest('[data-act="mapwin"]')) { openMapWin(); return; }

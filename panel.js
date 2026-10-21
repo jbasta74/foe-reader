@@ -673,12 +673,14 @@
   function alert(kind, text, urgent = false, silent = false) {
     S.alerts.unshift({ t: Date.now(), kind, text, urgent, silent });
     if (S.alerts.length > 60) S.alerts.pop();
-    if (!(open && tab === 'alerts')) { S.unread++; if (!silent) S.unreadLoud = (S.unreadLoud || 0) + 1; }
+    if (!alertsVisible()) { S.unread++; if (!silent) S.unreadLoud = (S.unreadLoud || 0) + 1; }
     if (!silent) beep(urgent);
     updateBadge();
     scheduleRender();
   }
 
+  // Upozornění se počítají jako přečtená, když je vidět záložka 🔔 – v panelu nebo v samostatném okně.
+  const alertsVisible = () => (open && tab === 'alerts') || tabWins.has('alerts');
   function updateBadge() {
     if (!root) return;
     const btn = root.getElementById('toggle');
@@ -2602,6 +2604,7 @@
     h.addEventListener('pointerdown', () => toFront(h), true);
     const w = { host: h, root: r, body: r.querySelector('.wbody') };
     tabWins.set(id, w);
+    if (id === 'alerts' && S.unread) { S.unread = 0; S.unreadLoud = 0; updateBadge(); }
     renderIcons();
     const save = (closed) => {
       const c = loadTabWinCfg();
@@ -2772,7 +2775,7 @@
     if (!root) return;
     for (const id of tabWins.keys()) renderTabWin(id);
     root.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-    if (open && tab === 'alerts' && S.unread) { S.unread = 0; S.unreadLoud = 0; updateBadge(); }
+    if (alertsVisible() && S.unread) { S.unread = 0; S.unreadLoud = 0; updateBadge(); }
     if (!open) return;
     // Nepřekreslovat, když uživatel zrovna píše do pole v panelu.
     // Při psaní do pole chvíli počkat (jinak by se přepsalo pod rukama), pak překreslit a vrátit kurzor.

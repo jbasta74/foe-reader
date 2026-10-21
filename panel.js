@@ -152,6 +152,9 @@
     },
     // --- GBG (struktura podle FoE Helperu, ověřit na logu) ---
     'GuildBattlegroundService.getBattleground'(d) {
+      // Hra mapu posílá při vstupu do GBG – okno GBG se může otevřít samo (jen při novém vstupu, ne při každém obnovení).
+      if (cfg.gbgPopup && Date.now() - (S.gbgSeenAt || 0) > 180000) setTimeout(() => openTabWin('gbg'), 50);
+      S.gbgSeenAt = Date.now();
       S.gbg = d;
       if (d?.currentPlayerParticipant?.attrition) S.attrition = d.currentPlayerParticipant.attrition;
     },
@@ -544,6 +547,8 @@
     limOn: true, limLead: 24, limInv: true,
     hiddenTabs: [], // záložky vypnuté v Nastavení (ℹ️)
     gbCalcPopup: true,
+    gbgPopup: true, // okno GBG se otevře samo při vstupu do GBG
+    uiBar: true, barVertical: false, // nástrojová lišta s ikonami (jinak jen tlačítko s panelem záložek)
     msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
     negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
     negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy
@@ -676,7 +681,8 @@
   function updateBadge() {
     if (!root) return;
     const btn = root.getElementById('toggle');
-    btn.textContent = S.unread ? `⠿ FoE Reader 🔔${S.unread}` : '⠿ FoE Reader';
+    btn.textContent = cfg.uiBar ? '⠿' : S.unread ? `⠿ FoE Reader 🔔${S.unread}` : '⠿ FoE Reader';
+    renderIcons();
     btn.classList.toggle('alert', (S.unreadLoud || 0) > 0);
     const tb = root.querySelector('[data-tab="alerts"]');
     if (tb) tb.textContent = S.unread ? `🔔 ${S.unread}` : '🔔';
@@ -1809,6 +1815,7 @@
         <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
+        <div><b>GBG okno:</b> ${chk('gbgPopup', 'otevřít okno GBG při vstupu do GBG')}</div>
         <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
         <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')} ${chk('negoGbg', 'pomocník i v GBG')}</div>
         <div><b>Zprávy:</b> ${chk('msgSocial', 'soukromé')} ${chk('msgGuild', 'cechovní')} ${chk('msgSound', 'se zvukem')}</div>
@@ -2110,6 +2117,8 @@
       <div class="cfg"><div>${TABS.filter(([id]) => !FIXED_TABS.includes(id) && (!BONUS_TABS.includes(id) || bonusOn())).map(([id, l]) =>
         `<label><input type="checkbox" data-tabtoggle="${id}" ${tabVisible(id) ? 'checked' : ''}> ${l}</label>`).join(' ')}</div>
         <div class="muted">VB, Upozornění a ℹ️ zůstávají vždy. Vypnutá záložka jen zmizí z lišty – data se sbírají dál a upozornění fungují.</div>
+        <div>${['uiBar', 'barVertical'].map((k) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${k === 'uiBar' ? 'nástrojová lišta s ikonami' : 'lišta svisle'}</label>`).join(' ')}
+          <span class="muted">Ikona otevře / zavře okno záložky, ⠿ otevře panel se záložkami.</span></div>
         <div><button data-act="resetsize">Obnovit výchozí velikost panelu</button> <span class="muted">Panel se dá roztáhnout tažením za pravý dolní roh.</span></div></div>
       ${bonusOn() ? storageSettingsHtml() : ''}
       <h4>Bonusové funkce</h4>
@@ -2135,6 +2144,8 @@
     }</tbody></table>${detail}`;
   }
 
+  // Ikony nástrojové lišty
+  const ICONS = { gb: '🏛️', prod: '🏭', boost: '💪', gbg: '⚔️', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', log: '📜', alerts: '🔔', about: 'ℹ️' };
   const TABS = [
     ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction],
     ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
@@ -2159,6 +2170,13 @@
       *{box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;font-size:12px}
       .btn{background:#2b2116;color:#f3d9a4;border:1px solid #8a6a3a;border-radius:6px;padding:4px 10px;cursor:grab;font-weight:600;white-space:nowrap;touch-action:none;user-select:none;box-shadow:0 2px 8px rgba(0,0,0,.4)}
       .btn.drag{cursor:grabbing;opacity:.85}
+      .bar{display:flex;align-items:center;gap:3px}
+      .bar.vert{flex-direction:column;align-items:stretch}
+      .icons{display:flex;gap:3px}.bar.vert .icons{flex-direction:column}
+      .ico{position:relative;width:34px;height:30px;background:#2b2116;border:1px solid #8a6a3a;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+      .ico:hover{background:#4a3a26}.ico.on{background:#8a6a3a;border-color:#f3d9a4}
+      .ico .bdg{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;border-radius:8px;background:#b0410f;color:#fff;font-size:10px;font-weight:700;line-height:16px;padding:0 3px}
+      .ico.alert{animation:pulse 1s ease-in-out infinite}
       .panel{display:none;position:absolute;top:calc(100% + 6px);left:0;width:580px;max-width:96vw;background:#fbf6ec;color:#2b2116;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;flex-direction:column}
       .panel.open{display:flex}
       .tabs{display:flex;flex-wrap:wrap;background:#2b2116}
@@ -2210,10 +2228,11 @@
       .up{color:#2e7d32;font-weight:600}.down{color:#b0410f;font-weight:600}
       .copytext{flex:1;border:1px solid #c9b48c;border-radius:4px;padding:3px 6px;background:#fff;font-family:Consolas,monospace}
     </style>
-    <button class="btn" id="toggle" title="FoE Reader ${VERSION} · klik = otevřít/zavřít, táhnout = přesunout">⠿ FoE Reader</button>
+    <div class="bar" id="bar"><button class="btn" id="toggle" title="FoE Reader ${VERSION} · klik = panel se záložkami, táhnout = přesunout">⠿ FoE Reader</button><span class="icons" id="icons"></span></div>
     <div class="panel" id="panel"><div class="tabs" id="tabs"></div><div class="body" id="body"></div></div>`;
     body = root.getElementById('body');
     renderTabs();
+    renderIcons();
     setupDrag(root.getElementById('toggle'), () => {
       open = !open; root.getElementById('panel').classList.toggle('open', open); render();
       placing = true; placePanel(); setTimeout(() => { placing = false; }, 400);
@@ -2222,6 +2241,8 @@
     root.addEventListener('click', (ev) => {
       const t = ev.target.closest('[data-tab]');
       if (t) { tab = t.dataset.tab; render(); return; }
+      const ic = ev.target.closest('[data-ico]');
+      if (ic) { const id = ic.dataset.ico; tabWins.has(id) ? closeTabWin(id) : openTabWin(id); return; }
       if (ev.target.closest('[data-act="popout"]')) { openTabWin(tab); return; }
       onUiClick(ev);
     });
@@ -2301,7 +2322,10 @@
   }
   function onUiChange(ev) {
     const el = ev.target.closest('[data-cfg]');
-    if (el) { cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render(); }
+    if (el) {
+      cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render();
+      if (['uiBar', 'barVertical'].includes(el.dataset.cfg)) { updateBadge(); placePanel(); }
+    }
     const pn = ev.target.closest('[data-prov]');
     if (pn) { setProvName(+pn.dataset.prov, pn.value); render(); }
     const bc = ev.target.closest('[data-input="bonusCode"]');
@@ -2345,6 +2369,7 @@
     h.addEventListener('pointerdown', () => toFront(h), true);
     const w = { host: h, root: r, body: r.querySelector('.wbody') };
     tabWins.set(id, w);
+    renderIcons();
     const save = (closed) => {
       const c = loadTabWinCfg();
       if (closed) { if (c[id]) c[id].open = false; }
@@ -2359,14 +2384,30 @@
       window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     });
     r.addEventListener('click', (ev) => {
-      if (ev.target.closest('[data-w="close"]')) { save(true); h.remove(); tabWins.delete(id); return; }
+      if (ev.target.closest('[data-w="close"]')) { closeTabWin(id); return; }
       onUiClick(ev);
     });
     r.addEventListener('input', () => { lastInputAt = Date.now(); });
     r.addEventListener('change', onUiChange);
     new ResizeObserver(() => { if (tabWins.has(id)) save(); }).observe(h);
+    w.close = () => { save(true); h.remove(); tabWins.delete(id); renderIcons(); };
     if (!restore) save();
     renderTabWin(id);
+  }
+  function closeTabWin(id) { tabWins.get(id)?.close(); }
+  // Nástrojová lišta: ikona = okno záložky (klik otevře / zavře), odznaky u upozornění.
+  function renderIcons() {
+    const el = root?.getElementById('icons'), bar = root?.getElementById('bar');
+    if (!el) return;
+    bar.classList.toggle('vert', !!cfg.barVertical);
+    const tg = root.getElementById('toggle');
+    if (!cfg.uiBar) { el.innerHTML = ''; return; }
+    el.innerHTML = TABS.filter(([id]) => tabVisible(id)).map(([id, l]) => {
+      const badge = id === 'alerts' && S.unread ? `<span class="bdg">${S.unread}</span>` : '';
+      const alertCls = id === 'alerts' && (S.unreadLoud || 0) > 0 ? ' alert' : '';
+      return `<button class="ico${tabWins.has(id) ? ' on' : ''}${alertCls}" data-ico="${id}" title="${l === '🔔' ? 'Upozornění' : l === 'ℹ️' ? 'O rozšíření a nastavení' : l}">${ICONS[id] || '•'}${badge}</button>`;
+    }).join('');
+    if (tg && !tg.classList.contains('drag')) tg.title = `FoE Reader ${VERSION} · klik = panel se záložkami, táhnout = přesunout lištu`;
   }
   function renderTabWin(id) {
     const w = tabWins.get(id);
@@ -2487,6 +2528,7 @@
   }
   const tabVisible = (id) => (!BONUS_TABS.includes(id) || bonusOn()) && (FIXED_TABS.includes(id) || !(cfg.hiddenTabs || []).includes(id));
   function renderTabs() {
+    renderIcons();
     const el = root?.getElementById('tabs');
     if (!el) return;
     if (!tabVisible(tab)) tab = 'gb';

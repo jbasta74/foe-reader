@@ -1928,7 +1928,7 @@
         .sort((a, b) => b.c.progress / b.c.maxProgress - a.c.progress / a.c.maxProgress);
       if (attacking.length) {
         html += `<h4>Kde útočíme (celý cech)</h4><table><thead><tr><th>Provincie</th><th>Vlastník</th><th>Postup</th><th>1 min</th><th>5 min</th></tr></thead><tbody>${
-          attacking.map(({ p, c }) => `<tr><td>${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(p.ownerId))}</td><td class="num">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td>
+          attacking.map(({ p, c }) => `<tr><td>${btype(p)} ${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(p.ownerId))}</td><td class="num">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td>
             <td class="num">${plus(gain(p.id ?? 0, me, 1))}</td><td class="num">${plus(gain(p.id ?? 0, me, 5))}</td></tr>`).join('')}</tbody></table>
           <p class="muted">Sloupce 1 a 5 min = o kolik postoupil celý cech (bitva +1, vyjednávání +2). Přibývá-li víc, než děláte sám, jede tam někdo s vámi. Počítá se od otevření mapy GBG.</p>`;
       }
@@ -1938,7 +1938,7 @@
       if (defending.length) {
         html += `<h4>Kde útočí na nás</h4><table><thead><tr><th>Provincie</th><th>Útočník</th><th>Postup</th><th>1 min</th><th>5 min</th></tr></thead><tbody>${
           defending.flatMap((p) => prog(p, (c) => c.participantId !== me).map((c) =>
-            `<tr><td>${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(c.participantId))}</td><td class="num hi">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td>
+            `<tr><td>${btype(p)} ${esc(provLabel(p.id ?? 0))}</td><td>${esc(pname(c.participantId))}</td><td class="num hi">${fmt(c.progress)} / ${fmt(c.maxProgress)}</td>
              <td class="num">${plus(gain(p.id ?? 0, c.participantId, 1))}</td><td class="num">${plus(gain(p.id ?? 0, c.participantId, 5))}</td></tr>`)).join('')}</tbody></table>`;
       }
     }
@@ -1989,6 +1989,10 @@
   }
 
   // ---------- GBG: provincie a sledování ----------
+  // Typ boje v provincii: isAttackBattleType = červená (útočná, bojuje se proti útočné armádě), jinak modrá (obranná).
+  const btype = (p) => (p?.isSpawnSpot ? '' : p?.isAttackBattleType
+    ? '<span class="bt red" title="Červená provincie – útočný typ boje">⚔</span>'
+    : '<span class="bt blue" title="Modrá provincie – obranný typ boje">🛡</span>');
   function viewProvinces(provs, me, pname, now) {
     const watch = loadWatch();
     const names = provNames();
@@ -2004,7 +2008,7 @@
     return `<h4>Provincie (★ = upozornit ${cfg.gbgWatchLead ? cfg.gbgWatchLead + ' min před' : 'při'} odemknutí)</h4>
       <table class="prov"><thead><tr><th></th><th>Název</th><th>Vlastník</th><th>Sousedí</th><th>Odemčeno</th><th>Opotř.</th><th>Body</th></tr></thead><tbody>${
       list.map(({ p, id, left, own, near, base }) => `<tr class="${watch.has(id) ? 'sel' : own || base ? 'muted' : ''}">
-        <td>${own || base ? '' : `<button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button>`}</td>
+        <td style="white-space:nowrap">${own || base ? '' : `<button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button>`}${btype(p)}</td>
         <td title="${esc(provFull(id))} · #${id}"><input type="text" class="pname" data-prov="${id}" value="${esc(names[id] || '')}" placeholder="#${id}" maxlength="30"></td>
         <td>${own ? 'my' : esc(pname(p.ownerId))}</td>
         <td>${near ? '<span class="hi">s námi</span>' : ''}</td>
@@ -2012,7 +2016,7 @@
         <td class="num">${p.gainAttritionChance != null ? p.gainAttritionChance + ' %' : '–'}</td>
         <td class="num">${fmt(p.victoryPoints)}</td></tr>`).join('')
     }</tbody></table>
-      <p class="muted">„Sousedí s námi“ = hraničí s některou naší provincií, dá se na ni tedy útočit. Název lze přepsat (uloží se). Celý název a číslo se ukážou po najetí myší.</p>`;
+      <p class="muted"><span class="bt red">⚔</span> červená (útočná) · <span class="bt blue">🛡</span> modrá (obranná) provincie. „Sousedí s námi“ = hraničí s některou naší provincií, dá se na ni tedy útočit. Název lze přepsat (uloží se). Celý název a číslo se ukážou po najetí myší.</p>`;
   }
 
   // ---------- Upozornění ----------
@@ -2433,6 +2437,8 @@
       .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
       .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
       tr.safe td{background:#d6efc7}
+      .bt{display:inline-block;min-width:18px;text-align:center;border-radius:4px;font-size:11px;line-height:16px;padding:0 2px;color:#fff}
+      .bt.red{background:#c0392b}.bt.blue{background:#2e6db4}
       .turns{display:inline-block;font-size:15px;padding:4px 12px;margin:2px 0 4px;border-radius:6px;background:#d6efc7;color:#1f4d1f}.turns b{font-size:17px}
       .turns.last{background:#fbe3b4;color:#7a4a00}.turns.out{background:#b0410f;color:#fff;font-weight:700}
       .up{color:#2e7d32;font-weight:600}.down{color:#b0410f;font-weight:600}

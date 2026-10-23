@@ -59,6 +59,15 @@
       if (d && d.time) S.serverOffset = d.time - Date.now() / 1000;
     },
     'NegotiationGameService.submitTurn'(d) { negoTurn(d); },
+    // Koupený tah za diamanty (log 23. 10.: nabídka quest:turnAfterGameLost, 10 💎) – vyjednávání pokračuje.
+    'ResourceShopService.buyOffer'(d) {
+      const o = Array.isArray(d) ? d[0] : d;
+      if (o?.gains?.resources?.negotiation_game_turn && S.nego?.state === 'out_of_turns') {
+        S.nego.state = 'ongoing'; S.nego.bought = (S.nego.bought || 0) + (o.gains.resources.negotiation_game_turn || 1);
+        S.nego.paid = (S.nego.paid || 0) + (o.costsOptions?.[0]?.resources?.premium || 0);
+        negoCalc();
+      }
+    },
     // Zprávy: kategorie konverzace (social = soukromé, guild = cechovní) chodí těsně před samotnou zprávou.
     'ConversationService.getConversationUpdate'(d) { if (d?.conversationId != null && d.category) (S.convCat ||= new Map()).set(d.conversationId, d.category); },
     'ConversationService.getNewMessage'(d) { newMessage(d); },
@@ -408,15 +417,17 @@
     }
     n.turns.push({ open: [...Array(NEGO_SLOTS).keys()].filter((x) => !solved.has(x)), guess, result });
     n.state = d.state || 'ongoing';
+    // Došly tahy: hra nabídne další tah za diamanty (cena až teď v d.offer) – návrh počítáme dál pro případ, že ho koupíte.
+    if (n.state === 'out_of_turns') n.offer = d.offer?.costsOptions?.[0]?.resources?.premium ?? null;
     negoCalc();
   }
   function negoCalc() {
     const n = S.nego;
-    if (!n || n.gbg || n.state !== 'ongoing' || !globalThis.FOE_NEGO) return;
+    if (!n || n.gbg || !['ongoing', 'out_of_turns'].includes(n.state) || !globalThis.FOE_NEGO) return;
     n.calc = null;
     setTimeout(() => { // výpočet mimo zpracování zprávy
       try {
-        const left = S.resources.negotiation_game_turn; // i v GBG (log 19. 10.: hra ho při zahájení nastaví na 3)
+        const left = n.state === 'out_of_turns' ? 1 : S.resources.negotiation_game_turn; // i v GBG (log 19. 10.: hra ho při zahájení nastaví na 3)
         n.calc = globalThis.FOE_NEGO.solve({ nGoods: n.goods.length, slots: NEGO_SLOTS, turns: n.turns, turnsLeft: left > 0 ? left : null });
       } catch (e) { console.warn('[FoE Reader] vyjednávání', e); n.calc = { error: String(e) }; }
       scheduleRender();
@@ -2143,18 +2154,20 @@
       ? `<td class="ng ${CLS[t.result.get(sl)] || ''}">${TXT[t.result.get(sl)] || ''} ${name(t.guess.get(sl))}</td>` : '<td class="muted">–</td>').join('')}</tr>`).join('');
     let sug = '';
     const c = n.calc;
-    if (n.state === 'won') sug = '<p class="hi">Vyjednávání vyhráno 🎉</p>';
-    else if (n.state !== 'ongoing') sug = `<p class="muted">Konec vyjednávání (${esc(n.state)}).</p>`;
+    if (n.state === 'won') sug = `<p class="hi">Vyjednávání vyhráno 🎉${n.bought ? ` (dokoupeno tahů: ${n.bought}${n.paid ? `, ${fmt(n.paid)} 💎` : ''})` : ''}</p>`;
+    else if (n.state !== 'ongoing' && n.state !== 'out_of_turns') sug = `<p class="muted">Konec vyjednávání (${esc(n.state)}).</p>`;
     else if (!c) sug = '<p class="muted">Počítám…</p>';
     else if (c.error) sug = `<p class="hi">Chyba výpočtu: ${esc(c.error)}</p>`;
     else if (!c.suggestion) sug = '<p class="hi">Žádná kombinace neodpovídá výsledkům – pošlete mi prosím log.</p>';
     let sugRow = '';
-    if (c && c.suggestion && n.state === 'ongoing') sugRow = `<tr class="sel"><td><b>Návrh</b></td>${[...Array(NEGO_SLOTS).keys()].map((sl) => c.fixed.has(sl)
+    if (c && c.suggestion && ['ongoing', 'out_of_turns'].includes(n.state)) sugRow = `<tr class="sel"><td><b>${n.state === 'out_of_turns' ? 'Návrh po koupi' : 'Návrh'}</b></td>${[...Array(NEGO_SLOTS).keys()].map((sl) => c.fixed.has(sl)
       ? `<td class="ng ok">✓ ${name(c.fixed.get(sl))}</td>` : `<td><b>${name(c.suggestion.get(sl))}</b></td>`).join('')}</tr>`;
     if (sugRow) sug = `<p class="muted">Možných kombinací: ${fmt(c.cands)}${c.sure ? ' – <b>jisté řešení</b>' : ''}${c.winP != null ? ` · šance na výhru se zbývajícími tahy: <b>${Math.round(c.winP * 100)} %</b>` : ''}.</p>`;
     const cost = n.goods.map((g) => `${goodIcon(g, 22)} ${fmt(n.costs[g])}${S.resources[g] != null ? ` <span class="muted">(máte ${fmt(S.resources[g])})</span>` : ''}`).join(' · ');
     // Tahy zdarma = zdroj negotiation_game_turn (3 + bonus z hospody); pak hra nabízí další tah za diamanty (cenu server předem neposílá).
-    const turnsInfo = left == null ? '' : n.state === 'ongoing' && left === 0
+    const turnsInfo = n.state === 'out_of_turns'
+      ? `<div class="turns out">💎 Tahy došly – další tah ${n.offer != null ? `za <b>${fmt(n.offer)}</b> diamantů` : 'za diamanty'}</div>`
+      : left == null ? '' : n.state === 'ongoing' && left === 0
       ? '<div class="turns out">💎 Tahy zdarma došly – další tah už je za diamanty</div>'
       : `<div class="turns${n.state === 'ongoing' && left === 1 ? ' last' : ''}">Tahy zdarma: <b>${left}</b>${n.turns.length ? ` z ${left + n.turns.length}` : ''}${n.state === 'ongoing' && left === 1 ? ' – poslední zdarma!' : ''}</div>`;
     const gbgWarn = n.inGbg ? '<p class="hi">⚠ GBG je soutěžní režim – pomocník je zapnutý na vaše riziko (pravidla InnoGames).</p>' : '';

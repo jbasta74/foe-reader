@@ -548,7 +548,8 @@
     limOn: true, limLead: 24, limInv: true,
     hiddenTabs: [], // záložky vypnuté v Nastavení (ℹ️)
     gbCalcPopup: true,
-    gbgPopup: true, // okno GBG se otevře samo při vstupu do GBG
+    gbgPopup: true,
+    sysWatch: true, sysUrgent: false, sysMsg: false, // systémová oznámení Chromu // okno GBG se otevře samo při vstupu do GBG
     uiBar: true, barVertical: false, // nástrojová lišta s ikonami (jinak jen tlačítko s panelem záložek)
     msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
     negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
@@ -675,6 +676,9 @@
     if (S.alerts.length > 60) S.alerts.pop();
     if (!alertsVisible()) { S.unread++; if (!silent) S.unreadLoud = (S.unreadLoud || 0) + 1; }
     if (!silent) beep(urgent);
+    // Oznámení Chromu: naléhavé události GBG (útok, ztráta) a zprávy; sledované provincie řeší naplánovaný alarm.
+    const watchMsg = kind === 'gbg' && /odemkne|odemčená/.test(text);
+    if ((kind === 'gbg' && urgent && cfg.sysUrgent && !watchMsg) || (kind === 'msg' && cfg.sysMsg)) sysSend({ type: 'notify', title: 'FoE Reader', message: text });
     updateBadge();
     scheduleRender();
   }
@@ -755,9 +759,36 @@
   let lastCheck = null;
   const unlockAlerted = new Set();
   const limAlerted = new Set();
+  // ---------- Systémová oznámení Chromu (background.js) ----------
+  // Bez spojení s rozšířením (test, nebo po aktualizaci rozšíření před F5) se tiše nic nestane.
+  function sysSend(msg) {
+    try { const r = chrome.runtime?.sendMessage?.(msg); if (r?.catch) r.catch(() => {}); } catch { /* kontext rozšíření zneplatněn */ }
+  }
+  // Sledované provincie: alarm naplánuje background.js přes chrome.alarms – zazvoní přesně, i když prohlížeč kartu hry na pozadí přiškrtí.
+  const sysScheduled = new Map(); // klíč -> čas (ms)
+  function syncWatchAlarms() {
+    const want = new Map();
+    if (cfg.sysWatch && cfg.gbgWatch && S.gbg) {
+      const lead = Math.max(0, +cfg.gbgWatchLead || 0) * 60, now = nowServer(), watch = loadWatch();
+      for (const p of S.gbg.map?.provinces || []) {
+        const id = p.id ?? 0;
+        if (!watch.has(id) || !p.lockedUntil || p.lockedUntil <= now) continue;
+        want.set(`${S.gbg.map?.id}|${S.gbg.endsAt}|${id}`, { when: Math.round((p.lockedUntil - lead - S.serverOffset) * 1000), p, id, lead });
+      }
+    }
+    for (const k of [...sysScheduled.keys()]) if (!want.has(k)) { sysSend({ type: 'unschedule', key: k }); sysScheduled.delete(k); }
+    for (const [k, x] of want) {
+      if (sysScheduled.get(k) === x.when) continue;
+      sysScheduled.set(k, x.when);
+      sysSend({ type: 'schedule', key: k, when: x.when, title: 'FoE Reader – GBG',
+        message: `Provincie ${provLabel(x.id)} (${clanName(x.p.ownerId)}) se odemkne ${x.lead ? `za ${Math.round(x.lead / 60)} min` : 'právě teď'}.` });
+    }
+  }
+
   let limInvDone = false;
   function timeChecks() {
     const now = nowServer();
+    syncWatchAlarms();
     // Sledované provincie: upozornit X minut před odemknutím.
     if (cfg.gbgWatch && S.gbg) {
       // Hlásí se jednou za každé zamčení – i když je provincie označena až v posledních minutách.
@@ -2034,6 +2065,8 @@
         <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
+        <div><b>Oznámení Chromu:</b> ${chk('sysWatch', 'sledované provincie ☆')} ${chk('sysUrgent', 'útok na naše provincie')} ${chk('sysMsg', 'zprávy')} <button data-act="systest">Vyzkoušet</button></div>
+        <div class="muted">Systémové oznámení Chromu se ukáže i mimo hru (když je okno na pozadí nebo minimalizované); klik na něj přepne na hru. Musí být povolená oznámení Chromu v systému (Windows / macOS).</div>
         <div><b>GBG okno:</b> ${chk('gbgPopup', 'otevřít okno GBG při vstupu do GBG')}</div>
         <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
         <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')} ${chk('negoGbg', 'pomocník i v GBG')}</div>
@@ -2506,6 +2539,7 @@
         if (sa !== 'stimport') render();
         return;
       }
+      if (ev.target.closest('[data-act="systest"]')) sysSend({ type: 'notify', title: 'FoE Reader', message: 'Zkušební oznámení – takhle bude vypadat upozornění na sledovanou provincii.' });
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
       const ra = ev.target.closest('[data-rate]');
       if (ra) { const a = ra.dataset.rate; if (a === 'sort') rateSel.asc = !rateSel.asc; else rateSel.settings = a === 'settings'; render(); return; }

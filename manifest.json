@@ -39,6 +39,15 @@
     }
   ],
   "permissions": [
-    "storage"
-  ]
+    "storage",
+    "notifications",
+    "alarms"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "48": "img/icon48.png",
+    "128": "img/icon128.png"
+  }
 }

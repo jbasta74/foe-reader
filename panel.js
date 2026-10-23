@@ -2067,12 +2067,13 @@
   }
 
   // ---------- Upozornění ----------
+  let alertCfgOpen = false; // nastavení upozornění je ve výchozím stavu sbalené
   function viewAlerts() {
     const chk = (k, label) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${label}</label>`;
     const num = (k, label, w = 50) => `<label>${label} <input type="number" data-cfg="${k}" value="${cfg[k]}" min="0" style="width:${w}px"></label>`;
-    const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭', trade: '🤝', gb: '🏛️', lim: '⏳' };
-    return `<div class="cfg">
-        ${chk('sound', 'Zvuk')} <button data-act="testsound">Vyzkoušet zvuk</button>
+    const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭', trade: '🤝', gb: '🏛️', lim: '⏳', msg: '✉️' };
+    const cfgHtml = `<div class="cfg">
+        <div>${chk('sound', 'Zvuk')} <button data-act="testsound">Vyzkoušet zvuk</button></div>
         <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
@@ -2084,7 +2085,9 @@
         <div><b>Zprávy:</b> ${chk('msgSocial', 'soukromé')} ${chk('msgGuild', 'cechovní')} ${chk('msgSound', 'se zvukem')}</div>
         <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
         <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
-      </div>
+      </div>`;
+    return `<p><button class="fbtn ${alertCfgOpen ? 'on' : ''}" data-act="alertcfg">⚙ Nastavení upozornění ${alertCfgOpen ? '▾' : '▸'}</button></p>
+      ${alertCfgOpen ? cfgHtml : ''}
       <h4>Poslední upozornění</h4>
       ${S.alerts.length ? `<table><tbody>${S.alerts.map((a) => `<tr><td class="muted" style="white-space:nowrap">${new Date(a.t).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}</td>
         <td>${ICON[a.kind] || ''}</td><td class="${a.urgent ? 'hi' : ''}">${esc(a.text)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Zatím nic.</p>'}
@@ -2144,7 +2147,7 @@
   function viewNego() {
     const n = S.nego;
     if (!n) return '<p class="muted">Začněte ve hře vyjednávání (expedice) – tady se ukáže návrh dalšího tahu.</p>';
-    if (n.gbg) return '<p class="muted">Vyjednávání v GBG: pomocník je vypnutý – zapnete ho v záložce 🔔 → Vyjednávání.</p>';
+    if (n.gbg) return '<p class="muted">Vyjednávání v GBG: pomocník je vypnutý – zapnete ho v 🔔 → ⚙ Nastavení upozornění → Vyjednávání.</p>';
     const name = (gi) => goodIcon(n.goods[gi]);
     const CLS = { correct: 'ok', wrong_person: 'wp', not_needed: 'nn' };
     const TXT = { correct: '✓', wrong_person: '↔', not_needed: '✗' };
@@ -2552,6 +2555,7 @@
         if (sa !== 'stimport') render();
         return;
       }
+      if (ev.target.closest('[data-act="alertcfg"]')) { alertCfgOpen = !alertCfgOpen; render(); return; }
       if (ev.target.closest('[data-act="systest"]')) sysSend({ type: 'notify', title: 'FoE Reader', message: 'Zkušební oznámení – takhle bude vypadat upozornění na sledovanou provincii.' });
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
       const ra = ev.target.closest('[data-rate]');
@@ -2649,7 +2653,7 @@
       .whead b{flex:1}
       .whead button{background:#4a3a26;color:#f3d9a4;border:1px solid #8a6a3a;border-radius:4px;padding:0 7px;cursor:pointer}
       .wbody{overflow:auto;padding:8px 10px;height:calc(100% - 30px)}
-    </style><div class="whead"><b>${def[1]}</b><button data-w="close" title="Zavřít">✕</button></div><div class="wbody"></div>`;
+    </style><div class="whead"><b>${{ '🔔': '🔔 Upozornění', 'ℹ️': 'ℹ️ O rozšíření a nastavení' }[def[1]] || def[1]}</b><button data-w="close" title="Zavřít">✕</button></div><div class="wbody"></div>`;
     document.documentElement.appendChild(h);
     toFront(h);
     h.addEventListener('pointerdown', () => toFront(h), true);

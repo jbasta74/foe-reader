@@ -176,7 +176,7 @@ function openCalcWin() {
   h.style.cssText = `position:fixed;z-index:2147483646;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w || 560}px;height:${st.h || 460}px;resize:both;overflow:hidden;min-width:360px;min-height:160px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45);display:flex;flex-direction:column`;
   const r = h.attachShadow({ mode: 'open' });
   const css = root.querySelector('style')?.textContent || '';
-  r.innerHTML = `<style>${css}
+  r.innerHTML = L(`<style>${css}
     :host{all:initial}
     .whead{display:flex;align-items:center;gap:8px;background:#2b2116;color:#f3d9a4;padding:5px 8px;cursor:move;user-select:none}
     .whead b{flex:1}
@@ -185,7 +185,7 @@ function openCalcWin() {
     .wbody{overflow:auto;padding:8px 10px;height:calc(100% - 30px)}
   </style><div class="whead" id="whead"><b>Kalkulačka VB</b>
     <label title="Otevřít samo s otevřením Velké budovy ve hře"><input type="checkbox" id="auto" ${cfg.gbCalcPopup ? 'checked' : ''}> otevírat samo</label>
-    <button id="close" title="Zavřít">✕</button></div><div class="wbody" id="wbody"></div>`;
+    <button id="close" title="Zavřít">✕</button></div><div class="wbody" id="wbody"></div>`);
   document.documentElement.appendChild(h);
   toFront(h); h.addEventListener('pointerdown', () => toFront(h), true);
   calcWin = { host: h, root: r };
@@ -226,7 +226,7 @@ function renderCalcWin() {
   if (auto) auto.checked = !!cfg.gbCalcPopup;
   const body = r.getElementById('wbody');
   const keep = body.scrollTop;
-  body.innerHTML = calcWinHtml();
+  body.innerHTML = L(calcWinHtml());
   body.scrollTop = keep;
 }
 
@@ -314,17 +314,17 @@ function renderMapWin(fit) {
   if (!mapWin) return;
   const r = mapWin.root;
   const M = Object.keys(S.grids).length ? mapModel(mapGrid) : null;
-  r.getElementById('head').innerHTML = `<b>FoE Reader – mapa</b>${Object.keys(S.grids).length ? gridPicker().replace(/class="fbtn /g, 'class="') : ''}
-    <span class="sp"></span><button data-z="out" title="Oddálit">−</button><button data-z="fit" title="Přizpůsobit oknu">⤢</button><button data-z="in" title="Přiblížit">+</button><button data-z="close" title="Zavřít">✕</button>`;
+  r.getElementById('head').innerHTML = L(`<b>FoE Reader – mapa</b>${Object.keys(S.grids).length ? gridPicker().replace(/class="fbtn /g, 'class="') : ''}
+    <span class="sp"></span><button data-z="out" title="Oddálit">−</button><button data-z="fit" title="Přizpůsobit oknu">⤢</button><button data-z="in" title="Přiblížit">+</button><button data-z="close" title="Zavřít">✕</button>`);
   const view = r.getElementById('view');
-  if (!M) { r.getElementById('stats').innerHTML = ''; view.innerHTML = '<p style="color:#efe6d2;padding:10px">Pro tuto mapu zatím nejsou data.</p>'; return; }
+  if (!M) { r.getElementById('stats').innerHTML = ''; view.innerHTML = L('<p style="color:#efe6d2;padding:10px">Pro tuto mapu zatím nejsou data.</p>'); return; }
   if (fit) {
     const W = M.maxX - M.minX + 1, Hh = M.maxY - M.minY + 1;
     mapWin.zoom = Math.max(3, Math.min(40, Math.floor(Math.min((view.clientWidth || 800) / W, (view.clientHeight || 500) / Hh))));
   }
-  r.getElementById('stats').innerHTML = mapStats(M) + (M.missing ? `<span class="chip">${M.missing} budov bez rozměrů</span>` : '');
+  r.getElementById('stats').innerHTML = L(mapStats(M) + (M.missing ? `<span class="chip">${M.missing} budov bez rozměrů</span>` : ''));
   const sl = view.scrollLeft, stp = view.scrollTop;
-  view.innerHTML = mapSvg(M, mapWin.zoom);
+  view.innerHTML = L(mapSvg(M, mapWin.zoom));
   view.scrollLeft = sl; view.scrollTop = stp;
 }
 

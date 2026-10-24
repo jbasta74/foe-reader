@@ -23,6 +23,7 @@
         "nego-solver-helper.js",
         "nego.js",
         "stats.js",
+        "i18n.js",
         "panel-core.js",
         "panel-city.js",
         "panel-production.js",

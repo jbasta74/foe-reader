@@ -18,8 +18,9 @@ const BASE = `http://127.0.0.1:${server.address().port}/`;
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 
 const msg = (key, data, channel = 'http') => { const [c, m] = key.split('.'); return { channel, m: { requestClass: c, requestMethod: m, [channel === 'req' ? 'requestData' : 'responseData']: data } }; };
-async function page(messages) {
+async function page(messages, cfg) {
   const pg = await browser.newPage({ viewport: { width: 1300, height: 900 } });
+  if (cfg) await pg.addInitScript((c) => localStorage.setItem('foeReaderSettings', JSON.stringify(c)), cfg);
   const errors = [];
   pg.on('pageerror', (e) => errors.push(String(e)));
   pg.on('console', (c) => { if (c.type() === 'warning' && /NaN/.test(c.text())) errors.push(c.text()); });
@@ -33,7 +34,7 @@ async function page(messages) {
 }
 const winText = (pg, title) => pg.evaluate((t) => [...document.querySelectorAll('.foe-reader-win')]
   .map((w) => w.shadowRoot).find((r) => r.querySelector('.whead b')?.textContent.includes(t))?.querySelector('.wbody')?.innerText || '', title);
-const calcText = (pg) => pg.evaluate(() => [...document.querySelectorAll('div')].map((d) => d.shadowRoot).find((r) => r?.textContent.includes('Kalkulačka VB'))?.textContent || '');
+const calcText = (pg) => pg.evaluate(() => [...document.querySelectorAll('div')].map((d) => d.shadowRoot).find((r) => /Kalkulačka VB|GB calculator/.test(r?.querySelector('.whead b')?.textContent || ''))?.textContent || '');
 async function openTab(pg, id) { await pg.locator(`#foe-reader-host [data-ico="${id}"]`).click(); await pg.waitForTimeout(400); }
 
 // --- syntetická data ---
@@ -102,6 +103,18 @@ const tests = {
     const t = (await winText(pg, 'Vyjednávání')).replace(/ /g, ' ');
     if (!t.includes('za 10 diamantů')) throw new Error('chybí cena dalšího tahu');
     if (!t.includes('Návrh po koupi')) throw new Error('chybí návrh po koupi');
+    return errors;
+  },
+  async 'Angličtina: kalkulačka a ℹ️ přeložené'() {
+    const { pg, errors } = await page([startup([arc]), foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'),
+      msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })], { lang: 'en' });
+    await pg.waitForTimeout(500);
+    const t = (await calcText(pg)).replace(/ /g, ' ');
+    if (!t.includes('GB calculator') || !t.includes('(copper)')) throw new Error('kalkulačka nepřeložená: ' + t.slice(0, 300));
+    if (/měděný|Kalkulačka/.test(t)) throw new Error('v kalkulačce zůstala čeština: ' + t.slice(0, 300));
+    await openTab(pg, 'about');
+    const a = await winText(pg, 'About');
+    if (!a.includes('Language') || !a.includes('Source code')) throw new Error('ℹ️ nepřeložené: ' + a.slice(0, 300));
     return errors;
   },
 };

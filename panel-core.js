@@ -592,6 +592,7 @@ const CFG_DEFAULT = {
   uiBar: true, barVertical: false, // nástrojová lišta s ikonami (jinak jen tlačítko s panelem záložek)
   msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
   negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
+  lang: 'cs', // jazyk panelu: 'cs' | 'en'
   negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy
 };
 const cfg = (() => {
@@ -600,6 +601,8 @@ const cfg = (() => {
 // 0.3.20: koeficient „Arc“ se nově ukládá jako 'arc' (sleduje bonus Archy). Starší uložená hodnota z tlačítka Arc (např. 1,99) se převede.
 if (typeof cfg.arcFactor === 'number' && !cfg.arcMigrated && ![1.8, 1.85, 1.9, 1.92, 1.95, 2].includes(cfg.arcFactor)) cfg.arcFactor = 'arc';
 cfg.arcMigrated = true;
+// Jazyk panelu: texty jsou v kódu česky, při angličtině se hotové HTML přeloží (i18n.js).
+const L = (h) => (cfg.lang === 'en' && globalThis.FOE_I18N?.tr ? globalThis.FOE_I18N.tr(h) : h);
 const saveCfgLocal = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } };
 // Nastavení se navíc synchronizuje přes účet prohlížeče a do složky se statistikami (viz stats.js).
 // Každá položka má čas poslední změny (cfg._kt), synchronizace pak slučuje po položkách:
@@ -802,6 +805,8 @@ const limAlerted = new Set();
 // ---------- Systémová oznámení Chromu (background.js) ----------
 // Bez spojení s rozšířením (test, nebo po aktualizaci rozšíření před F5) se tiše nic nestane.
 function sysSend(msg) {
+  if (msg.title) msg.title = L(msg.title);
+  if (msg.message) msg.message = L(msg.message);
   try { const r = chrome.runtime?.sendMessage?.(msg); if (r?.catch) r.catch(() => {}); } catch { /* kontext rozšíření zneplatněn */ }
 }
 // Sledované provincie: alarm naplánuje background.js přes chrome.alarms – zazvoní přesně, i když prohlížeč kartu hry na pozadí přiškrtí.

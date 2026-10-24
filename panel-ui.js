@@ -211,6 +211,11 @@ function onUiClick(ev) {
       hid.has(id) ? hid.delete(id) : hid.add(id);
       cfg.hiddenTabs = [...hid]; saveCfg(); renderTabs(); render();
     }
+    const lg = ev.target.closest('[data-lang]');
+    if (lg && cfg.lang !== lg.dataset.lang) {
+      cfg.lang = lg.dataset.lang; saveCfg(); renderTabs(); render(); renderCalcWin();
+      if (mapWin) renderMapWin();
+    }
     if (ev.target.closest('[data-act="resetsize"]')) {
       try { localStorage.removeItem(PSIZE_KEY); } catch { /* ignore */ }
       const panel = root.getElementById('panel'); panel.style.width = ''; panel.style.height = '';
@@ -263,13 +268,13 @@ function openTabWin(id, restore) {
   h.className = 'foe-reader-win';
   h.style.cssText = `position:fixed;z-index:2147483645;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w}px;height:${st.h}px;resize:both;overflow:hidden;min-width:280px;min-height:140px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45)`;
   const r = h.attachShadow({ mode: 'open' });
-  r.innerHTML = `<style>${root.querySelector('style')?.textContent || ''}
+  r.innerHTML = L(`<style>${root.querySelector('style')?.textContent || ''}
     :host{all:initial}
     .whead{display:flex;align-items:center;gap:8px;background:#2b2116;color:#f3d9a4;padding:5px 8px;cursor:move;user-select:none}
     .whead b{flex:1}
     .whead button{background:#4a3a26;color:#f3d9a4;border:1px solid #8a6a3a;border-radius:4px;padding:0 7px;cursor:pointer}
     .wbody{overflow:auto;padding:8px 10px;height:calc(100% - 30px)}
-  </style><div class="whead"><b>${{ '🔔': '🔔 Upozornění', 'ℹ️': 'ℹ️ O rozšíření a nastavení' }[def[1]] || def[1]}</b><button data-w="close" title="Zavřít">✕</button></div><div class="wbody"></div>`;
+  </style><div class="whead"><b>${{ '🔔': '🔔 Upozornění', 'ℹ️': 'ℹ️ O rozšíření a nastavení' }[def[1]] || def[1]}</b><button data-w="close" title="Zavřít">✕</button></div><div class="wbody"></div>`);
   document.documentElement.appendChild(h);
   toFront(h);
   h.addEventListener('pointerdown', () => toFront(h), true);
@@ -310,12 +315,12 @@ function renderIcons() {
   bar.classList.toggle('vert', !!cfg.barVertical);
   const tg = root.getElementById('toggle');
   if (!cfg.uiBar) { el.innerHTML = ''; return; }
-  el.innerHTML = TABS.filter(([id]) => tabVisible(id)).map(([id, l]) => {
+  el.innerHTML = L(TABS.filter(([id]) => tabVisible(id)).map(([id, l]) => {
     const badge = id === 'alerts' && S.unread ? `<span class="bdg">${S.unread}</span>` : '';
     const alertCls = id === 'alerts' && (S.unreadLoud || 0) > 0 ? ' alert' : '';
     return `<button class="ico${tabWins.has(id) ? ' on' : ''}${alertCls}" data-ico="${id}" title="${l === '🔔' ? 'Upozornění' : l === 'ℹ️' ? 'O rozšíření a nastavení' : l}">${ICONS[id] || '•'}${badge}</button>`;
-  }).join('');
-  if (tg && !tg.classList.contains('drag')) tg.title = `FoE Reader ${VERSION} · klik = panel se záložkami, táhnout = přesunout lištu`;
+  }).join(''));
+  if (tg && !tg.classList.contains('drag')) tg.title = L(`FoE Reader ${VERSION} · klik = panel se záložkami, táhnout = přesunout lištu`);
 }
 function renderTabWin(id) {
   const w = tabWins.get(id);
@@ -324,7 +329,7 @@ function renderTabWin(id) {
   const act = w.root.activeElement;
   if (act && act.tagName === 'INPUT' && !act.readOnly && act.type !== 'checkbox' && Date.now() - lastInputAt < 2500) return;
   const keep = w.body.scrollTop;
-  w.body.innerHTML = def[2]();
+  w.body.innerHTML = L(def[2]());
   w.body.scrollTop = keep;
 }
 function restoreTabWins() {
@@ -440,8 +445,8 @@ function renderTabs() {
   const el = root?.getElementById('tabs');
   if (!el) return;
   if (!tabVisible(tab)) tab = 'gb';
-  el.innerHTML = TABS.filter(([id]) => tabVisible(id)).map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')
-    + '<button data-act="popout" title="Otevřít tuto záložku v samostatném okně">⧉</button>';
+  el.innerHTML = L(TABS.filter(([id]) => tabVisible(id)).map(([id, l]) => `<button data-tab="${id}">${l}</button>`).join('')
+    + '<button data-act="popout" title="Otevřít tuto záložku v samostatném okně">⧉</button>');
 }
 function render() {
   if (!root) return;
@@ -456,7 +461,7 @@ function render() {
   if (editing && Date.now() - lastInputAt < 2500) { setTimeout(scheduleRender, 2600); return; }
   const focusSel = editing ? (act.dataset.cfg ? `[data-cfg="${act.dataset.cfg}"]` : act.dataset.prov ? `[data-prov="${act.dataset.prov}"]` : act.dataset.input ? `[data-input="${act.dataset.input}"]` : null) : null;
   const keepScroll = body.scrollTop;
-  body.innerHTML = TABS.find((t) => t[0] === tab)[2]();
+  body.innerHTML = L(TABS.find((t) => t[0] === tab)[2]());
   body.scrollTop = keepScroll;
   if (focusSel) body.querySelector(focusSel)?.focus({ preventScroll: true });
 }

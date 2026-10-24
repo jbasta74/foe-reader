@@ -22,6 +22,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - `provinces.js`: názvy a sousednost provincií GBG pro obě mapy (statická data převzatá z FoE Helperu, AGPL-3.0).
 - `nego-solver-helper.js`, `nego.js`: pomocník vyjednávání (přesný řešič z FoE Helperu, AGPL-3.0, a vlastní odhad).
 - `stats.js`: úložiště statistik a nastavení (chrome.storage, vybraná složka, synchronizace).
+- `i18n.js`: anglický překlad panelu (ℹ️ → Jazyk / Language).
 - `panel-*.js`: panel, běží v izolovaném světě a sdílí jeden globální rozsah (načítají se v pořadí z manifestu):
   `panel-core.js` (stav, třídění zpráv podle `requestClass.requestMethod` v objektu `H`, vyjednávání, příhody, upozornění, oznámení Chromu),
   `panel-city.js` (mapa města, okna kalkulačky a mapy), `panel-production.js` (bonusy, produkce, denní přehled, rating),

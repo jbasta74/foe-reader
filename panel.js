@@ -1690,7 +1690,7 @@
   ];
   const rateW = () => { const w = cfg.ratingW || {}; return RATE_TYPES.map(([k, l, d, on]) => ({ k, l, per: w[k]?.per ?? d, on: w[k]?.on ?? on })); };
   const RATE_SKIP = ['street', 'off_grid', 'hub_part', 'hub_main', 'main_building', 'greatbuilding', 'military', 'friends_tavern', 'outpost_ship'];
-  let rateSel = { size: 0, q: '', asc: true, settings: false };
+  let rateSel = { size: 0, q: '', asc: true, settings: false, inv: false };
   // Hodnoty budovy podle druhů ratingu (produkce za den + bonusy).
   function rateValues(e, bs) {
     const b = buildingDaily(e, S.player?.era, bs), v = { ...b.res };
@@ -1731,6 +1731,49 @@
     for (const b of out) if (cnt[b.name] > 1 && b.era) b.name += ` (${ERA[b.era] || b.era})`;
     return out;
   }
+  // Ohodnocení jedné budovy (sz = rozměry z metadat).
+  function rateOne(e, sz, W, bs) {
+    const { v, src } = rateValues(e, bs);
+    const road = sz.road ? (sz.w === 1 || sz.l === 1 ? 0.5 : 1) * sz.road : 0;
+    const tiles = sz.w * sz.l + road;
+    const parts = W.map((t) => [t, (v[t.k] || 0) / tiles / t.per]).filter(([, x]) => x > 0);
+    return { v, src, road, tiles, w: sz.w, l: sz.l, score: parts.reduce((a, [, x]) => a + x, 0), parts: parts.sort((a, b) => b[1] - a[1]) };
+  }
+  // Budovy v inventáři: hodnotí se ve vašem věku (víceérové budovy se postaví ve věku hráče).
+  function ratedInventory() {
+    const W = rateW().filter((t) => t.on && t.per > 0), bs = cfg.prodBoosted !== false ? prodBoostSums() : null;
+    const out = [], seen = new Set();
+    let noMeta = 0;
+    for (const it of S.inv.values()) {
+      const id = it.item?.__class__ === 'BuildingItemPayload' ? it.item.cityEntityId : null;
+      if (!id || seen.has(id) || !(it.stock > 0)) continue;
+      seen.add(id);
+      const sz = S.ent.get(id);
+      if (!sz || RATE_SKIP.includes(sz.type)) { if (!sz) noMeta++; continue; }
+      const e = { cityentity_id: id, type: sz.type, level: ERAS.indexOf(S.player?.era), state: {} };
+      out.push({ id, name: it.name || S.names.get(id) || id, n: it.stock, ...rateOne(e, sz, W, bs) });
+    }
+    return { list: out, noMeta };
+  }
+  // Návrhy výměny: horší budovy ve městě se stejným půdorysem (jedna, nebo dvě vedle sebe), přínos = rozdíl celkové hodnoty (skóre × pole).
+  function swapSuggestions(b, city) {
+    const fits = (x, w, l) => (x.w === w && x.l === l) || (x.w === l && x.l === w);
+    const val = (x) => x.score * x.tiles, mine = val(b), res = [];
+    const pool = city.filter((x) => x.score < b.score);
+    for (const x of pool) if (fits(x, b.w, b.l)) res.push({ parts: [x], gain: mine - val(x) });
+    for (const [W, Lt] of [[b.w, b.l], [b.l, b.w]]) {
+      for (let i = 0; i < pool.length; i++) for (let j = i; j < pool.length; j++) {
+        const x = pool[i], y = pool[j];
+        if (i === j && x.n < 2) continue;
+        for (const [xw, xl] of [[x.w, x.l], [x.l, x.w]]) for (const [yw, yl] of [[y.w, y.l], [y.l, y.w]]) {
+          if (xw === W && yw === W && xl + yl === Lt) res.push({ parts: [x, y], gain: mine - val(x) - val(y) });
+        }
+      }
+    }
+    const uniq = new Map();
+    for (const r of res) { const k = r.parts.map((x) => x.name).sort().join('+'); if (!uniq.has(k) || uniq.get(k).gain < r.gain) uniq.set(k, r); }
+    return [...uniq.values()].filter((r) => r.gain > 0).sort((a, c) => c.gain - a.gain).slice(0, 3);
+  }
   function viewRating() {
     if (!S.entities.size) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
     const all = ratedBuildings();
@@ -1740,13 +1783,25 @@
       .sort((a, b) => (rateSel.asc ? a.score - b.score : b.score - a.score));
     const r2 = (x) => (Math.round(x * 100) / 100).toLocaleString('cs-CZ');
     const goods = (v) => (v.g_prev || 0) + (v.g_cur || 0) + (v.g_next || 0);
-    let h = `<div style="margin-bottom:4px"><button class="fbtn ${!rateSel.settings ? 'on' : ''}" data-rate="list">Výsledky</button><button class="fbtn ${rateSel.settings ? 'on' : ''}" data-rate="settings">Nastavení hodnot</button></div>`;
+    let h = `<div style="margin-bottom:4px"><button class="fbtn ${!rateSel.settings && !rateSel.inv ? 'on' : ''}" data-rate="list">Výsledky</button><button class="fbtn ${rateSel.inv ? 'on' : ''}" data-rate="inv">Z inventáře</button><button class="fbtn ${rateSel.settings ? 'on' : ''}" data-rate="settings">Nastavení hodnot</button></div>`;
     if (rateSel.settings) {
       return h + `<p class="muted">Kolik dané věci má budova vyrobit na jedno pole (včetně podílu cesty), aby za ni dostala 1 bod. Skóre = součet bodů.</p>
         <table><thead><tr><th>Započítat</th><th>Druh</th><th class="num">Na pole</th></tr></thead><tbody>${rateW().map((t) =>
           `<tr><td><input type="checkbox" data-ratew="${t.k}" data-f="on" ${t.on ? 'checked' : ''}></td><td>${esc(t.l)}</td>
            <td class="num"><input type="number" step="0.05" min="0" style="width:80px" data-ratew="${t.k}" data-f="per" value="${Number.isFinite(+t.per) ? +t.per : 0}"></td></tr>`).join('')}</tbody></table>
         <p><button data-act="ratereset">Obnovit výchozí hodnoty</button></p>`;
+    }
+    if (rateSel.inv) {
+      if (!S.invLoaded) return h + '<p class="muted">Inventář ještě nebyl načten – otevřete ho ve hře.</p>';
+      const { list: inv, noMeta } = ratedInventory();
+      const city = all.filter((b) => !b.limited);
+      const r2i = (x) => (Math.round(x * 100) / 100).toLocaleString('cs-CZ');
+      return h + `<p class="muted">Budovy z inventáře ohodnocené ve vašem věku a návrhy, které horší budovy ve městě by mohly nahradit (stejný půdorys, jedna budova nebo dvě vedle sebe; přínos = rozdíl skóre × počet polí).</p>
+        <table><thead><tr><th>Budova v inventáři</th><th class="num">Polí</th><th class="num">Skóre</th><th>Místo čeho</th></tr></thead><tbody>${
+        inv.sort((a, b) => b.score - a.score).map((b) => { const sw = swapSuggestions(b, city);
+          return `<tr><td>${esc(b.name)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td><td class="num">${b.w}×${b.l}${b.road ? `+${r2i(b.road)}` : ''}</td>
+            <td class="num"><b>${r2i(b.score)}</b></td><td style="font-size:11px">${sw.length ? sw.map((r) => `${r.parts.map((x) => esc(x.name)).join(' + ')} <span class="up">+${r2i(r.gain)}</span>`).join('<br>') : '<span class="muted">–</span>'}</td></tr>`; }).join('')}</tbody></table>
+        ${noMeta ? `<p class="muted">U ${noMeta} budov z inventáře hra ještě nenačetla popis (rozměry, produkci) – načte ho třeba při otevření inventáře nebo při stavbě.</p>` : ''}`;
     }
     h += `<div class="copyrow" style="margin-bottom:4px;flex-wrap:wrap;align-items:center">
         <input class="pname" data-input="rateQ" placeholder="Hledat budovu" value="${esc(rateSel.q)}">
@@ -2705,7 +2760,7 @@
       if (ev.target.closest('[data-act="systest"]')) sysSend({ type: 'notify', title: 'FoE Reader', message: 'Zkušební oznámení – takhle bude vypadat upozornění na sledovanou provincii.' });
       if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
       const ra = ev.target.closest('[data-rate]');
-      if (ra) { const a = ra.dataset.rate; if (a === 'sort') rateSel.asc = !rateSel.asc; else rateSel.settings = a === 'settings'; render(); return; }
+      if (ra) { const a = ra.dataset.rate; if (a === 'sort') rateSel.asc = !rateSel.asc; else { rateSel.settings = a === 'settings'; rateSel.inv = a === 'inv'; } render(); return; }
       const rz = ev.target.closest('[data-ratesize]');
       if (rz) { rateSel.size = +rz.dataset.ratesize; render(); return; }
       if (ev.target.closest('[data-act="ratereset"]')) { cfg.ratingW = {}; saveCfg(); render(); return; }

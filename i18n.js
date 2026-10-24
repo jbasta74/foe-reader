@@ -466,6 +466,8 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['✓ vaše', '✓ yours'], ['Místo máte jisté – nikdo vás už nepředběhne.', 'The place is secured – nobody can overtake you.'], ['Horší než místo, které už máte.', 'Worse than the place you already have.'],
+    ['Přidat k vašim', 'Add to your'], [' 👤 = vaše současné místo; zeleně ✓ místo, které máte jisté; přeškrtnutá místa jsou horší než to vaše.', ' 👤 = your current place; green ✓ = secured place; crossed-out places are worse than yours.'],
     ['🆕 Je k dispozici nová verze', '🆕 New version available:'], ['(máte', '(you have'], ['Stáhnout ZIP', 'Download ZIP'], ['Co je nového', 'What\'s new'],
     ['Rozbalte ZIP přes stávající složku, v chrome://extensions klikněte u rozšíření na obnovit a ve hře dejte F5.', 'Unzip over the existing folder, click reload at the extension in chrome://extensions and press F5 in the game.'],
     ['Máte nejnovější verzi', 'You have the latest version'], ['ověřeno', 'checked'], ['Zkontrolovat teď', 'Check now'], ['Nová verze', 'New version'],

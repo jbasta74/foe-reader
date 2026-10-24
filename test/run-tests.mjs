@@ -105,6 +105,19 @@ const tests = {
     if (!t.includes('Návrh po koupi')) throw new Error('chybí návrh po koupi');
     return errors;
   },
+  async 'VB po vlastním náhozu: jisté místo ✓, horší přeškrtnutá'() {
+    const rk = rankings([1]);
+    rk[1] = { ...rk[1], player: { player_id: ME, name: 'Tester' }, forge_points: 8000 };
+    rk[2] = { ...rk[2], player: { player_id: 3, name: 'Jiný' }, forge_points: 300 };
+    const gb = foreignGb(100); gb.m.responseData = { ...gb.m.responseData, state: { invested_forge_points: 13300, forge_points_for_level_up: 20000 } };
+    const { pg, errors } = await page([startup([arc]), gb, msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'),
+      msg('GreatBuildingsService.getConstruction', { rankings: rk })]);
+    const st = await pg.evaluate(() => { const r = [...document.querySelectorAll('div')].map((d) => d.shadowRoot).find((x) => /Kalkulačka VB/.test(x?.querySelector('.whead b')?.textContent || ''));
+      return [...r.querySelectorAll('tbody tr')].slice(0, 5).map((tr) => tr.className + '|' + tr.innerText.replace(/\s+/g, ' ')); });
+    if (!/^done\|1\. 👤.*✓ vaše/.test(st[0])) throw new Error('P1 není ✓ vaše: ' + st.join(' / '));
+    if (!st.slice(1).every((x) => x.startsWith('gone|'))) throw new Error('horší místa nejsou přeškrtnutá: ' + st.join(' / '));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

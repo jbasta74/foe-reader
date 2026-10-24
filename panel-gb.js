@@ -112,6 +112,11 @@ function foreignCalcHtml() {
     html += `<p><b>${esc(gb ? entName(gb.cityentity_id) : 'Otevřená VB')}</b> · ${esc(owner)}${gb ? ` · úr. ${gb.level}` : ''}<br>
       Chybí: <b>${remaining != null ? fmt(remaining) : '?'}</b> FP · bonus Archy ${fmt(arc)} % (${gold ? 'zlatý' : 'měděný'}) · váš vklad ${fmt(mine)}${S.packageFP != null ? ` · máte ${fmt((S.resources.strategy_points || 0) + S.packageFP)} FP` : ''}</p>`;
     if (places.length) {
+      // Po vlastním náhozu: nejlepší místo, které už máte jisté (nikdo vás nepředběhne), je zelené „✓ vaše“;
+      // horší místa jsou přeškrtnutá (dvě místa mít nejde), lepší místa ukazují, kolik přidat na posun výš.
+      const costOf = (i) => (remaining != null ? Math.max(0, Math.ceil((remaining + (others[i]?.forge_points || 0) - mine) / 2)) : null);
+      const doneIdx = mine > 0 ? places.findIndex((p, i) => costOf(i) === 0) : -1;
+      const myRank = (rk || []).find((r) => r.player?.player_id === myId())?.rank;
       html += `<table><thead><tr><th>Místo</th><th>Drží (bez vás)</th><th>Odměna FP</th><th>Medaile</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
         places.map((p, i) => {
           const holder = others[i]?.forge_points || 0;
@@ -119,16 +124,19 @@ function foreignCalcHtml() {
           const withArc = roundReward(base * (1 + arc / 100)); // stejně jako hra (prasátko)
           const medBase = p.reward.resources?.medals || 0;
           const medArc = Math.round(medBase * (1 + arc / 100)); // bonus Archy platí i na medaile
-          const cost = remaining != null ? Math.max(0, Math.ceil((remaining + holder - mine) / 2)) : null;
+          const cost = costOf(i);
           const possible = cost != null && cost <= remaining;
           const profit = possible ? withArc - cost - mine : null; // celý vklad vč. již vloženého
-          return `<tr class="${possible ? '' : 'muted'}"><td>${p.rank}.</td><td class="num">${fmt(holder)}</td>
+          const done = i === doneIdx, gone = doneIdx >= 0 && i > doneIdx;
+          const cls = done ? 'done' : gone ? 'gone' : possible ? '' : 'muted';
+          const costTxt = done ? '✓ vaše' : !possible ? 'nelze' : mine > 0 && !gone ? `+${fmt(cost)}` : fmt(cost);
+          return `<tr class="${cls}"${done ? ' title="Místo máte jisté – nikdo vás už nepředběhne."' : gone ? ' title="Horší než místo, které už máte."' : mine > 0 && possible ? ` title="Přidat k vašim ${fmt(mine)} FP"` : ''}><td>${p.rank}.${p.rank === myRank ? ' 👤' : ''}</td><td class="num">${fmt(holder)}</td>
             <td class="num">${fmt(base)} → <b>${fmt(withArc)}</b></td>
             <td class="num" title="${medBase ? `${fmt(medBase)} bez bonusu Archy` : ''}">${medBase ? fmt(medArc) : ''}</td>
-            <td class="num">${possible ? fmt(cost) : 'nelze'}</td>
+            <td class="num">${costTxt}</td>
             <td class="num ${profit > 0 ? 'hi' : ''}">${profit != null ? (profit > 0 ? '+' : '') + fmt(profit) : ''}</td></tr>`;
         }).join('')}</tbody></table>
-        <p class="muted">„Zajistit za“ = kolik FP ještě vložit, aby vás na daném místě už nikdo nepředběhl. Zisk počítá s celým vaším vkladem.</p>`;
+        <p class="muted">„Zajistit za“ = kolik FP ještě vložit, aby vás na daném místě už nikdo nepředběhl. Zisk počítá s celým vaším vkladem.${mine > 0 ? ' 👤 = vaše současné místo; zeleně ✓ místo, které máte jisté; přeškrtnutá místa jsou horší než to vaše.' : ''}</p>`;
     } else if (rk) {
       html += '<p class="muted">Pořadí přišlo, ale bez odměn – pošlete mi log, upravím čtení.</p>';
     }

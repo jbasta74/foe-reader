@@ -152,6 +152,71 @@ function viewStock() {
   return html || '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
 }
 
+// ---------- Výzkum: kolik surovin a FP chybí k dokončení věku ----------
+// Strom technologií z metadat hry („research“) + postup hráče (ResearchService.getProgress).
+// Postup jako FoE Helper: u každé nevyzkoumané technologie požadavky (requirements) + zbývající FP;
+// z rozhodovacích bodů Hvězdného věku se bere zvolená větev (jinak první – ceny jsou stejné).
+let techEra = null;
+function techList() {
+  const out = [];
+  for (const t of S.research.meta || []) {
+    if (t.id === 'root') continue;
+    out.push(t);
+    const br = t.branches;
+    if (Array.isArray(br) && br.length) {
+      const b = br.find((x) => S.research.chosen.has(x.id)) || br[0];
+      for (const n of b.nodes || []) out.push({ ...n, era: n.era || t.era, branchOf: t.id });
+    }
+  }
+  return out;
+}
+const techResearch = (t) => { const [id, amount] = Object.entries(t.researchCost?.resources || {})[0] || []; return { id, amount: amount || 0 }; };
+function viewResearch() {
+  const R = S.research;
+  if (!R.meta) return '<p class="muted">Strom výzkumu hra posílá při načtení – obnovte hru (F5).</p>';
+  const list = techList().filter((t) => t.era && !t.isTeaser);
+  const prog = R.progress || {};
+  const done = new Set(prog.unlockedNodes?.length ? prog.unlockedNodes : prog.unlockedTechnologies || []);
+  const paid = new Map((prog.inProgressTechnologies || []).map((x) => [x.tech_id, x.currentSP ?? Object.values(x.researchCostPaid?.resources || {})[0] ?? 0]));
+  const eras = [...new Set(list.map((t) => t.era))];
+  const cur = Math.max(0, eras.indexOf(S.player?.era));
+  if (techEra == null || !eras.includes(techEra)) techEra = eras[Math.min(cur + 1, eras.length - 1)];
+  const tgt = eras.indexOf(techEra);
+  const sel = {}, cum = {};
+  let nSel = 0, nCum = 0, nOpt = 0;
+  for (const t of list) {
+    const ei = eras.indexOf(t.era);
+    if (ei > tgt || done.has(t.id)) continue;
+    if (!t.branchOf && !(t.children || []).length && ei >= cur && cfg.techOpt) { nOpt++; continue; }
+    const dem = { ...((t.requirements || t.cost)?.resources || {}) };
+    delete dem.__class__;
+    const rc = techResearch(t);
+    if (rc.id && rc.amount > 0) dem[rc.id] = (dem[rc.id] || 0) + Math.max(0, rc.amount - (paid.get(t.id) || 0));
+    for (const [k, v] of Object.entries(dem)) { if (!v) continue; cum[k] = (cum[k] || 0) + v; if (ei === tgt) sel[k] = (sel[k] || 0) + v; }
+    nCum++; if (ei === tgt) nSel++;
+  }
+  const stock = (id) => (id === 'strategy_points' ? (S.resources.strategy_points || 0) + (S.packageFP || 0) : S.resources[id] || 0);
+  const base = ['strategy_points', 'money', 'supplies'];
+  const order = [...base, ...[...S.goodsEra.keys()].filter((id) => cum[id] || sel[id]), ...Object.keys(cum).filter((id) => !base.includes(id) && !S.goodsEra.has(id))];
+  const ids = [...new Set(order)].filter((id) => cum[id]);
+  const LBL = { strategy_points: 'FP', money: 'Mince', supplies: 'Zásoby' };
+  const rows = ids.map((id) => {
+    const miss = Math.max(0, cum[id] - stock(id)), ge = S.goodsEra.get(id);
+    return `<tr class="${miss ? '' : 'muted'}"><td>${esc(LBL[id] || resLabel(id))}${ge && ge !== techEra ? ` <span class="muted">· ${esc(ERA[ge] || ge)}</span>` : ''}</td>
+      <td class="num">${sel[id] ? fmt(sel[id]) : ''}</td><td class="num">${fmt(cum[id])}</td><td class="num">${fmt(stock(id))}</td>
+      <td class="num ${miss ? 'hi' : ''}">${miss ? fmt(miss) : '✓'}</td></tr>`;
+  }).join('');
+  const nav = (i, txt) => (i >= 0 && i < eras.length ? `<button class="fbtn" data-techera="${esc(eras[i])}">${txt}</button>` : '');
+  return `<div class="cfg"><div>${nav(tgt - 1, '◀')} <b>${esc(ERA[techEra] || techEra)}</b> ${nav(tgt + 1, '▶')}
+      <span class="muted">· váš věk ${esc(ERA[S.player?.era] || S.player?.era || '?')}</span></div>
+    <div><label><input type="checkbox" data-cfg="techOpt" ${cfg.techOpt ? 'checked' : ''}> vynechat volitelné technologie (slepé větve) od vašeho věku</label>${nOpt ? ` <span class="muted">(vynecháno ${nOpt})</span>` : ''}</div></div>
+    ${R.progress ? '' : '<p class="hi">Postup výzkumu ještě nepřišel – počítá se celý strom. Otevřete ve hře výzkum nebo obnovte hru.</p>'}
+    <p><span class="chip">zbývá technologií ve věku: <b>${nSel}</b></span><span class="chip">celkem do konce věku: <b>${nCum}</b></span></p>
+    ${ids.length ? `<table><thead><tr><th>Surovina</th><th>Věk</th><th>Celkem</th><th>Máte</th><th>Chybí</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<p class="muted">Vše vyzkoumáno 🎉</p>'}
+    <p class="muted">„Věk“ = zbývající technologie vybraného věku, „Celkem“ = vše nevyzkoumané až do konce vybraného věku (včetně starších věků). FP včetně balíčků; u rozpracované technologie se odečte už vložené.</p>`;
+}
+
 // ---------- O rozšíření ----------
 const REPO = 'https://github.com/jbasta74/foe-reader';
 const VERSION = (() => { try { return chrome.runtime.getManifest().version; } catch { return '?'; } })();

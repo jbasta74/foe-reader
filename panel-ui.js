@@ -215,6 +215,8 @@ function onUiClick(ev) {
       hid.has(id) ? hid.delete(id) : hid.add(id);
       cfg.hiddenTabs = [...hid]; saveCfg(); renderTabs(); render();
     }
+    const te = ev.target.closest('[data-techera]');
+    if (te) { techEra = te.dataset.techera; render(); }
     const lg = ev.target.closest('[data-lang]');
     if (lg && cfg.lang !== lg.dataset.lang) {
       cfg.lang = lg.dataset.lang; saveCfg(); renderTabs(); render(); renderCalcWin();

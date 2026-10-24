@@ -118,6 +118,27 @@ const tests = {
     if (!st.slice(1).every((x) => x.startsWith('gone|'))) throw new Error('horší místa nejsou přeškrtnutá: ' + st.join(' / '));
     return errors;
   },
+  async 'Výzkum: chybějící FP a zboží do konce věku'() {
+    const T = (id, era, parents, children, fp, res) => ({ id, era, parents, children, requirements: { resources: res }, researchCost: { resources: { strategy_points: fp } }, __class__: 'ResearchTechnology' });
+    const meta = [{ id: 'root', parents: [], children: ['a'] },
+      T('a', 'SpaceAgeTitan', ['root'], ['b'], 100, { money: 10 }),
+      T('b', 'SpaceAgeSpaceHub', ['a'], ['c'], 500, { money: 1000, silver: 30 }),
+      T('c', 'SpaceAgeSpaceHub', ['b'], ['d'], 400, { supplies: 50, silver: 40 }),
+      T('opt', 'SpaceAgeSpaceHub', ['b'], [], 999, { silver: 999 }),
+      T('d', 'StellarAgeDiscovery', ['c'], [], 7000, { money: 1 })];
+    const { pg, errors } = await page([
+      { channel: 'metadata', m: { metadataId: 'research-x', data: meta } },
+      msg('StartupService.getData', { user_data: { player_id: ME, user_name: 'Tester', era: 'SpaceAgeTitan' }, city_map: { entities: [] }, goodsList: [{ id: 'silver', era: 'SpaceAgeSpaceHub', name: 'Stříbro' }] }),
+      msg('ResourceService.getPlayerResources', { resources: { strategy_points: 50, money: 5000, supplies: 10, silver: 20 } }),
+      msg('ResearchService.getProgress', { unlockedNodes: ['root', 'a'], inProgressTechnologies: [{ tech_id: 'b', currentSP: 120 }] })]);
+    await openTab(pg, 'tech');
+    const t = (await winText(pg, 'Výzkum')).replace(/ /g, ' ');
+    // FP: b 500−120 + c 400 = 780, máte 50 → chybí 730; zboží silver 70 − 20 = 50; volitelná „opt“ vynechaná
+    if (!/FP\s+780\s+780\s+50\s+730/.test(t)) throw new Error('FP nesedí: ' + t.slice(0, 500));
+    if (!/Stříbro\s+70\s+70\s+20\s+50/.test(t)) throw new Error('zboží nesedí: ' + t.slice(0, 500));
+    if (!t.includes('vynecháno 1')) throw new Error('volitelná technologie nevynechaná');
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

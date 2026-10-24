@@ -28,6 +28,7 @@ const S = {
   gbgState: null,          // GuildBattlegroundStateService.getState
 };
 S.alerts = [];            // [{t, kind, text, urgent}]
+S.research = { meta: null, progress: null, chosen: new Set() }; // strom výzkumu (metadata „research“) a postup hráče
 S.unread = 0;
 S.attrition = null;       // GuildBattlegroundAttrition
 S.timers = [];            // TimerService.getTimers
@@ -53,6 +54,14 @@ const H = {
     for (const e of d.city_map?.entities || []) S.entities.set(e.id, e);
     if (d.city_map?.unlocked_areas) S.grids.main = { unlocked: d.city_map.unlocked_areas, blocked: d.city_map.blocked_areas || [] };
     for (const g of d.goodsList || []) { S.goodsEra.set(g.id, g.era); S.goodsName.set(g.id, g.name); }
+  },
+  // ---- Výzkum ----
+  'ResearchService.getProgress'(d) { S.research.progress = d; for (const b of d?.chosenBranches || []) S.research.chosen.add(b); },
+  'ResearchService.spendForgePoints'(d) { researchStep(d); },
+  'ResearchService.spendResearchResources'(d) { researchStep(d); },
+  'ResearchService.payTechnology'(d) {
+    const id = d?.technology?.id, p = (S.research.progress ||= { unlockedNodes: [], inProgressTechnologies: [] });
+    if (id && !(p.unlockedNodes ||= []).includes(id)) p.unlockedNodes.push(id);
   },
   'TimeService.updateTime'(d) {
     if (d && d.time) S.serverOffset = d.time - Date.now() / 1000;
@@ -531,13 +540,25 @@ function handleRequest(r) {
     if (S.ring.length > RING_MAX) S.ring.shift();
   }
   if (r?.requestClass === 'ConversationService' && ['markMessageRead', 'getConversation'].includes(r.requestMethod) && Array.isArray(r.requestData)) messageRead(r.requestData[0]);
+  if (r?.requestClass === 'ResearchService' && r.requestMethod === 'chooseBranch' && typeof r.requestData?.[0] === 'string') S.research.chosen.add(r.requestData[0]);
   if (r?.requestClass === 'GreatBuildingsService' && r.requestMethod === 'getConstruction' && Array.isArray(r.requestData)) {
     S.gbReq = { entityId: r.requestData[0], playerId: r.requestData[1], time: Date.now() };
   }
 }
 
+// Rozpracovaná technologie po vložení FP (odpověď nese technology.progress).
+function researchStep(d) {
+  const t = d?.technology;
+  if (!t?.id) return;
+  const p = (S.research.progress ||= { unlockedNodes: [], inProgressTechnologies: [] }), list = (p.inProgressTechnologies ||= []);
+  const cur = list.find((x) => x.tech_id === t.id);
+  const sp = t.progress?.currentSP;
+  if (cur) { if (sp != null) cur.currentSP = sp; } else list.push({ tech_id: t.id, currentSP: sp || 0 });
+}
 function handleMetadata(m) {
   const d = m.data;
+  // Strom výzkumu (všechny technologie s cenami) – hra ho načítá při startu.
+  if (/^research(?!_eras)/.test(m.metadataId || '') && Array.isArray(d)) S.research.meta = d;
   // Názvy provincií GBG přímo ze hry (metadata guild_battleground_maps, načítají se při otevření GBG)
   if (/^guild_battleground_maps/.test(m.metadataId || '')) { S.gbgMapsMeta = d; parseGbgMaps(d); }
   S.metaRev++;
@@ -592,6 +613,7 @@ const CFG_DEFAULT = {
   uiBar: true, barVertical: false, // nástrojová lišta s ikonami (jinak jen tlačítko s panelem záložek)
   msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
   negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
+  techOpt: true, // výzkum: vynechat volitelné technologie
   lang: 'cs', // jazyk panelu: 'cs' | 'en'
   negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy
 };

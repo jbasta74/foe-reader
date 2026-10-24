@@ -5,7 +5,7 @@
 // ---------- Grafy (SVG bez knihoven; popisek po najetí myší přes data-tip) ----------
 let statView = 'own', statArea = 'gbg';
 const SER_COL = ['#c0392b', '#e67e22', '#2e6db4', '#16a085'];
-const kfmt = (n) => { const a = Math.abs(n), c = (x) => x.toFixed(1).replace('.', ',').replace(',0', '');
+const kfmt = (n) => { const a = Math.abs(n), c = (x) => dec(x.toFixed(1).replace(/\.0$/, ''));
   return a >= 1e9 ? c(n / 1e9) + ' mld' : a >= 1e6 ? c(n / 1e6) + ' mil' : a >= 1e4 ? c(n / 1e3) + ' tis' : fmt(Math.round(n)); };
 function niceTicks(lo, hi, n = 4) {
   const span = hi - lo || Math.abs(hi) || 1, raw = span / n, mag = 10 ** Math.floor(Math.log10(raw));
@@ -167,7 +167,7 @@ function viewStats() {
   const st = globalThis.FOE_STATS;
   if (!st?.ready()) return '<p class="muted">Statistiky se začnou ukládat po načtení hry (F5).</p>';
   const D = st.data(), f = st.folder();
-  const store = f.name ? (f.perm === 'granted' ? `složka <b>${esc(f.name)}</b>${f.last ? ` (synchronizováno ${new Date(f.last).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })})` : ''}`
+  const store = f.name ? (f.perm === 'granted' ? `složka <b>${esc(f.name)}</b>${f.last ? ` (synchronizováno ${new Date(f.last).toLocaleTimeString(LOC(), { hour: '2-digit', minute: '2-digit' })})` : ''}`
     : `složka <b>${esc(f.name)}</b> – <button data-act="stgrant">Povolit přístup</button>`) : 'jen v tomto prohlížeči (složku pro sdílení mezi počítači nastavíte v ℹ️)';
   let h = `<p>${[['own', 'Můj vývoj'], ['guild', 'Cech'], ['visits', `Navštívená města (${Object.keys(D.visits).length})`]].map(([k, l]) => `<button class="fbtn ${statView === k ? 'on' : ''}" data-statview="${k}">${l}</button>`).join('')}</p>`;
   const foot = `<p style="margin-top:8px"><button data-act="stcsvown">CSV – můj vývoj</button> <button data-act="stcsvvis">CSV – navštívená města</button>
@@ -245,7 +245,7 @@ function storageSettingsHtml() {
   const status = !f.supported
     ? `<div class="muted">Tento prohlížeč výběr složky nepodporuje. V Brave ho zapnete v <code>brave://flags/#file-system-access-api</code> (pak restart prohlížeče). Do té doby použijte v Statistikách Zálohu / Načíst zálohu.</div>`
     : f.name
-      ? `<div>Složka: <b>${esc(f.name)}</b> · ${f.perm === 'granted' ? `přístup povolen${f.last ? `, synchronizováno ${new Date(f.last).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}` : '<span class="hi">přístup je potřeba znovu povolit</span>'}</div>
+      ? `<div>Složka: <b>${esc(f.name)}</b> · ${f.perm === 'granted' ? `přístup povolen${f.last ? `, synchronizováno ${new Date(f.last).toLocaleString(LOC(), { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}` : '<span class="hi">přístup je potřeba znovu povolit</span>'}</div>
          <div>${f.perm === 'granted' ? '<button data-act="stsync">Synchronizovat teď</button>' : '<button data-act="stgrant">Povolit přístup</button>'} <button data-act="stpick">Změnit složku…</button> <button data-act="stforget">Odpojit složku</button></div>`
       : `<div><button data-act="stpick">Vybrat složku…</button> <span class="muted">např. složka ve OneDrive, Google Drive nebo iCloud Drive</span></div>`;
   return `<h4>Nastavení – ukládání statistik</h4>

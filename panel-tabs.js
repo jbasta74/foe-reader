@@ -7,25 +7,26 @@ let alertCfgOpen = false; // nastavení upozornění je ve výchozím stavu sbal
 function viewAlerts() {
   const chk = (k, label) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${label}</label>`;
   const num = (k, label, w = 50) => `<label>${label} <input type="number" data-cfg="${k}" value="${Number.isFinite(+cfg[k]) ? +cfg[k] : CFG_DEFAULT[k] ?? 0}" min="0" style="width:${w}px"></label>`;
-  const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭', trade: '🤝', gb: '🏛️', lim: '⏳', msg: '✉️' };
+  const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭', trade: '🤝', gb: '🏛️', lim: '⏳', msg: '✉️', ev: '⏰' };
   const cfgHtml = `<div class="cfg">
       <div>${chk('sound', 'Zvuk')} <button data-act="testsound">Vyzkoušet zvuk</button></div>
       <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
       <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
       <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
-      <div><b>Oznámení Chromu:</b> ${chk('sysWatch', 'sledované provincie ☆')} ${chk('sysUrgent', 'útok na naše provincie')} ${chk('sysMsg', 'zprávy')} ${chk('sysProd', 'hotová produkce')} ${chk('sysLim', 'limitované budovy')} ${chk('sysTav', 'hospody')} ${chk('sysTrade', 'obchod')} <button data-act="systest">Vyzkoušet</button></div>
+      <div><b>Oznámení Chromu:</b> ${chk('sysWatch', 'sledované provincie ☆')} ${chk('sysUrgent', 'útok na naše provincie')} ${chk('sysMsg', 'zprávy')} ${chk('sysProd', 'hotová produkce')} ${chk('sysLim', 'limitované budovy')} ${chk('sysTav', 'hospody')} ${chk('sysTrade', 'obchod')} ${chk('sysEv', 'konec expedice / QI')} <button data-act="systest">Vyzkoušet</button></div>
       <div class="muted">Systémové oznámení Chromu se ukáže i mimo hru (když je okno na pozadí nebo minimalizované); klik na něj přepne na hru. Musí být povolená oznámení Chromu v systému (Windows / macOS).</div>
       <div><b>GBG okno:</b> ${chk('gbgPopup', 'otevřít okno GBG při vstupu do GBG')}</div>
       <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
       <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')} ${chk('negoGbg', 'pomocník i v GBG')}</div>
       <div><b>Zprávy:</b> ${chk('msgSocial', 'soukromé')} ${chk('msgGuild', 'cechovní')} ${chk('msgSound', 'se zvukem')}</div>
       <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
+      <div><b>Expedice a QI:</b> ${chk('endOn', 'konec s nevyužitými pokusy / akcemi')} ${num('endLead', 'hodin předem')}</div>
       <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
     </div>`;
   return `<p><button class="fbtn ${alertCfgOpen ? 'on' : ''}" data-act="alertcfg">⚙ Nastavení upozornění ${alertCfgOpen ? '▾' : '▸'}</button></p>
     ${alertCfgOpen ? cfgHtml : ''}
     <h4>Poslední upozornění</h4>
-    ${S.alerts.length ? `<table><tbody>${S.alerts.map((a) => `<tr><td class="muted" style="white-space:nowrap">${new Date(a.t).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}</td>
+    ${S.alerts.length ? `<table><tbody>${S.alerts.map((a) => `<tr><td class="muted" style="white-space:nowrap">${new Date(a.t).toLocaleTimeString(LOC(), { hour: '2-digit', minute: '2-digit' })}</td>
       <td>${ICON[a.kind] || ''}</td><td class="${a.urgent ? 'hi' : ''}">${esc(a.text)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Zatím nic.</p>'}
     <p class="muted">Zvuk prohlížeč povolí až po prvním kliknutí do stránky. Upozornění fungují, jen když je hra otevřená (stačí i na pozadí).</p>`;
 }
@@ -56,7 +57,7 @@ function viewIncidents() {
   const fut = list.filter((h) => h.startTime > now).sort((a, b) => a.startTime - b.startTime);
   const place = (h) => esc(INC_PLACES[h.position?.context] || h.position?.context || '');
   const rare = (h) => (h.rarity === 'rare' ? ' <span class="hi">vzácná</span>' : h.rarity === 'uncommon' ? ' <span class="muted">neobvyklá</span>' : '');
-  const at = (t) => new Date((t - S.serverOffset) * 1000).toLocaleString('cs-CZ', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  const at = (t) => new Date((t - S.serverOffset) * 1000).toLocaleString(LOC(), { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   const byPlace = {};
   for (const h of act) { const p = INC_PLACES[h.position?.context] || h.position?.context; byPlace[p] = (byPlace[p] || 0) + 1; }
   let html = !S.incidents ? '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>'
@@ -75,7 +76,7 @@ function viewIncidents() {
   for (const x of today) for (const r of x.r) { const k = r.id || r.name; const v = sum.get(k) || { name: r.name, n: 0 }; v.n += r.n; sum.set(k, v); }
   html += `<h4>Vybrané odměny dnes (${today.length})</h4>${sum.size ? `<p>${[...sum.values()].map((v) => `<span class="chip">${esc(v.name.replace(/^\d[\d\s.,]*\s*/, ''))} <b>${fmt(v.n)}</b></span>`).join('')}</p>` : '<p class="muted">Zatím nic.</p>'}
     ${log.length ? `<details><summary class="muted">Posledních ${Math.min(20, log.length)} odměn</summary><table><tbody>${log.slice(-20).reverse().map((x) =>
-      `<tr><td class="muted" style="white-space:nowrap">${new Date(x.t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${x.r.map((r) => esc(r.name)).join(', ')}</td></tr>`).join('')}</tbody></table></details>` : ''}
+      `<tr><td class="muted" style="white-space:nowrap">${new Date(x.t).toLocaleString(LOC(), { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${x.r.map((r) => esc(r.name)).join(', ')}</td></tr>`).join('')}</tbody></table></details>` : ''}
     <p class="muted">Obsah odměny server prozradí až po vybrání příhody. Deník se ukládá v prohlížeči.</p>`;
   return html;
 }
@@ -200,9 +201,20 @@ function viewResearch() {
   const order = [...base, ...[...S.goodsEra.keys()].filter((id) => cum[id] || sel[id]), ...Object.keys(cum).filter((id) => !base.includes(id) && !S.goodsEra.has(id))];
   const ids = [...new Set(order)].filter((id) => cum[id]);
   const LBL = { strategy_points: 'FP', money: 'Mince', supplies: 'Zásoby' };
+  // Zboží, na které máte ve městě výrobnu (metadata výroben nebo právě běžící výroba).
+  const prodGoods = new Set();
+  for (const e of S.entities.values()) {
+    for (const g of S.entGoods.get(e.cityentity_id) || []) prodGoods.add(g);
+    for (const g of Object.keys(e.state?.current_product?.product?.resources || {})) prodGoods.add(g);
+  }
+  // Denní produkce FP (jako Přehled výroby) → odhad, za kolik dní FP nasbíráte.
+  let fpDay = 0;
+  try { fpDay = dailyOverview().tot.strategy_points || 0; } catch { /* bez metadat */ }
+  const fpMiss = Math.max(0, (cum.strategy_points || 0) - stock('strategy_points'));
   const rows = ids.map((id) => {
     const miss = Math.max(0, cum[id] - stock(id)), ge = S.goodsEra.get(id);
-    return `<tr class="${miss ? '' : 'muted'}"><td>${esc(LBL[id] || resLabel(id))}${ge && ge !== techEra ? ` <span class="muted">· ${esc(ERA[ge] || ge)}</span>` : ''}</td>
+    const pg = ge && prodGoods.has(id) ? ' <span title="Máte ve městě výrobnu tohoto zboží.">🏭</span>' : ge && miss ? ' <span class="muted" title="Výrobnu nemáte – zboží je potřeba sehnat (obchod, cech, události).">⇄</span>' : '';
+    return `<tr class="${miss ? '' : 'muted'}"><td>${esc(LBL[id] || resLabel(id))}${pg}${ge && ge !== techEra ? ` <span class="muted">· ${esc(ERA[ge] || ge)}</span>` : ''}</td>
       <td class="num">${sel[id] ? fmt(sel[id]) : ''}</td><td class="num">${fmt(cum[id])}</td><td class="num">${fmt(stock(id))}</td>
       <td class="num ${miss ? 'hi' : ''}">${miss ? fmt(miss) : '✓'}</td></tr>`;
   }).join('');
@@ -211,10 +223,10 @@ function viewResearch() {
       <span class="muted">· váš věk ${esc(ERA[S.player?.era] || S.player?.era || '?')}</span></div>
     <div><label><input type="checkbox" data-cfg="techOpt" ${cfg.techOpt ? 'checked' : ''}> vynechat volitelné technologie (slepé větve) od vašeho věku</label>${nOpt ? ` <span class="muted">(vynecháno ${nOpt})</span>` : ''}</div></div>
     ${R.progress ? '' : '<p class="hi">Postup výzkumu ještě nepřišel – počítá se celý strom. Otevřete ve hře výzkum nebo obnovte hru.</p>'}
-    <p><span class="chip">zbývá technologií ve věku: <b>${nSel}</b></span><span class="chip">celkem do konce věku: <b>${nCum}</b></span></p>
+    <p><span class="chip">zbývá technologií ve věku: <b>${nSel}</b></span><span class="chip">celkem do konce věku: <b>${nCum}</b></span>${fpMiss && fpDay > 0 ? `<span class="chip" title="Chybějící FP / denní produkce FP ve městě (Přehled výroby, bez balíčků a jiných zdrojů).">FP při ${fmt(Math.round(fpDay))} FP/den: ~<b>${fmt(Math.ceil(fpMiss / fpDay))}</b> dní</span>` : ''}</p>
     ${ids.length ? `<table><thead><tr><th>Surovina</th><th>Věk</th><th>Celkem</th><th>Máte</th><th>Chybí</th></tr></thead><tbody>${rows}</tbody></table>`
       : '<p class="muted">Vše vyzkoumáno 🎉</p>'}
-    <p class="muted">„Věk“ = zbývající technologie vybraného věku, „Celkem“ = vše nevyzkoumané až do konce vybraného věku (včetně starších věků). FP včetně balíčků; u rozpracované technologie se odečte už vložené.</p>`;
+    <p class="muted">„Věk“ = zbývající technologie vybraného věku, „Celkem“ = vše nevyzkoumané až do konce vybraného věku (včetně starších věků). FP včetně balíčků; u rozpracované technologie se odečte už vložené. 🏭 = zboží vyrábíte ve městě, ⇄ = výrobnu nemáte, je potřeba ho sehnat.</p>`;
 }
 
 // ---------- O rozšíření ----------
@@ -279,7 +291,7 @@ function viewGE() {
     h += `<h4>Aktuální úsek</h4><table><tbody>${items.map((x) => `<tr class="${x.id === id ? 'sel' : x.id < id ? 'muted' : ''}"><td>${Math.floor(x.id / 2) + 1}.</td><td>${x.txt}</td></tr>`).join('')}</tbody></table>`;
   }
   const log = loadGeLog().slice(-30).reverse();
-  if (log.length) h += `<h4>Poslední truhly</h4><table><tbody>${log.map((x) => `<tr><td class="muted" style="white-space:nowrap">${new Date(x.t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(x.name)}</td></tr>`).join('')}</tbody></table>`;
+  if (log.length) h += `<h4>Poslední truhly</h4><table><tbody>${log.map((x) => `<tr><td class="muted" style="white-space:nowrap">${new Date(x.t).toLocaleString(LOC(), { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(x.name)}</td></tr>`).join('')}</tbody></table>`;
   h += '<p class="muted">Postup se aktualizuje s každým setkáním; úsek a body cechu po otevření mapy expedice. Vyjednávání radí okno 🤝.</p>';
   return h;
 }

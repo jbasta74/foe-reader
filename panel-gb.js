@@ -56,8 +56,8 @@ function factorPicker(gold) {
   // Tlačítko „Arc“ = skutečný bonus vaší Archy pro stupeň dané úrovně (měď / zlato); přepíná se samo.
   const arcF = arcFactorNow(gold);
   const auto = cfg.arcFactor === 'arc';
-  const arcBtn = arcF ? `<button class="fbtn arc ${auto ? 'on' : ''}" data-factor="arc" title="${gold ? 'Zlatý' : 'Měděný'} bonus příspěvků vaší Archy ${fmt(arcBonus(gold))} % (${gold ? 'úrovně nad 100' : 'úrovně do 100'}) – mění se samo">Arc ${gold ? '🥇' : '🥉'} ${String(arcF).replace('.', ',')}</button>` : '';
-  return arcBtn + FACTORS.map((f) => `<button class="fbtn ${!auto && +cfg.arcFactor === f ? 'on' : ''}" data-factor="${f}">${f.toFixed(2).replace(/0$/, '').replace('.', ',')}</button>`).join('')
+  const arcBtn = arcF ? `<button class="fbtn arc ${auto ? 'on' : ''}" data-factor="arc" title="${gold ? 'Zlatý' : 'Měděný'} bonus příspěvků vaší Archy ${fmt(arcBonus(gold))} % (${gold ? 'úrovně nad 100' : 'úrovně do 100'}) – mění se samo">Arc ${gold ? '🥇' : '🥉'} ${dec(arcF)}</button>` : '';
+  return arcBtn + FACTORS.map((f) => `<button class="fbtn ${!auto && +cfg.arcFactor === f ? 'on' : ''}" data-factor="${f}">${dec(f.toFixed(2).replace(/0$/, ''))}</button>`).join('')
     + ` <input type="number" data-cfg="arcFactor" value="${factorNow(gold)}" step="0.01" min="1" max="3" style="width:60px" title="Vlastní koeficient">`;
 }
 

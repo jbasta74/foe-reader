@@ -128,14 +128,15 @@ const tests = {
       T('d', 'StellarAgeDiscovery', ['c'], [], 7000, { money: 1 })];
     const { pg, errors } = await page([
       { channel: 'metadata', m: { metadataId: 'research-x', data: meta } },
-      msg('StartupService.getData', { user_data: { player_id: ME, user_name: 'Tester', era: 'SpaceAgeTitan' }, city_map: { entities: [] }, goodsList: [{ id: 'silver', era: 'SpaceAgeSpaceHub', name: 'Stříbro' }] }),
+      { channel: 'metadata', m: { metadataId: 'city_entities-x', data: [{ id: 'G_X', name: 'Důl', type: 'goods', width: 2, length: 2, available_products: [{ product: { resources: { silver: 5 } } }] }] } },
+      msg('StartupService.getData', { user_data: { player_id: ME, user_name: 'Tester', era: 'SpaceAgeTitan' }, city_map: { entities: [{ id: 20, player_id: ME, cityentity_id: 'G_X', type: 'goods' }] }, goodsList: [{ id: 'silver', era: 'SpaceAgeSpaceHub', name: 'Stříbro' }] }),
       msg('ResourceService.getPlayerResources', { resources: { strategy_points: 50, money: 5000, supplies: 10, silver: 20 } }),
       msg('ResearchService.getProgress', { unlockedNodes: ['root', 'a'], inProgressTechnologies: [{ tech_id: 'b', currentSP: 120 }] })]);
     await openTab(pg, 'tech');
     const t = (await winText(pg, 'Výzkum')).replace(/ /g, ' ');
     // FP: b 500−120 + c 400 = 780, máte 50 → chybí 730; zboží silver 70 − 20 = 50; volitelná „opt“ vynechaná
     if (!/FP\s+780\s+780\s+50\s+730/.test(t)) throw new Error('FP nesedí: ' + t.slice(0, 500));
-    if (!/Stříbro\s+70\s+70\s+20\s+50/.test(t)) throw new Error('zboží nesedí: ' + t.slice(0, 500));
+    if (!/Stříbro 🏭\s+70\s+70\s+20\s+50/.test(t)) throw new Error('zboží nesedí: ' + t.slice(0, 500));
     if (!t.includes('vynecháno 1')) throw new Error('volitelná technologie nevynechaná');
     return errors;
   },
@@ -145,6 +146,47 @@ const tests = {
     await openTab(pg, 'gbg');
     const me = await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].map((w) => w.shadowRoot.querySelector('tr.me')).find(Boolean)?.innerText || '');
     if (!me.includes('Tester')) throw new Error('řádek vlastního hráče není zvýrazněný');
+    return errors;
+  },
+  async 'Angličtina: žádný český text v záložkách (kontrola slovníku)'() {
+    const { pg, errors } = await page([startup([arc, zeus]), msg('ResourceService.getPlayerResources', { resources: { strategy_points: 50, money: 5000, guild_expedition_attempt: 3 } }),
+      msg('GuildBattlegroundService.getPlayerLeaderboard', [{ player: { player_id: ME, name: 'Tester' }, battlesWon: 10 }]),
+      foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'), msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })], { lang: 'en' });
+    const CZ = /[ěščřžýáíéůúťďňĚŠČŘŽÝÁÍÉŮÚŤĎŇ]/;
+    const ids = await pg.evaluate(() => [...document.querySelector('#foe-reader-host').shadowRoot.querySelectorAll('[data-ico]')].map((b) => b.dataset.ico));
+    const bad = new Set();
+    const collect = () => pg.evaluate((re) => {
+      const R = new RegExp(re), out = [];
+      for (const h of [document.querySelector('#foe-reader-host'), ...document.querySelectorAll('.foe-reader-win, #foe-reader-calc')]) {
+        const r = h?.shadowRoot; if (!r) continue;
+        const w = document.createTreeWalker(r, NodeFilter.SHOW_TEXT); let n;
+        while ((n = w.nextNode())) if (!n.parentElement?.closest('style') && R.test(n.textContent)) out.push(n.textContent.trim());
+        r.querySelectorAll('[title],[placeholder]').forEach((e) => { for (const a of [e.title, e.placeholder]) if (a && R.test(a)) out.push(a); });
+      }
+      return out;
+    }, CZ.source);
+    for (const id of ids) {
+      await openTab(pg, id);
+      if (id === 'alerts') await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].forEach((w) => w.shadowRoot.querySelector('[data-act="alertcfg"]')?.click()));
+      await pg.waitForTimeout(250);
+      for (const t of await collect()) bad.add(`[${id}] ${t}`);
+      await openTab(pg, id);
+    }
+    const left = [...bad].filter((t) => !/Čeština|Názvy z hry/.test(t));
+    if (left.length) throw new Error('nepřeložené texty (doplňte do i18n.js):\n      ' + left.slice(0, 30).join('\n      '));
+    return errors;
+  },
+  async 'Konec expedice: upozornění na nevyužité pokusy'() {
+    const end = Math.floor(Date.now() / 1000) + 3600;
+    const { pg, errors } = await page([startup(), msg('ResourceService.getPlayerResources', { resources: { guild_expedition_attempt: 4 } }),
+      msg('GuildExpeditionService.getOverview', { state: 'active', nextStateTime: end })]);
+    await pg.evaluate(() => localStorage.removeItem('foeReaderEnds'));
+    await pg.evaluate((e) => window.postMessage({ source: 'foe-reader', channel: 'http', messages: [{ requestClass: 'GuildExpeditionService', requestMethod: 'getOverview', responseData: { state: 'active', nextStateTime: e } }] }, '*'), end);
+    await pg.waitForTimeout(400);
+    await openTab(pg, 'alerts');
+    let t = await winText(pg, 'Upozornění');
+    for (let i = 0; i < 20 && !/Expedice končí za/.test(t); i++) { await pg.waitForTimeout(1000); t = await winText(pg, 'Upozornění'); }
+    if (!/Expedice končí za .* a máte 4 nevyužitých pokusů/.test(t)) throw new Error('chybí upozornění na konec expedice: ' + t.slice(0, 300));
     return errors;
   },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {

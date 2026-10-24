@@ -81,7 +81,7 @@ function viewBoosts() {
   const feats = ['all', ...new Set([...Object.keys(per), ...Object.keys(per.mult)].filter((f) => f !== 'all'))];
   const row = (f) => {
     const v = areaValues(per, f), m = per.mult[f] || {};
-    return `<tr><td>${esc(FEATURE[f] || f)}</td>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(v[k])} %${m[k] ? ` <span class="muted" title="násobitel z Velkých budov">×${(1 + m[k] / 100).toFixed(2).replace('.', ',')}</span>` : ''}</td>`).join('')}</tr>`;
+    return `<tr><td>${esc(FEATURE[f] || f)}</td>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(v[k])} %${m[k] ? ` <span class="muted" title="násobitel z Velkých budov">×${dec((1 + m[k] / 100).toFixed(2))}</span>` : ''}</td>`).join('')}</tr>`;
   };
   const others = Object.entries(other).sort((a, b) => a[0].localeCompare(b[0]));
   return `<h4>Armáda (oblast = „Všude“ + bonus pro oblast, × násobitel z VB; QI jen vlastní)</h4>
@@ -510,7 +510,7 @@ function viewRating() {
   const q = rateSel.q.trim().toLowerCase();
   const list = all.filter((b) => (!rateSel.size || b.w * b.l === rateSel.size) && (!q || b.name.toLowerCase().includes(q)))
     .sort((a, b) => (rateSel.asc ? a.score - b.score : b.score - a.score));
-  const r2 = (x) => (Math.round(x * 100) / 100).toLocaleString('cs-CZ');
+  const r2 = (x) => (Math.round(x * 100) / 100).toLocaleString(LOC());
   const goods = (v) => (v.g_prev || 0) + (v.g_cur || 0) + (v.g_next || 0);
   let h = `<div style="margin-bottom:4px"><button class="fbtn ${!rateSel.settings && !rateSel.inv ? 'on' : ''}" data-rate="list">Výsledky</button><button class="fbtn ${rateSel.inv ? 'on' : ''}" data-rate="inv">Z inventáře</button><button class="fbtn ${rateSel.settings ? 'on' : ''}" data-rate="settings">Nastavení hodnot</button></div>`;
   if (rateSel.settings) {
@@ -524,7 +524,7 @@ function viewRating() {
     if (!S.invLoaded) return h + '<p class="muted">Inventář ještě nebyl načten – otevřete ho ve hře.</p>';
     const { list: inv, noMeta } = ratedInventory();
     const city = all.filter((b) => !b.limited);
-    const r2i = (x) => (Math.round(x * 100) / 100).toLocaleString('cs-CZ');
+    const r2i = (x) => (Math.round(x * 100) / 100).toLocaleString(LOC());
     return h + `<p class="muted">Budovy z inventáře ohodnocené ve vašem věku a návrhy, které horší budovy ve městě by mohly nahradit (stejný půdorys, jedna budova nebo dvě vedle sebe; přínos = rozdíl skóre × počet polí).</p>
       <table><thead><tr><th>Budova v inventáři</th><th class="num">Polí</th><th class="num">Skóre</th><th>Místo čeho</th></tr></thead><tbody>${
       inv.sort((a, b) => b.score - a.score).map((b) => { const sw = swapSuggestions(b, city);
@@ -589,7 +589,7 @@ function viewCycle() {
     <p class="muted">Cechovní pokladna: ${fmt(goodsSum(guild) + Object.entries(guild).filter(([k]) => !S.goodsEra.has(k)).reduce((a, [, v]) => a + v, 0))} ks zboží/surovin.</p>
     <h4>Kdy bude hotovo</h4>
     <table><thead><tr><th>Čas</th><th>Za</th><th>Budov</th><th>FP</th></tr></thead><tbody>${
-    times.slice(0, 20).map(([t, g]) => `<tr><td>${new Date((t - S.serverOffset) * 1000).toLocaleString('cs-CZ', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+    times.slice(0, 20).map(([t, g]) => `<tr><td>${new Date((t - S.serverOffset) * 1000).toLocaleString(LOC(), { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</td>
       <td>${dur(t - now)}</td><td class="num">${g.count}</td><td class="num">${g.fp ? fmt(g.fp) : ''}</td></tr>`).join('')
   }</tbody></table>${viewLimited(now)}${viewOutpost(now)}`;
 }
@@ -598,7 +598,7 @@ function viewLimited(now) {
   const lims = limitedList();
   if (!lims.length) return '';
   const row = (l) => `<tr><td>${esc(l.name)}${l.decayed ? `<br><span class="muted">→ ${esc(l.ascName)}</span>` : ''}</td>
-    <td>${l.decayed ? '<span class="hi">vypršela</span>' : `${l.at > now ? 'za ' + durLong(l.at - now) : 'právě teď'}<br><span class="muted">${new Date((l.at - S.serverOffset) * 1000).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>`}</td>
+    <td>${l.decayed ? '<span class="hi">vypršela</span>' : `${l.at > now ? 'za ' + durLong(l.at - now) : 'právě teď'}<br><span class="muted">${new Date((l.at - S.serverOffset) * 1000).toLocaleString(LOC(), { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>`}</td>
     <td>${limSupply(l) ? (l.decayed && limCan(l) ? '✅ ' : '') + esc(limSupply(l)) : '<span class="muted">nic</span>'}</td></tr>`;
   return `<h4>Limitované budovy</h4>
     <table><thead><tr><th>Budova</th><th>Stav</th><th>Ve skladu na obnovu</th></tr></thead><tbody>${lims.map(row).join('')}</tbody></table>

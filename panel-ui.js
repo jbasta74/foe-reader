@@ -357,7 +357,7 @@ function updateHtml() {
   if (updateAvail()) return `<div class="cfg upd"><b>🆕 Je k dispozici nová verze ${esc(update.tag)}</b> (máte ${esc(VERSION)}).
     ${update.zip ? `<a href="${esc(update.zip)}" target="_blank" rel="noopener">Stáhnout ZIP</a> · ` : ''}<a href="${esc(update.url || REPO + '/releases')}" target="_blank" rel="noopener">Co je nového</a>
     <div class="muted">Rozbalte ZIP přes stávající složku, v chrome://extensions klikněte u rozšíření na obnovit a ve hře dejte F5.</div></div>`;
-  return `<p class="muted">Máte nejnovější verzi${update?.t ? ` (ověřeno ${new Date(update.t).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })})` : ''}. <button data-act="checkupd">Zkontrolovat teď</button></p>`;
+  return `<p class="muted">Máte nejnovější verzi${update?.t ? ` (ověřeno ${new Date(update.t).toLocaleTimeString(LOC(), { hour: '2-digit', minute: '2-digit' })})` : ''}. <button data-act="checkupd">Zkontrolovat teď</button></p>`;
 }
 function restoreTabWins() {
   for (const [id, c] of Object.entries(loadTabWinCfg())) if (c?.open) openTabWin(id, true);

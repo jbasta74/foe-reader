@@ -47,7 +47,7 @@ Hlavní panel se dá roztáhnout oběma směry za pravý dolní roh, velikost se
 - **Hospody**: vaše hospoda (obsazenost), volné židle u přátel, znovu dostupné hospody.
 - **Suroviny**, **Log**.
 - **Sklad**: zboží všech věků (po věcích, se součtem a zvýrazněním nejslabšího zboží) a části (fragmenty) – kolik máte, kolik je potřeba, kolikrát jde sestavit a co chybí.
-- **Výzkum** 🔬: kolik FP, mincí, zásob a zboží chybí k dokončení zvoleného věku (podle stromu technologií a vašeho postupu, volitelné technologie lze vynechat).
+- **Výzkum** 🔬: kolik FP, mincí, zásob a zboží chybí k dokončení zvoleného věku (podle stromu technologií a vašeho postupu, volitelné technologie lze vynechat), odhad dní podle vaší denní produkce FP a které zboží vyrábíte (🏭) a které musíte sehnat (⇄).
 - **🔔 Upozornění**: historie upozornění a nastavení (mj. nové soukromé a cechovní zprávy); vybraná upozornění i jako systémové oznámení Chromu (sledované provincie GBG chodí přesně i na pozadí).
 - **ℹ️ O rozšíření**: verze, odkazy na GitHub (kód, vydání, hlášení chyb).
 

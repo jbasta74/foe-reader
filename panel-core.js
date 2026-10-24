@@ -37,6 +37,7 @@ S.grids = {};             // gridId -> {unlocked, blocked} (odemčená plocha)
 S.inv = new Map();        // celý inventář: id -> {name, stock, item}
 S.ascKit = new Map();     // ID pozvednuté (limitované) budovy -> {id, name} sady, která ji vytvoří
 S.myTavern = null;        // {unlocked, sitting}
+S.entGoods = new Map();   // metadata výroben zboží: id -> [good_id] (available_products)
 S.entProd = new Map();    // metadata budov: id -> {Věk: [{time, products}]} (produkce podle věku)
 S.entBoost = new Map();   // metadata budov: id -> {Věk: [BoostHint]} (bonusy podle věku, pro odhad cizích měst)
 S.metaSeen = new Set();   // id budov, jejichž metadata už přišla
@@ -210,7 +211,7 @@ const H = {
     if (!Array.isArray(d)) return;
     guildPut(d.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, geP: r.expeditionPoints || 0, geE: r.solvedEncounters || 0, geT: r.currentTrial || 0, geW: S.geWeek || null })));
   },
-  'GuildRaidsService.getState'(d) { if (d?.__class__) S.qiState = d; },
+  'GuildRaidsService.getState'(d) { if (d?.__class__) S.qiState = d; if (/Running/.test(d?.__class__ || '') && d.endsAt) saveEnd('qi', d.endsAt); },
   'GuildRaidsService.getMemberActivityOverview'(d) {
     const rows = d?.rows || (Array.isArray(d) ? d : null);
     if (!rows) return;
@@ -219,6 +220,7 @@ const H = {
   },
   'GuildExpeditionService.getOverview'(d) {
     if (d?.nextStateTime) S.geWeek = d.state === 'inactive' ? d.nextStateTime - 86400 : d.nextStateTime;
+    if (d?.state === 'active' && d.nextStateTime) saveEnd('ge', d.nextStateTime);
     S.ge = { ...(S.ge || {}), ov: d, prog: d?.progress || S.ge?.prog, time: Date.now() };
   },
   'GuildExpeditionService.getState'(d) { const x = Array.isArray(d) ? d[0] : d; if (x?.currentEntityId != null) S.ge = { ...(S.ge || {}), prog: x }; },
@@ -565,6 +567,8 @@ function handleMetadata(m) {
   const take = (o) => {
     if (!o || typeof o !== 'object') return;
     if (o.id && o.name) S.names.set(o.id, o.name);
+    // Výrobny zboží: které zboží umí vyrábět (pro Výzkum – co si vyrobíte sám a co musíte sehnat).
+    if (o.id && Array.isArray(o.available_products)) S.entGoods.set(o.id, o.available_products.flatMap((p) => Object.keys(p.product?.resources || {})).filter((k) => k !== '__class__'));
     if (o.id && (o.components || o.abilities || o.width)) { S.metaSeen.add(o.id); const bm = boostMeta(o); if (bm) S.entBoost.set(o.id, bm); const pm = prodMeta(o); if (pm) S.entProd.set(o.id, pm); }
     // rozměry a potřeba cesty (starý formát width/length, nový components.AllAge)
     const sz = o.components?.AllAge?.placement?.size;
@@ -613,6 +617,7 @@ const CFG_DEFAULT = {
   uiBar: true, barVertical: false, // nástrojová lišta s ikonami (jinak jen tlačítko s panelem záložek)
   msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
   negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
+  endOn: true, endLead: 3, sysEv: false, // konec expedice / QI s nevyužitými pokusy / akcemi
   techOpt: true, // výzkum: vynechat volitelné technologie
   lang: 'cs', // jazyk panelu: 'cs' | 'en'
   negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy
@@ -742,7 +747,7 @@ function alert(kind, text, urgent = false, silent = false) {
   if (!silent) beep(urgent);
   // Oznámení Chromu: naléhavé události GBG (útok, ztráta) a zprávy; sledované provincie řeší naplánovaný alarm.
   const watchMsg = kind === 'gbg' && /odemkne|odemčená/.test(text);
-  const SYS = { msg: cfg.sysMsg, prod: cfg.sysProd, lim: cfg.sysLim, tav: cfg.sysTav, trade: cfg.sysTrade };
+  const SYS = { msg: cfg.sysMsg, prod: cfg.sysProd, lim: cfg.sysLim, tav: cfg.sysTav, trade: cfg.sysTrade, ev: cfg.sysEv };
   if ((kind === 'gbg' && urgent && cfg.sysUrgent && !watchMsg) || SYS[kind]) sysSend({ type: 'notify', title: 'FoE Reader', message: text });
   updateBadge();
   scheduleRender();
@@ -853,9 +858,33 @@ function syncWatchAlarms() {
 }
 
 let limInvDone = false;
+// Konec expedice / QI: čas konce se pamatuje (hra ho pošle jen při otevření), upozorní se jednou před koncem,
+// pokud zbývají nevyužité pokusy expedice / akce QI.
+const ENDS_KEY = 'foeReaderEnds';
+const loadEnds = () => { try { return JSON.parse(localStorage.getItem(ENDS_KEY) || '{}'); } catch { return {}; } };
+function saveEnd(k, end) {
+  const E = loadEnds();
+  if (E[k]?.end === end) return;
+  E[k] = { end, alerted: E[k]?.alerted ?? null };
+  try { localStorage.setItem(ENDS_KEY, JSON.stringify(E)); } catch { /* ignore */ }
+}
+function endChecks(now) {
+  if (!cfg.endOn) return;
+  const lead = Math.max(0, +cfg.endLead || 0) * 3600, E = loadEnds();
+  const chk = (k, have, txt) => {
+    const x = E[k];
+    if (!x?.end || x.alerted === x.end || now >= x.end || now < x.end - lead || !(have > 0)) return;
+    x.alerted = x.end;
+    try { localStorage.setItem(ENDS_KEY, JSON.stringify(E)); } catch { /* ignore */ }
+    alert('ev', txt(x.end - now, have));
+  };
+  chk('ge', S.resources.guild_expedition_attempt, (l, n) => `Expedice končí za ${durLong(l)} a máte ${fmt(n)} nevyužitých pokusů.`);
+  chk('qi', S.resources.guild_raids_action_points, (l, n) => `Kvantové invaze končí za ${durLong(l)} a máte ${fmt(n)} nevyužitých akcí.`);
+}
 function timeChecks() {
   const now = nowServer();
   syncWatchAlarms();
+  endChecks(now);
   // Sledované provincie: upozornit X minut před odemknutím.
   if (cfg.gbgWatch && S.gbg) {
     // Hlásí se jednou za každé zamčení – i když je provincie označena až v posledních minutách.
@@ -951,8 +980,11 @@ function gbNewRules() {
 }
 const roundReward = (x) => (gbNewRules() ? round5(x) : Math.round(x));
 const entBonuses = (e) => [...(e.bonuses || []), ...(e.bonus && typeof e.bonus === 'object' ? [e.bonus] : [])];
-const nf = new Intl.NumberFormat('cs-CZ');
-const fmt = (n) => (n == null ? '–' : nf.format(n));
+// Čísla a data podle jazyka panelu (čeština: 1 234,5 · angličtina: 1,234.5).
+const LOC = () => (cfg.lang === 'en' ? 'en-GB' : 'cs-CZ');
+const nfCs = new Intl.NumberFormat('cs-CZ'), nfEn = new Intl.NumberFormat('en-GB');
+const fmt = (n) => (n == null ? '–' : (cfg.lang === 'en' ? nfEn : nfCs).format(n));
+const dec = (s) => (cfg.lang === 'en' ? String(s) : String(s).replace('.', ','));
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const nowServer = () => Date.now() / 1000 + S.serverOffset;
 function dur(sec) {

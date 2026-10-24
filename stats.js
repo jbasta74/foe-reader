@@ -46,7 +46,8 @@
   let D = null, key = null, fileName = null, dirty = false;
   const listeners = [];
   const changed = () => listeners.forEach((f) => { try { f(); } catch { /* ignore */ } });
-  const empty = (world, pid, name) => ({ v: VER, world, pid, name, own: {}, visits: {} });
+  const empty = (world, pid, name) => ({ v: VER, world, pid, name, own: {}, visits: {}, guild: { names: {}, days: {} } });
+  const MAX_DAYS_GUILD = 180;
 
   // Sloučení dvou kopií (místní + soubor / import): u každého dne vyhrává novější snímek.
   function merge(a, b) {
@@ -58,9 +59,23 @@
       const last = Object.values(t.days).sort((x, y) => y.t - x.t)[0];
       if (last?.name) t.name = last.name;
     }
+    // Cech: den -> člen -> údaje; u téhož člena a dne se slučují položky, novější zápis má přednost.
+    const ga = (a.guild ||= { names: {}, days: {} }), gb = b.guild;
+    if (gb) {
+      Object.assign(ga.names, gb.names || {});
+      for (const [d, mem] of Object.entries(gb.days || {})) {
+        const td = (ga.days[d] ||= {});
+        for (const [pid, x] of Object.entries(mem || {})) {
+          const cur = td[pid];
+          td[pid] = !cur ? x : (x.t || 0) > (cur.t || 0) ? { ...cur, ...x } : { ...x, ...cur };
+        }
+      }
+    }
     return a;
   }
   function prune() {
+    const gd = Object.keys(D.guild?.days || {}).sort();
+    for (const d of gd.slice(0, Math.max(0, gd.length - MAX_DAYS_GUILD))) delete D.guild.days[d];
     for (const v of Object.values(D.visits)) {
       const ds = Object.keys(v.days).sort();
       for (const d of ds.slice(0, Math.max(0, ds.length - MAX_DAYS_VISIT))) delete v.days[d];
@@ -145,6 +160,13 @@
     ready: () => !!D,
     fileName: () => fileName,
     putOwn(day, snap) { if (!D) return; D.own[day] = snap; schedule(); },
+    // Údaje o členech cechu za den (sloučí se s tím, co už pro den a člena je).
+    putGuild(day, rows) {
+      if (!D || !rows?.length) return;
+      const g = (D.guild ||= { names: {}, days: {} }), td = (g.days[day] ||= {}), t = Date.now();
+      for (const r of rows) { if (r.pid == null) continue; if (r.name) g.names[r.pid] = r.name; const { pid, name, ...f } = r; td[pid] = { ...(td[pid] || {}), ...f, t }; }
+      schedule();
+    },
     putVisit(pid, day, snap) {
       if (!D || pid == null) return;
       const v = (D.visits[pid] ||= { name: snap.name, days: {} });

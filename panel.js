@@ -190,7 +190,24 @@
       if (S.gbgLbSnap && snap.time - S.gbgLbSnap.time > 20000) S.gbgLbPrev = S.gbgLbSnap;
       S.gbgLbSnap = snap;
       S.gbgLeaderboard = d;
+      guildPut(d.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, gbgB: r.battlesWon || 0, gbgN: r.negotiationsWon || 0, gbgA: r.attrition || 0, gbgS: S.gbg?.endsAt || null })));
     },
+    // --- Přehled cechu: členové, expedice, kvantové invaze (ukládá se po dnech do statistik) ---
+    'ClanService.getOwnClanData'(d) {
+      if (!Array.isArray(d?.members)) return;
+      S.clan = { id: d.id, name: d.name, members: d.members.map((m) => m.player_id), time: Date.now() };
+      guildPut(d.members.map((m) => ({ pid: m.player_id, name: m.name, score: m.score ?? null, won: m.won_battles ?? null, era: m.era || null, active: m.is_active !== false })));
+    },
+    'GuildExpeditionService.getContributionList'(d) {
+      if (!Array.isArray(d)) return;
+      guildPut(d.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, geP: r.expeditionPoints || 0, geE: r.solvedEncounters || 0, geT: r.currentTrial || 0, geW: S.geWeek || null })));
+    },
+    'GuildRaidsService.getMemberActivityOverview'(d) {
+      const rows = d?.rows || (Array.isArray(d) ? d : null);
+      if (!rows) return;
+      guildPut(rows.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, qiA: r.actionPoints || 0, qiP: r.progressContribution || 0 })));
+    },
+    'GuildExpeditionService.getOverview'(d) { if (d?.nextStateTime) S.geWeek = d.state === 'inactive' ? d.nextStateTime - 86400 : d.nextStateTime; S.geOverview = d; },
     'GuildBattlegroundStateService.getState'(d) { S.gbgState = d; },
     // Časovače: u produkce osady / QI je `time` počet sekund do další hotové produkce,
     // u ostatních absolutní čas. Relativní převedeme na absolutní serverový čas.
@@ -1440,6 +1457,10 @@
   }
   // Volá se z překreslování: snímek návštěvy se přepočítá, dokud přicházejí metadata (do 2 min),
   // vlastní snímek nejvýš jednou za 10 minut (jeden záznam na den, platí poslední).
+  function guildPut(rows) {
+    rows = rows.filter((r) => r.pid != null);
+    if (rows.length && globalThis.FOE_STATS?.ready()) FOE_STATS.putGuild(dayKey(), rows);
+  }
   let lastOwnSnap = 0;
   function statsTick() {
     const st = globalThis.FOE_STATS;
@@ -2399,6 +2420,51 @@
     return `<div class="tile"><div class="tl">${label}</div><div class="tb">${big}</div>${sub ? `<div class="ts ${cls}">${sub}</div>` : ''}</div>`;
   }
   const signed = (n) => (n > 0 ? '+' : '') + (Math.abs(n) >= 1e5 ? kfmt(n) : fmt(Math.round(n)));
+  // ---------- Přehled cechu ----------
+  let guildPer = 7, guildSort = 'score', guildSel = null;
+  const GUILD_COLS = [
+    ['score', 'Body', true], ['gbgF', 'GBG boje*', true], ['gbgA', 'Opotř.', false], ['geP', 'Exp. body', true], ['geE', 'Exp. setkání', true], ['qiA', 'QI akce', true], ['qiP', 'QI postup', true],
+  ];
+  const gval = (x, k) => (x == null ? null : k === 'gbgF' ? (x.gbgB != null ? x.gbgB + 2 * (x.gbgN || 0) : null) : x[k] ?? null);
+  function viewGuild(D) {
+    const g = D.guild || { names: {}, days: {} };
+    const days = Object.keys(g.days).sort();
+    if (!days.length) return '<p class="muted">Zatím žádná data. Otevřete ve hře přehled cechu (členové), žebříček GBG, žebříček expedice nebo aktivitu QI – každé otevření se uloží jako denní snímek.</p>';
+    const last = days[days.length - 1];
+    const cutoff = dayKey(new Date(last).getTime() - guildPer * 864e5);
+    const base = days.filter((d) => d <= cutoff).pop() || days[0];
+    const members = S.clan?.members?.length ? S.clan.members.map(String) : Object.keys(g.days[last]);
+    // poslední známá hodnota člena (údaje chodí z různých obrazovek v různé dny)
+    const latest = (pid, upTo) => { const o = {}; for (const d of days) { if (d > upTo) break; Object.assign(o, g.days[d][pid] || {}); } return o; };
+    const rows = members.map((pid) => {
+      const cur = latest(pid, last), old = latest(pid, base);
+      const r = { pid, name: g.names[pid] || `#${pid}`, era: cur.era, active: cur.active };
+      for (const [k] of GUILD_COLS) {
+        const v = gval(cur, k), o = gval(old, k);
+        r[k] = v;
+        // sezónní čítače (GBG, expedice) se nulují: záporný rozdíl = nová sezóna, přírůstek = aktuální hodnota
+        r['d' + k] = v == null || o == null || base === last ? null : v - o < 0 ? v : v - o;
+      }
+      return r;
+    }).sort((a, b) => (b['d' + guildSort] ?? b[guildSort] ?? -1) - (a['d' + guildSort] ?? a[guildSort] ?? -1));
+    const per = [[1, 'od včera'], [7, '7 dní'], [30, '30 dní']];
+    let h = `<p>Přírůstek za: ${per.map(([n, l]) => `<button class="fbtn ${guildPer === n ? 'on' : ''}" data-guildper="${n}">${l}</button>`).join('')}
+      <span class="muted">(srovnání s ${esc(shortDate(base))}, poslední údaje ${esc(shortDate(last))})</span></p>
+      <table class="log"><thead><tr><th>Člen</th>${GUILD_COLS.map(([k, l]) => `<th class="num" style="cursor:pointer" data-guildsort="${k}">${l}${guildSort === k ? ' ▼' : ''}</th>`).join('')}</tr></thead><tbody>${
+      rows.map((r) => `<tr data-guildpid="${esc(r.pid)}" class="${String(guildSel) === r.pid ? 'sel' : ''}"><td>${esc(r.name)}${r.active === false ? ' <span class="muted">(neaktivní)</span>' : ''}${r.era ? `<br><span class="muted" style="font-size:10px">${esc(ERA[r.era] || r.era)}</span>` : ''}</td>${
+        GUILD_COLS.map(([k, , showD]) => `<td class="num">${r[k] == null ? '<span class="muted">–</span>' : k === 'score' ? kfmt(r[k]) : fmt(r[k])}${showD && r['d' + k] ? `<br><span class="${r['d' + k] > 0 ? 'up' : 'down'}" style="font-size:10px">${signed(r['d' + k])}</span>` : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      <p class="muted">* GBG boje = bitvy + 2 × vyjednávání (za sezónu). Údaje se doplňují, když ve hře otevřete přehled cechu, žebříček GBG, žebříček expedice nebo aktivitu QI. Zeleně přírůstek za zvolené období; klik na člena ukáže vývoj, klik na hlavičku seřadí.</p>`;
+    const sel = guildSel != null && members.includes(String(guildSel)) ? String(guildSel) : null;
+    if (sel) {
+      const ds = days.filter((d) => g.days[d][sel]);
+      const vals = (k) => ds.map((d) => gval(latest(sel, d), k));
+      h += `<h4>${esc(g.names[sel] || sel)} – vývoj</h4>
+        ${svgChart({ labels: ds.map(shortDate), series: [{ name: 'Body', color: '#8a4b12', values: vals('score') }] })}
+        ${svgChart({ labels: ds.map(shortDate), series: [{ name: 'GBG boje (sezóna)', color: '#c0392b', values: vals('gbgF') }, { name: 'Exp. body', color: '#2e6db4', values: vals('geP').map((v) => (v == null ? null : v / 100)) }, { name: 'QI akce', color: '#16a085', values: vals('qiA') }], height: 150 })}
+        <p class="muted">Exp. body v grafu děleno 100 (kvůli měřítku).</p>`;
+    }
+    return h;
+  }
   function viewOwnStats(D) {
     const days = Object.keys(D.own).sort();
     if (!days.length) return '<p class="muted">První záznam se uloží chvíli po načtení hry.</p>';
@@ -2458,11 +2524,12 @@
     const D = st.data(), f = st.folder();
     const store = f.name ? (f.perm === 'granted' ? `složka <b>${esc(f.name)}</b>${f.last ? ` (synchronizováno ${new Date(f.last).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })})` : ''}`
       : `složka <b>${esc(f.name)}</b> – <button data-act="stgrant">Povolit přístup</button>`) : 'jen v tomto prohlížeči (složku pro sdílení mezi počítači nastavíte v ℹ️)';
-    let h = `<p>${[['own', 'Můj vývoj'], ['visits', `Navštívená města (${Object.keys(D.visits).length})`]].map(([k, l]) => `<button class="fbtn ${statView === k ? 'on' : ''}" data-statview="${k}">${l}</button>`).join('')}</p>`;
+    let h = `<p>${[['own', 'Můj vývoj'], ['guild', 'Cech'], ['visits', `Navštívená města (${Object.keys(D.visits).length})`]].map(([k, l]) => `<button class="fbtn ${statView === k ? 'on' : ''}" data-statview="${k}">${l}</button>`).join('')}</p>`;
     const foot = `<p style="margin-top:8px"><button data-act="stcsvown">CSV – můj vývoj</button> <button data-act="stcsvvis">CSV – navštívená města</button>
       <button data-act="stjson">Záloha (JSON)</button> <button data-act="stimport">Načíst zálohu…</button><input type="file" accept=".json,application/json" data-stimport style="display:none"></p>
       <p class="muted">Ukládání: ${store}${f.error ? ` · <span class="hi">${esc(f.error)}</span>` : ''}. CSV se otevře v Excelu (oddělovač středník). Záloha i načtení slučují data – nic se nepřepíše starším.</p>${statMsg ? `<p class="hi">${esc(statMsg)}</p>` : ''}`;
     if (statView === 'own') return h + viewOwnStats(D) + foot;
+    if (statView === 'guild') return h + viewGuild(D) + foot;
     // --- navštívená města ---
     if (S.visit?.snap) {
       const hist = D.visits[S.visit.pid];
@@ -2732,6 +2799,12 @@
       if (ev.target.closest('[data-act="download"]')) download();
       const sp = ev.target.closest('tr[data-statpid]');
       if (sp) { statSel = statSel === sp.dataset.statpid ? null : sp.dataset.statpid; render(); return; }
+      const gp = ev.target.closest('[data-guildper]');
+      if (gp) { guildPer = +gp.dataset.guildper; render(); return; }
+      const gs = ev.target.closest('[data-guildsort]');
+      if (gs) { guildSort = gs.dataset.guildsort; render(); return; }
+      const gm = ev.target.closest('tr[data-guildpid]');
+      if (gm) { guildSel = guildSel === gm.dataset.guildpid ? null : gm.dataset.guildpid; render(); return; }
       const sv = ev.target.closest('[data-statview]');
       if (sv) { statView = sv.dataset.statview; render(); return; }
       const sa2 = ev.target.closest('[data-statarea]');

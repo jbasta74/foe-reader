@@ -28,7 +28,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
   `panel-city.js` (mapa města, okna kalkulačky a mapy), `panel-production.js` (bonusy, produkce, denní přehled, rating),
   `panel-gb.js` (kalkulačky VB), `panel-gbg.js` (GBG a jeho mapa), `panel-tabs.js` (upozornění, sklad, statistiky, expedice, QI),
   `panel-stats.js` (grafy, cech, záložky), `panel-ui.js` (panel, lišta, okna, vykreslování).
-- `background.js`: service worker rozšíření – systémová oznámení Chromu a jejich plánování (chrome.alarms).
+- `background.js`: service worker rozšíření – systémová oznámení Chromu a jejich plánování (chrome.alarms) a kontrola nové verze na GitHubu.
 - `test/`: automatické testy (viz Testy).
 
 ## Záložky

@@ -23,6 +23,7 @@ function mount() {
     .icons{display:flex;gap:3px}.bar.vert .icons{flex-direction:column}
     .ico{position:relative;width:34px;height:30px;background:#2b2116;border:1px solid #8a6a3a;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.4)}
     .ico:hover{background:#4a3a26}.ico.on{background:#8a6a3a;border-color:#f3d9a4}
+    .upd{background:#e6f2dc;border:1px solid #7aa35a;border-radius:6px;padding:6px 8px;margin:6px 0}
     .ico .bdg{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;border-radius:8px;background:#b0410f;color:#fff;font-size:10px;font-weight:700;line-height:16px;padding:0 3px}
     .ico.alert{animation:pulse 1s ease-in-out infinite}
     .panel{display:none;position:absolute;top:calc(100% + 6px);left:0;width:580px;max-width:96vw;background:#fbf6ec;color:#2b2116;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;flex-direction:column}
@@ -112,6 +113,7 @@ function mount() {
   // Hra si stránku po načtení přestavuje – když panel zmizí, vrátíme ho.
   setInterval(() => { if (!host.isConnected) attach(); }, 2000);
   restoreTabWins();
+  checkUpdate(); setInterval(checkUpdate, 3 * 3600e3);
   watchPanelSize();
   console.log('[FoE Reader] panel připraven');
 }
@@ -216,6 +218,7 @@ function onUiClick(ev) {
       cfg.lang = lg.dataset.lang; saveCfg(); renderTabs(); render(); renderCalcWin();
       if (mapWin) renderMapWin();
     }
+    if (ev.target.closest('[data-act="checkupd"]')) checkUpdate(true);
     if (ev.target.closest('[data-act="resetsize"]')) {
       try { localStorage.removeItem(PSIZE_KEY); } catch { /* ignore */ }
       const panel = root.getElementById('panel'); panel.style.width = ''; panel.style.height = '';
@@ -316,9 +319,9 @@ function renderIcons() {
   const tg = root.getElementById('toggle');
   if (!cfg.uiBar) { el.innerHTML = ''; return; }
   el.innerHTML = L(TABS.filter(([id]) => tabVisible(id)).map(([id, l]) => {
-    const badge = id === 'alerts' && S.unread ? `<span class="bdg">${S.unread}</span>` : '';
+    const badge = id === 'alerts' && S.unread ? `<span class="bdg">${S.unread}</span>` : id === 'about' && updateAvail() ? '<span class="bdg">↑</span>' : '';
     const alertCls = id === 'alerts' && (S.unreadLoud || 0) > 0 ? ' alert' : '';
-    return `<button class="ico${tabWins.has(id) ? ' on' : ''}${alertCls}" data-ico="${id}" title="${l === '🔔' ? 'Upozornění' : l === 'ℹ️' ? 'O rozšíření a nastavení' : l}">${ICONS[id] || '•'}${badge}</button>`;
+    return `<button class="ico${tabWins.has(id) ? ' on' : ''}${alertCls}" data-ico="${id}" title="${l === '🔔' ? 'Upozornění' : l === 'ℹ️' ? (updateAvail() ? `Nová verze ${update.tag} – O rozšíření a nastavení` : 'O rozšíření a nastavení') : l}">${ICONS[id] || '•'}${badge}</button>`;
   }).join(''));
   if (tg && !tg.classList.contains('drag')) tg.title = L(`FoE Reader ${VERSION} · klik = panel se záložkami, táhnout = přesunout lištu`);
 }
@@ -331,6 +334,25 @@ function renderTabWin(id) {
   const keep = w.body.scrollTop;
   w.body.innerHTML = L(def[2]());
   w.body.scrollTop = keep;
+}
+// Upozornění na novou verzi (číslo posledního vydání zjišťuje background.js na GitHubu).
+const verNum = (v) => String(v || '').split('.').map((x) => parseInt(x) || 0);
+const verNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+let update = null;
+async function checkUpdate(force) {
+  try {
+    const r = await chrome.runtime.sendMessage({ type: 'checkUpdate', force: !!force });
+    update = r?.tag && verNewer(r.tag, VERSION) ? r : null;
+    if (r) update = update || { none: true, t: r.t };
+    renderIcons(); scheduleRender();
+  } catch { /* bez rozšíření / kontext zneplatněn */ }
+}
+const updateAvail = () => !!update?.tag;
+function updateHtml() {
+  if (updateAvail()) return `<div class="cfg upd"><b>🆕 Je k dispozici nová verze ${esc(update.tag)}</b> (máte ${esc(VERSION)}).
+    ${update.zip ? `<a href="${esc(update.zip)}" target="_blank" rel="noopener">Stáhnout ZIP</a> · ` : ''}<a href="${esc(update.url || REPO + '/releases')}" target="_blank" rel="noopener">Co je nového</a>
+    <div class="muted">Rozbalte ZIP přes stávající složku, v chrome://extensions klikněte u rozšíření na obnovit a ve hře dejte F5.</div></div>`;
+  return `<p class="muted">Máte nejnovější verzi${update?.t ? ` (ověřeno ${new Date(update.t).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })})` : ''}. <button data-act="checkupd">Zkontrolovat teď</button></p>`;
 }
 function restoreTabWins() {
   for (const [id, c] of Object.entries(loadTabWinCfg())) if (c?.open) openTabWin(id, true);

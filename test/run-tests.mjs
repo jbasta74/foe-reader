@@ -105,6 +105,22 @@ const tests = {
     if (!t.includes('Návrh po koupi')) throw new Error('chybí návrh po koupi');
     return errors;
   },
+  async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
+    const { pg, errors } = await page([startup()]);
+    const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));
+    if (none) throw new Error('odznak bez nové verze');
+    await pg.evaluate(() => { window.__rel = { tag: '0.3.50', url: 'https://example.invalid/r', zip: 'https://example.invalid/foe-reader-0.3.50.zip', t: Date.now() }; });
+    await pg.locator('#foe-reader-host [data-ico="about"]').click(); await pg.waitForTimeout(300);
+    const w = await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].map((x) => x.shadowRoot).find((r) => r.querySelector('[data-act="checkupd"]')));
+    if (!w) throw new Error('chybí tlačítko Zkontrolovat teď');
+    await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].map((x) => x.shadowRoot).find((r) => r.querySelector('[data-act="checkupd"]')).querySelector('[data-act="checkupd"]').click());
+    await pg.waitForTimeout(900);
+    const st = await pg.evaluate(() => ({ bdg: document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg')?.textContent,
+      txt: [...document.querySelectorAll('.foe-reader-win')].map((x) => x.shadowRoot.querySelector('.wbody')?.innerText || '').join(' ') }));
+    if (st.bdg !== '↑') throw new Error('chybí odznak ↑ u ℹ️');
+    if (!st.txt.includes('nová verze 0.3.50') || !st.txt.includes('Stáhnout ZIP')) throw new Error('chybí informace o nové verzi: ' + st.txt.slice(0, 300));
+    return errors;
+  },
   async 'Angličtina: kalkulačka a ℹ️ přeložené'() {
     const { pg, errors } = await page([startup([arc]), foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'),
       msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })], { lang: 'en' });

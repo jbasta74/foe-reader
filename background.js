@@ -1,7 +1,7 @@
 // FoE Reader – background.js (service worker)
 // Systémová oznámení Chromu: okamžitá (z panelu) a naplánovaná přes chrome.alarms
 // (sledované provincie GBG – alarm zazvoní přesně, i když je karta hry na pozadí přiškrcená).
-// Nic neposílá na herní server.
+// Jednou za pár hodin se zeptá GitHubu na číslo poslední verze (upozornění na aktualizaci). Nic neposílá na herní server.
 'use strict';
 
 const ICON = 'img/icon128.png';
@@ -23,6 +23,27 @@ chrome.runtime.onMessage.addListener((m, sender) => {
     chrome.alarms.clear('w:' + m.key);
     chrome.storage.session.remove('w:' + m.key);
   }
+});
+
+// Nová verze: číslo posledního vydání z GitHubu (výsledek se drží 6 hodin, aby se GitHub neptal zbytečně často).
+const REL_API = 'https://api.github.com/repos/jbasta74/foe-reader/releases/latest';
+async function latestRelease(force) {
+  const c = (await chrome.storage.local.get('relCheck')).relCheck;
+  if (!force && c && Date.now() - c.t < 6 * 3600e3) return c;
+  try {
+    const r = await fetch(REL_API, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) return c || null;
+    const j = await r.json();
+    const zip = (j.assets || []).find((a) => a.name.endsWith('.zip'))?.browser_download_url || null;
+    const v = { t: Date.now(), tag: String(j.tag_name || '').replace(/^v/, ''), url: j.html_url, zip };
+    await chrome.storage.local.set({ relCheck: v });
+    return v;
+  } catch { return c || null; }
+}
+chrome.runtime.onMessage.addListener((m, sender, reply) => {
+  if (m?.type !== 'checkUpdate') return false;
+  latestRelease(!!m.force).then(reply, () => reply(null));
+  return true;
 });
 
 chrome.alarms.onAlarm.addListener(async (a) => {

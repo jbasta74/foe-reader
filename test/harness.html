@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
-<script>window.chrome = { runtime: { getURL: (p) => '/' + p, getManifest: () => ({ version: 'test' }) } };</script>
+<script>window.chrome = { runtime: { getURL: (p) => '/' + p, getManifest: () => ({ version: '0.3.49' }), sendMessage: async (m) => (m?.type === 'checkUpdate' ? window.__rel || null : undefined) } };</script>
 <script src="/inject.js"></script><script src="/provinces.js"></script><script src="/nego-solver-helper.js"></script>
 <script src="/nego.js"></script><script src="/stats.js"></script><script src="/i18n.js"></script><script src="/panel-core.js"></script><script src="/panel-city.js"></script><script src="/panel-production.js"></script><script src="/panel-gb.js"></script><script src="/panel-gbg.js"></script><script src="/panel-tabs.js"></script><script src="/panel-stats.js"></script><script src="/panel-ui.js"></script>
 </head><body style="background:#333;height:900px"></body></html>

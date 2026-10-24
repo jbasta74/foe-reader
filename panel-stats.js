@@ -259,6 +259,7 @@ function viewAbout() {
   const world = location.hostname.split('.')[0];
   return `<h4>FoE Reader ${esc(VERSION)}</h4>
     <p>Pasivně čte komunikaci Forge of Empires a zobrazuje přehledy. Na server nic neposílá a nic ve hře nemění.</p>
+    ${updateHtml()}
     <table><tbody>
       <tr><td>Verze</td><td><b>${esc(VERSION)}</b></td></tr>
       <tr><td>Zdrojový kód</td><td><a href="${REPO}" target="_blank" rel="noopener">${REPO.replace('https://', '')}</a></td></tr>

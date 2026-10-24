@@ -207,7 +207,17 @@
       if (!rows) return;
       guildPut(rows.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, qiA: r.actionPoints || 0, qiP: r.progressContribution || 0 })));
     },
-    'GuildExpeditionService.getOverview'(d) { if (d?.nextStateTime) S.geWeek = d.state === 'inactive' ? d.nextStateTime - 86400 : d.nextStateTime; S.geOverview = d; },
+    'GuildExpeditionService.getOverview'(d) {
+      if (d?.nextStateTime) S.geWeek = d.state === 'inactive' ? d.nextStateTime - 86400 : d.nextStateTime;
+      S.ge = { ...(S.ge || {}), ov: d, prog: d?.progress || S.ge?.prog, time: Date.now() };
+    },
+    'GuildExpeditionService.getState'(d) { const x = Array.isArray(d) ? d[0] : d; if (x?.currentEntityId != null) S.ge = { ...(S.ge || {}), prog: x }; },
+    'GuildExpeditionService.receiveContributionNotification'(d) { if (d?.upcomingReward) S.ge = { ...(S.ge || {}), contrib: d }; },
+    'GuildExpeditionService.openChest'(d) {
+      if (!d?.name) return;
+      const log = loadGeLog(); log.push({ t: Date.now(), name: d.name, id: d.subType || d.id, n: d.amount || 1 });
+      try { localStorage.setItem('foeReaderGeChests', JSON.stringify(log.slice(-200))); } catch { /* plné */ }
+    },
     'GuildBattlegroundStateService.getState'(d) { S.gbgState = d; },
     // Časovače: u produkce osady / QI je `time` počet sekund do další hotové produkce,
     // u ostatních absolutní čas. Relativní převedeme na absolutní serverový čas.
@@ -2357,6 +2367,36 @@
       <text x="${P}" y="${H + 12}" font-size="10" fill="#7a6a50">${esc(shortDate(points[0][0]))}</text>
       <text x="${W - P}" y="${H + 12}" font-size="10" fill="#7a6a50" text-anchor="end">${esc(shortDate(points[points.length - 1][0]))}</text></svg>`;
   }
+  // ---------- Expedice ----------
+  // Postup: id místa = 2 × setkání (sudé = boj/vyjednávání, liché = truhla), 32 míst na úroveň, úrovně 0–4 (log 23. 10.: id 159 = konec 5. úrovně).
+  const loadGeLog = () => { try { return JSON.parse(localStorage.getItem('foeReaderGeChests') || '[]'); } catch { return []; } };
+  function viewGE() {
+    const g = S.ge;
+    if (!g?.prog && !g?.ov) return '<p class="muted">Otevřete ve hře expedici – ukáže se postup, odměny a body cechu.</p>';
+    const ov = g.ov || {}, p = g.prog || {}, id = p.currentEntityId ?? 0, now = nowServer();
+    const lvl = Math.floor(id / 32), inLvl = Math.floor((id % 32) / 2), done = Math.floor(id / 2), chest = id % 2 === 1;
+    const bar = (v, max, col = '#b5651d') => `<div style="background:#efe3c8;border-radius:4px;height:8px;margin:3px 0"><div style="width:${Math.min(100, (v / max) * 100).toFixed(1)}%;height:8px;border-radius:4px;background:${col}"></div></div>`;
+    let h = '';
+    if (ov.state) h += `<p>${ov.state === 'active' ? `Expedice běží · konec za <b>${dur(ov.nextStateTime - now)}</b>` : `Expedice není aktivní · začne za ${dur(ov.nextStateTime - now)}`}${ov.currentTrial ? ` · zkouška <b>${ov.currentTrial}</b>` : ''}${ov.championship?.rank ? ` · pořadí v šampionátu <b>${ov.championship.rank}.</b>` : ''}</p>`;
+    h += `<div class="tiles">
+      ${tile('Úroveň', `${Math.min(lvl + 1, 5)} / 5`, '')}
+      ${tile('Setkání v úrovni', `${Math.min(16, inLvl + (chest ? 1 : 0))} / 16`, chest ? 'teď truhla' : '')}
+      ${tile('Celkem setkání', `${Math.min(80, done + (chest ? 1 : 0))} / 80`, '')}
+    </div>${bar(done + (chest ? 1 : 0), 80)}`;
+    const c = g.contrib, up = c?.upcomingReward || ov.upcomingReward, pts = c?.currentExpeditionPoints ?? ov.expeditionPoints;
+    if (up && pts != null) h += `<h4>Body cechu</h4><p>${fmt(pts)} / ${fmt(up.requiredPoints)} do další odměny cechu (${fmt(up.amount)}, stupeň ${up.index + 1})${c?.expeditionPoints != null ? ` · váš příspěvek <b>${fmt(c.expeditionPoints)}</b>` : ''}</p>${bar(pts, up.requiredPoints, '#2e6db4')}`;
+    const enc = ov.section?.encounters || [], rew = ov.section?.rewards || [];
+    if (enc.length || rew.length) {
+      const items = [...enc.map((e) => ({ id: e.id, txt: `⚔ boj${e.battleType ? ` (${esc({ attack: 'útok', defense: 'obrana' }[e.battleType] || e.battleType)})` : ''}` })),
+        ...rew.map((r) => ({ id: r.id, txt: `🎁 ${esc(r.reward?.name || '')}` }))].sort((a, b) => a.id - b.id);
+      h += `<h4>Aktuální úsek</h4><table><tbody>${items.map((x) => `<tr class="${x.id === id ? 'sel' : x.id < id ? 'muted' : ''}"><td>${Math.floor(x.id / 2) + 1}.</td><td>${x.txt}</td></tr>`).join('')}</tbody></table>`;
+    }
+    const log = loadGeLog().slice(-30).reverse();
+    if (log.length) h += `<h4>Poslední truhly</h4><table><tbody>${log.map((x) => `<tr><td class="muted" style="white-space:nowrap">${new Date(x.t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(x.name)}</td></tr>`).join('')}</tbody></table>`;
+    h += '<p class="muted">Postup se aktualizuje s každým setkáním; úsek a body cechu po otevření mapy expedice. Vyjednávání radí okno 🤝.</p>';
+    return h;
+  }
+
   // ---------- Grafy (SVG bez knihoven; popisek po najetí myší přes data-tip) ----------
   let statView = 'own', statArea = 'gbg';
   const SER_COL = ['#c0392b', '#e67e22', '#2e6db4', '#16a085'];
@@ -2654,10 +2694,10 @@
   }
 
   // Ikony nástrojové lišty
-  const ICONS = { gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', log: '📜', alerts: '🔔', about: 'ℹ️' };
+  const ICONS = { gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', ge: '🧭', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', log: '📜', alerts: '🔔', about: 'ℹ️' };
   const TABS = [
     ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction], ['rate', 'Rating', viewRating],
-    ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['tav', 'Hospody', viewTaverns],
+    ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['ge', 'Expedice', viewGE], ['tav', 'Hospody', viewTaverns],
     ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['stat', 'Statistiky', viewStats], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];
   let tab = 'gb';

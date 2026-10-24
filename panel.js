@@ -560,7 +560,7 @@
     hiddenTabs: [], // záložky vypnuté v Nastavení (ℹ️)
     gbCalcPopup: true,
     gbgPopup: true,
-    sysWatch: true, sysUrgent: false, sysMsg: false, // systémová oznámení Chromu // okno GBG se otevře samo při vstupu do GBG
+    sysWatch: true, sysUrgent: false, sysMsg: false, sysProd: false, sysLim: false, sysTav: false, sysTrade: false, // systémová oznámení Chromu // okno GBG se otevře samo při vstupu do GBG
     uiBar: true, barVertical: false, // nástrojová lišta s ikonami (jinak jen tlačítko s panelem záložek)
     msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
     negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
@@ -689,7 +689,8 @@
     if (!silent) beep(urgent);
     // Oznámení Chromu: naléhavé události GBG (útok, ztráta) a zprávy; sledované provincie řeší naplánovaný alarm.
     const watchMsg = kind === 'gbg' && /odemkne|odemčená/.test(text);
-    if ((kind === 'gbg' && urgent && cfg.sysUrgent && !watchMsg) || (kind === 'msg' && cfg.sysMsg)) sysSend({ type: 'notify', title: 'FoE Reader', message: text });
+    const SYS = { msg: cfg.sysMsg, prod: cfg.sysProd, lim: cfg.sysLim, tav: cfg.sysTav, trade: cfg.sysTrade };
+    if ((kind === 'gbg' && urgent && cfg.sysUrgent && !watchMsg) || SYS[kind]) sysSend({ type: 'notify', title: 'FoE Reader', message: text });
     updateBadge();
     scheduleRender();
   }
@@ -2160,7 +2161,7 @@
         <div><b>GBG:</b> ${chk('gbgAttack', 'útok na naše provincie / ztráta')} ${chk('gbgWatch', 'sledované provincie')} ${num('gbgWatchLead', 'min předem')}</div>
         <div><b>Hospody:</b> ${chk('tavFree', 'uvolněná židle')} ${chk('tavAgain', 'znovu k návštěvě')} ${chk('tavOwnFull', 'moje hospoda plná')}</div>
         <div><b>Obchod:</b> ${chk('tradeOn', 'někdo vzal moji nabídku')} ${chk('tradeSound', 'se zvukem')} ${chk('tradeExpired', 'vypršené nabídky')}</div>
-        <div><b>Oznámení Chromu:</b> ${chk('sysWatch', 'sledované provincie ☆')} ${chk('sysUrgent', 'útok na naše provincie')} ${chk('sysMsg', 'zprávy')} <button data-act="systest">Vyzkoušet</button></div>
+        <div><b>Oznámení Chromu:</b> ${chk('sysWatch', 'sledované provincie ☆')} ${chk('sysUrgent', 'útok na naše provincie')} ${chk('sysMsg', 'zprávy')} ${chk('sysProd', 'hotová produkce')} ${chk('sysLim', 'limitované budovy')} ${chk('sysTav', 'hospody')} ${chk('sysTrade', 'obchod')} <button data-act="systest">Vyzkoušet</button></div>
         <div class="muted">Systémové oznámení Chromu se ukáže i mimo hru (když je okno na pozadí nebo minimalizované); klik na něj přepne na hru. Musí být povolená oznámení Chromu v systému (Windows / macOS).</div>
         <div><b>GBG okno:</b> ${chk('gbgPopup', 'otevřít okno GBG při vstupu do GBG')}</div>
         <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>

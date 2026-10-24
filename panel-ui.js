@@ -72,6 +72,7 @@ function mount() {
     .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
     .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
     tr.safe td{background:#d6efc7}
+    tr.me td{background:#d6e4f5;font-weight:600} tr.me td:first-child{box-shadow:inset 3px 0 #3a6ea5}
     tr.done td{background:#d6efc7;font-weight:600}
     tr.gone td{text-decoration:line-through;color:#9a8a70;opacity:.6}
     .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin:4px 0 6px}

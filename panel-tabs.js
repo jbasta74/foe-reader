@@ -310,7 +310,7 @@ function viewQI() {
   const qr = S.qiRows?.rows;
   if (qr?.length) {
     h += `<h4>Aktivita cechu v QI</h4><table><thead><tr><th>Člen</th><th class="num">Akce</th><th class="num">Postup</th></tr></thead><tbody>${
-      qr.slice().sort((a, b) => (b.progressContribution || 0) - (a.progressContribution || 0)).map((x) => `<tr class="${x.player?.player_id === myId() ? 'sel' : ''}"><td>${esc(x.player?.name || '?')}</td>
+      qr.slice().sort((a, b) => (b.progressContribution || 0) - (a.progressContribution || 0)).map((x) => `<tr class="${x.player?.player_id === myId() ? 'me' : ''}"><td>${x.player?.player_id === myId() ? '👤 ' : ''}${esc(x.player?.name || '?')}</td>
         <td class="num">${fmt(x.actionPoints || 0)}</td><td class="num">${fmt(x.progressContribution || 0)}</td></tr>`).join('')}</tbody></table>`;
   } else h += '<p class="muted">Aktivita členů se ukáže po otevření přehledu aktivity v QI ve hře (ukládá se i do Statistiky → Cech).</p>';
   return h;

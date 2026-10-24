@@ -139,6 +139,14 @@ const tests = {
     if (!t.includes('vynecháno 1')) throw new Error('volitelná technologie nevynechaná');
     return errors;
   },
+  async 'GBG: vlastní hráč zvýrazněný v žebříčku členů'() {
+    const lb = [{ player: { player_id: 3, name: 'Jiný' }, battlesWon: 50 }, { player: { player_id: ME, name: 'Tester' }, battlesWon: 10, negotiationsWon: 2 }];
+    const { pg, errors } = await page([startup(), msg('GuildBattlegroundService.getPlayerLeaderboard', lb)]);
+    await openTab(pg, 'gbg');
+    const me = await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].map((w) => w.shadowRoot.querySelector('tr.me')).find(Boolean)?.innerText || '');
+    if (!me.includes('Tester')) throw new Error('řádek vlastního hráče není zvýrazněný');
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

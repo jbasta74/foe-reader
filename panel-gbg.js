@@ -48,7 +48,7 @@ function viewGBG() {
       const key = r.player?.player_id ?? r.player?.name;
       const cur = { b: r.battlesWon || 0, n: r.negotiationsWon || 0, a: r.attrition || 0 };
       const old = prev?.rows.get(key);
-      return { name: r.player?.name || r.name, ...cur, total: cur.b + 2 * cur.n,
+      return { name: r.player?.name || r.name, me: r.player?.player_id != null && r.player.player_id === myId(), ...cur, total: cur.b + 2 * cur.n,
         db: old ? cur.b - old.b : 0, dn: old ? cur.n - old.n : 0, da: old ? cur.a - old.a : 0 };
     }).sort((a, b) => ((b.db + 2 * b.dn) - (a.db + 2 * a.dn)) || (b.total - a.total));
     const d = (n) => (n > 0 ? ` <span class="hi">+${fmt(n)}</span>` : '');
@@ -57,7 +57,7 @@ function viewGBG() {
     html += `<h4>Členové cechu</h4>
       <p class="muted">${prev ? `Červeně = přírůstek za ${mins} min (od minulého otevření žebříčku). Aktivních: ${active.length}.` : 'Otevřete žebříček ve hře ještě jednou později – ukáže se, kdo mezitím bojoval.'}</p>
       <table><thead><tr><th>Hráč</th><th>Bitvy</th><th>Vyjednávání</th><th>Opotřebení</th><th>Celkem*</th></tr></thead><tbody>${
-      rows.map((r) => `<tr class="${prev && r.db + r.dn > 0 ? 'sel' : ''}"><td>${esc(r.name)}</td><td class="num">${fmt(r.b)}${d(r.db)}</td><td class="num">${fmt(r.n)}${d(r.dn)}</td>
+      rows.map((r) => `<tr class="${r.me ? 'me' : prev && r.db + r.dn > 0 ? 'sel' : ''}"><td>${r.me ? '👤 ' : ''}${esc(r.name)}</td><td class="num">${fmt(r.b)}${d(r.db)}</td><td class="num">${fmt(r.n)}${d(r.dn)}</td>
         <td class="num">${fmt(r.a)}${d(r.da)}</td><td class="num">${fmt(r.total)}</td></tr>`).join('')}</tbody></table>
       <p class="muted">* bitva = 1, vyjednávání = 2. Kde kdo bojuje, server neposílá – jen postup celého cechu po provinciích (tabulka „Kde útočíme“).</p>`;
   } else if (bg) {

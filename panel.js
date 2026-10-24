@@ -202,9 +202,11 @@
       if (!Array.isArray(d)) return;
       guildPut(d.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, geP: r.expeditionPoints || 0, geE: r.solvedEncounters || 0, geT: r.currentTrial || 0, geW: S.geWeek || null })));
     },
+    'GuildRaidsService.getState'(d) { if (d?.__class__) S.qiState = d; },
     'GuildRaidsService.getMemberActivityOverview'(d) {
       const rows = d?.rows || (Array.isArray(d) ? d : null);
       if (!rows) return;
+      S.qiRows = { rows, time: Date.now() };
       guildPut(rows.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, qiA: r.actionPoints || 0, qiP: r.progressContribution || 0 })));
     },
     'GuildExpeditionService.getOverview'(d) {
@@ -2424,6 +2426,7 @@
       ${tile('Úroveň', `${Math.min(lvl + 1, 5)} / 5`, '')}
       ${tile('Setkání v úrovni', `${Math.min(16, inLvl + (chest ? 1 : 0))} / 16`, chest ? 'teď truhla' : '')}
       ${tile('Celkem setkání', `${Math.min(80, done + (chest ? 1 : 0))} / 80`, '')}
+      ${S.resources.guild_expedition_attempt != null ? tile('Pokusy', fmt(S.resources.guild_expedition_attempt), '') : ''}
     </div>${bar(done + (chest ? 1 : 0), 80)}`;
     const c = g.contrib, up = c?.upcomingReward || ov.upcomingReward, pts = c?.currentExpeditionPoints ?? ov.expeditionPoints;
     if (up && pts != null) h += `<h4>Body cechu</h4><p>${fmt(pts)} / ${fmt(up.requiredPoints)} do další odměny cechu (${fmt(up.amount)}, stupeň ${up.index + 1})${c?.expeditionPoints != null ? ` · váš příspěvek <b>${fmt(c.expeditionPoints)}</b>` : ''}</p>${bar(pts, up.requiredPoints, '#2e6db4')}`;
@@ -2436,6 +2439,38 @@
     const log = loadGeLog().slice(-30).reverse();
     if (log.length) h += `<h4>Poslední truhly</h4><table><tbody>${log.map((x) => `<tr><td class="muted" style="white-space:nowrap">${new Date(x.t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(x.name)}</td></tr>`).join('')}</tbody></table>`;
     h += '<p class="muted">Postup se aktualizuje s každým setkáním; úsek a body cechu po otevření mapy expedice. Vyjednávání radí okno 🤝.</p>';
+    return h;
+  }
+
+  // ---------- Kvantové invaze ----------
+  function viewQI() {
+    const r = S.resources, now = nowServer();
+    let h = '';
+    const st = S.qiState;
+    if (st) {
+      const c = st.__class__ || '';
+      h += `<p>${/Running/.test(c) && st.endsAt ? `QI běží · konec za <b>${dur(st.endsAt - now)}</b>` : /Pending/.test(c) && st.startsAt ? `QI začne za <b>${dur(st.startsAt - now)}</b>` : /Finished/.test(c) && st.nextStartsAt ? `QI skončily · další začnou za ${dur(st.nextStartsAt - now)}` : esc(c)}</p>`;
+    }
+    const next = S.timers.find((t) => t.type === 'outpostProduction' && t.gridId === 'guild_raids');
+    const { per, other } = armyFrom(S.boosts, S.entities.values());
+    const qa = areaValues(per, 'guild_raids');
+    h += `<div class="tiles">
+      ${tile('Akce', r.guild_raids_action_points != null ? fmt(r.guild_raids_action_points) : '–', other['guild_raids_action_points_collection|all'] ? `sběr +${fmt(other['guild_raids_action_points_collection|all'])}` : '')}
+      ${tile('Měna QI', r.guild_raids_currency != null ? fmt(r.guild_raids_currency) : '–', '')}
+      ${tile('Produkce v QI', next ? (next.at > now ? 'za ' + dur(next.at - now) : 'hotová') : '–', '')}
+    </div>`;
+    h += `<h4>Armáda v QI</h4><table><thead><tr><th>Útok útočníka</th><th>Obrana útočníka</th><th>Útok obránce</th><th>Obrana obránce</th></tr></thead>
+      <tbody><tr>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(qa[k])} %</td>`).join('')}</tr></tbody></table>`;
+    const qb = Object.entries(other).filter(([k]) => k.startsWith('guild_raids_'));
+    if (qb.length) h += `<h4>Bonusy pro QI</h4><table><tbody>${qb.map(([k, v]) => `<tr><td>${esc(BOOST_NAME[k.split('|')[0]] || k.split('|')[0])}</td><td class="num">${fmt(v)}</td></tr>`).join('')}</tbody></table>`;
+    const goods = Object.entries(r).filter(([k, v]) => k.startsWith('guild_raids_') && !['guild_raids_action_points', 'guild_raids_currency'].includes(k) && v > 0);
+    if (goods.length) h += `<h4>Suroviny QI</h4><p>${goods.map(([k, v]) => `<span class="chip">${esc(resLabel(k).replace(/^guild_raids_/, ''))} <b>${fmt(v)}</b></span>`).join('')}</p>`;
+    const qr = S.qiRows?.rows;
+    if (qr?.length) {
+      h += `<h4>Aktivita cechu v QI</h4><table><thead><tr><th>Člen</th><th class="num">Akce</th><th class="num">Postup</th></tr></thead><tbody>${
+        qr.slice().sort((a, b) => (b.progressContribution || 0) - (a.progressContribution || 0)).map((x) => `<tr class="${x.player?.player_id === myId() ? 'sel' : ''}"><td>${esc(x.player?.name || '?')}</td>
+          <td class="num">${fmt(x.actionPoints || 0)}</td><td class="num">${fmt(x.progressContribution || 0)}</td></tr>`).join('')}</tbody></table>`;
+    } else h += '<p class="muted">Aktivita členů se ukáže po otevření přehledu aktivity v QI ve hře (ukládá se i do Statistiky → Cech).</p>';
     return h;
   }
 
@@ -2736,10 +2771,10 @@
   }
 
   // Ikony nástrojové lišty
-  const ICONS = { gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', ge: '🧭', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', log: '📜', alerts: '🔔', about: 'ℹ️' };
+  const ICONS = { gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', ge: '🧭', qi: '🌀', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', log: '📜', alerts: '🔔', about: 'ℹ️' };
   const TABS = [
     ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction], ['rate', 'Rating', viewRating],
-    ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['ge', 'Expedice', viewGE], ['tav', 'Hospody', viewTaverns],
+    ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['ge', 'Expedice', viewGE], ['qi', 'QI', viewQI], ['tav', 'Hospody', viewTaverns],
     ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['stat', 'Statistiky', viewStats], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
   ];
   let tab = 'gb';

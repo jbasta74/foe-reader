@@ -8,6 +8,7 @@
 - **Statistiky → Cech** (bonusová funkce): přehled členů cechu – body, GBG boje a opotřebení, body a setkání v expedici, akce a postup v QI – s přírůstkem za den / 7 / 30 dní, řazením podle sloupce a grafem vývoje člena. Údaje se ukládají po dnech z obrazovek, které ve hře otevřete (členové cechu, žebříček GBG, žebříček expedice, aktivita QI).
 - **Expedice** (🧭): postup (úroveň, setkání v úrovni i celkem), konec expedice, zkouška, body cechu do další odměny a váš příspěvek, aktuální úsek mapy (boje a truhly) a deník otevřených truhel.
 - **GBG → Mapa (schéma)**: kruhové schéma provincií v barvách cechů – zamčené bledě, základny ⌂, sledované ★, kde útočíme (černý okraj) a kde útočí na nás (žlutý), typ ⚔/🛡 tečkou; po najetí myší podrobnosti, klikem se provincie označí ke sledování.
+- **Kvantové invaze** (🌀): akce a jejich sběr, měna a suroviny QI, armáda a bonusy pro QI, příští produkce v QI, stav kola a aktivita členů cechu (po otevření přehledu aktivity ve hře). Expedice ukazuje i počet pokusů.
 
 ## Opravy
 - Opotřebení GBG na úrovni 0 (po resetu server úroveň neposílá) už nezpůsobuje chybu „NaN“ v poli „Kolik bitev do úrovně“.

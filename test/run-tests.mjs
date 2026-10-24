@@ -211,6 +211,22 @@ const tests = {
     if (!star.includes('★')) throw new Error('minihra: chybí jistý poklad ★: ' + star);
     return errors;
   },
+  async 'Kalkulačka VB: okno si pamatuje polohu i po zavření'() {
+    const { pg, errors } = await page([startup([arc]), foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'), msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })]);
+    const box = () => pg.evaluate(() => { const b = document.querySelector('#foe-reader-calc')?.getBoundingClientRect(); return b && { x: Math.round(b.left), y: Math.round(b.top) }; });
+    const b0 = await box();
+    if (!b0) throw new Error('kalkulačka se neotevřela');
+    const head = await pg.evaluate(() => { const r = document.querySelector('#foe-reader-calc').shadowRoot.querySelector('.whead b').getBoundingClientRect(); return { x: r.left + 10, y: r.top + 5 }; });
+    await pg.mouse.move(head.x, head.y); await pg.mouse.down(); await pg.mouse.move(head.x + 300, head.y + 200, { steps: 5 }); await pg.mouse.up();
+    const b1 = await box();
+    await pg.evaluate(() => document.querySelector('#foe-reader-calc').shadowRoot.querySelector('#close').click());
+    await pg.waitForTimeout(300);
+    await pg.evaluate(() => openCalcWin());
+    await pg.waitForTimeout(200);
+    const b2 = await box();
+    if (Math.abs(b2.x - b1.x) > 2 || Math.abs(b2.y - b1.y) > 2) throw new Error(`poloha se nezapamatovala: ${JSON.stringify([b0, b1, b2])}`);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

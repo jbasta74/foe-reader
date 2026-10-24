@@ -189,7 +189,8 @@ function openCalcWin() {
   document.documentElement.appendChild(h);
   toFront(h); h.addEventListener('pointerdown', () => toFront(h), true);
   calcWin = { host: h, root: r };
-  const save = () => { const b = h.getBoundingClientRect(); try { localStorage.setItem(CALCWIN_KEY, JSON.stringify({ x: b.left, y: b.top, w: b.width, h: b.height })); } catch { /* ignore */ } };
+  // Po zavření okna hlásí ResizeObserver nulovou velikost – to neukládat (jinak se okno příště otevřelo vlevo nahoře).
+  const save = () => { if (!h.isConnected) return; const b = h.getBoundingClientRect(); if (!b.width || !b.height) return; try { localStorage.setItem(CALCWIN_KEY, JSON.stringify({ x: b.left, y: b.top, w: b.width, h: b.height })); } catch { /* ignore */ } };
   r.getElementById('whead').addEventListener('pointerdown', (ev) => {
     if (ev.target.closest('button,input,label')) return;
     const sx = ev.clientX, sy = ev.clientY, b = h.getBoundingClientRect();

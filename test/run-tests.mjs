@@ -1,0 +1,119 @@
+// FoE Reader – automatické testy: načte panel do Chromia, pošle mu syntetické zprávy hry a ověří klíčová čísla.
+// Spuštění: npm i playwright@1.56.0 && node test/run-tests.mjs   (v CI viz .github/workflows/test.yml)
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { chromium } from 'playwright';
+
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const server = http.createServer((req, res) => {
+  const url = req.url.split('?')[0];
+  const file = path.join(ROOT, url === '/' ? 'test/harness.html' : url);
+  if (!file.startsWith(ROOT) || !fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
+  res.writeHead(200, { 'content-type': file.endsWith('.html') ? 'text/html' : 'text/javascript' });
+  res.end(fs.readFileSync(file));
+});
+await new Promise((r) => server.listen(0, r));
+const BASE = `http://127.0.0.1:${server.address().port}/`;
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+
+const msg = (key, data, channel = 'http') => { const [c, m] = key.split('.'); return { channel, m: { requestClass: c, requestMethod: m, [channel === 'req' ? 'requestData' : 'responseData']: data } }; };
+async function page(messages) {
+  const pg = await browser.newPage({ viewport: { width: 1300, height: 900 } });
+  const errors = [];
+  pg.on('pageerror', (e) => errors.push(String(e)));
+  pg.on('console', (c) => { if (c.type() === 'warning' && /NaN/.test(c.text())) errors.push(c.text()); });
+  await pg.goto(BASE);
+  for (const x of messages) {
+    await pg.evaluate(([ch, m]) => window.postMessage({ source: 'foe-reader', channel: ch, messages: [m] }, '*'), [x.channel, x.m]);
+    await pg.waitForTimeout(30);
+  }
+  await pg.waitForTimeout(900);
+  return { pg, errors };
+}
+const winText = (pg, title) => pg.evaluate((t) => [...document.querySelectorAll('.foe-reader-win')]
+  .map((w) => w.shadowRoot).find((r) => r.querySelector('.whead b')?.textContent.includes(t))?.querySelector('.wbody')?.innerText || '', title);
+const calcText = (pg) => pg.evaluate(() => [...document.querySelectorAll('div')].map((d) => d.shadowRoot).find((r) => r?.textContent.includes('Kalkulačka VB'))?.textContent || '');
+async function openTab(pg, id) { await pg.locator(`#foe-reader-host [data-ico="${id}"]`).click(); await pg.waitForTimeout(400); }
+
+// --- syntetická data ---
+const ME = 1, OTHER = 2;
+const startup = (entities = []) => msg('StartupService.getData', { user_data: { player_id: ME, user_name: 'Tester', era: 'SpaceAgeTitan' }, city_map: { entities } });
+const arc = { id: 10, player_id: ME, cityentity_id: 'X_FutureEra_Landmark1', type: 'greatbuilding', level: 182, __class__: 'CityMapEntity',
+  bonuses: [{ type: 'contribution_boost', value: 99, bonusCategory: { value: 'passiveBonus' } }, { type: 'contribution_boost_gold', value: 20, bonusCategory: { value: 'passiveBonus' } }] };
+const zeus = { id: 11, player_id: ME, cityentity_id: 'X_BronzeAge_Landmark2', type: 'greatbuilding', level: 142, __class__: 'CityMapEntity',
+  bonuses: [{ type: 'military_boost', value: 100, targetedFeature: 'all', bonusCategory: { value: 'passiveBonus' } },
+    { type: 'attack_boost', value: 2, targetedFeature: 'guild_expedition', isBonusMultiplier: true, bonusCategory: { value: 'passiveBonus' } }] };
+const bp = (...tiers) => tiers.map((t) => ({ building_id: 'X_FutureEra_Landmark1', amount: 1, tier: { value: t } }));
+const rankings = (goldRanks, medals = 0) => [
+  { player: { player_id: OTHER, name: 'Vlastník' }, forge_points: 5000, __class__: 'GreatBuildingRankingRow' },
+  ...[[1, 920], [2, 460], [3, 155], [4, 40], [5, 10]].map(([rank, fp]) => ({ rank, player: { player_id: 0, name: 'No contributor yet' }, __class__: 'GreatBuildingRankingRow',
+    reward: { strategy_point_amount: fp, blueprintRewards: bp('copper', ...(goldRanks.includes(rank) ? ['gold'] : [])), resources: { medals: rank === 1 ? medals : 0 } } }))];
+const foreignGb = (level) => msg('OtherPlayerService.getOtherPlayerCityMapEntity', { id: 817, player_id: OTHER, cityentity_id: 'X_FutureEra_Landmark1', type: 'greatbuilding', level,
+  state: { invested_forge_points: 1000, forge_points_for_level_up: 9000 }, __class__: 'CityMapEntity' });
+
+const tests = {
+  async 'VB úroveň 100: měděná (zlatý plánek jen P1), bonus Archy 99 %'() {
+    const { pg, errors } = await page([startup([arc]), foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'),
+      msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })]);
+    const t = await calcText(pg);
+    if (!t.includes('(měděný)')) throw new Error('čekal jsem měděný stupeň: ' + t.slice(0, 300));
+    if (!/920\s*→\s*1\s?830/.test(t.replace(/ /g, ' '))) throw new Error('P1 920 × 1,99 = 1 830 nenalezeno');
+    return errors;
+  },
+  async 'VB úroveň 101: zlatá (zlaté plánky P1–P3), medaile s bonusem 20 %'() {
+    const { pg, errors } = await page([startup([arc]), foreignGb(101), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'),
+      msg('GreatBuildingsService.getConstruction', { rankings: rankings([1, 2, 3], 46839) })]);
+    const t = (await calcText(pg)).replace(/ /g, ' ');
+    if (!t.includes('(zlatý)')) throw new Error('čekal jsem zlatý stupeň');
+    if (!/920\s*→\s*1 105/.test(t)) throw new Error('P1 920 × 1,2 = 1 105 nenalezeno');
+    if (!t.includes('56 207')) throw new Error('medaile 46 839 × 1,2 = 56 207 nenalezeny');
+    return errors;
+  },
+  async 'Bonusy: násobitel z VB navýší expedici'() {
+    const boosts = [{ type: 'att_boost_attacker', value: 1000, targetedFeature: 'all' }, { type: 'att_boost_attacker', value: 500, targetedFeature: 'guild_expedition' }];
+    const { pg, errors } = await page([startup([zeus]), msg('BoostService.getAllBoosts', boosts)]);
+    await openTab(pg, 'boost');
+    const t = (await winText(pg, 'Bonusy')).replace(/ /g, ' ');
+    // (1000 + 100 + 500) × 1,02 = 1 632
+    if (!/Expedice\s+1 632 %/.test(t)) throw new Error('expedice 1 632 % nenalezena: ' + t.slice(0, 400));
+    return errors;
+  },
+  async 'GBG: typ provincie a opotřebení bez úrovně (žádné NaN)'() {
+    const now = Math.floor(Date.now() / 1000);
+    const bg = { map: { id: 'volcano_archipelago', provinces: [{ ownerId: 7, isAttackBattleType: true, lockedUntil: now + 600 }, { id: 1, ownerId: 8, lockedUntil: now + 600 }] },
+      battlegroundParticipants: [{ participantId: 7, clan: { name: 'Cech A' } }, { participantId: 8, clan: { name: 'Cech B' } }], currentParticipantId: 9, endsAt: now + 99999,
+      currentPlayerParticipant: { attrition: { __class__: 'GuildBattlegroundAttrition' } } };
+    const { pg, errors } = await page([startup(), msg('GuildBattlegroundService.getBattleground', bg)]);
+    await pg.waitForTimeout(300);
+    const html = await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].map((w) => w.shadowRoot.innerHTML).join(''));
+    if (!html.includes('bt red') || !html.includes('bt blue')) throw new Error('chybí označení červené / modré provincie');
+    if (/value="NaN"/.test(html)) throw new Error('NaN v číselném poli');
+    return errors;
+  },
+  async 'Vyjednávání: došlé tahy – cena a návrh po koupi'() {
+    const goods = ['a', 'b', 'c', 'd', 'e'];
+    const start = msg('GuildExpeditionService.startNegotiation', { context: 'guildExpedition', possibleCosts: { resources: Object.fromEntries(goods.map((g) => [g, 10])) }, __class__: 'NegotiationGame' });
+    const slot = (i, g, s) => ({ ...(i ? { slotId: i } : {}), resourceId: g, state: s });
+    const turn1 = msg('NegotiationGameService.submitTurn', { state: 'ongoing', turnResult: { slots: [slot(0, 'a', 'correct'), slot(1, 'b', 'correct'), slot(2, 'c', 'correct'), slot(3, 'd', 'not_needed'), slot(4, 'e', 'correct')] } });
+    const out = msg('NegotiationGameService.submitTurn', { state: 'out_of_turns', offer: { costsOptions: [{ resources: { premium: 10 } }] }, turnResult: { slots: [slot(3, 'b', 'not_needed')] } });
+    const { pg, errors } = await page([startup(), msg('ResourceService.getPlayerResources', { resources: { negotiation_game_turn: 3 } }), start, turn1, out]);
+    await pg.waitForTimeout(800);
+    const t = (await winText(pg, 'Vyjednávání')).replace(/ /g, ' ');
+    if (!t.includes('za 10 diamantů')) throw new Error('chybí cena dalšího tahu');
+    if (!t.includes('Návrh po koupi')) throw new Error('chybí návrh po koupi');
+    return errors;
+  },
+};
+
+let failed = 0;
+for (const [name, fn] of Object.entries(tests)) {
+  try {
+    const errors = await fn();
+    if (errors?.length) throw new Error('chyby na stránce: ' + errors.join(' | '));
+    console.log('✓', name);
+  } catch (e) { failed++; console.log('✗', name, '\n   ', e.message); }
+}
+await browser.close(); server.close();
+console.log(failed ? `\n${failed} test(ů) selhalo` : '\nVšechny testy prošly');
+process.exit(failed ? 1 : 0);

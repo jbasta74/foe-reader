@@ -71,6 +71,9 @@ V `panel.js` doplňte do objektu `H` klíč ve tvaru `"Služba.metoda"`:
 
 Klíče a tvar dat najdete v záložce **Log zpráv**, kde stačí kliknout na řádek. Celý záznam lze stáhnout jako JSON.
 
+## Testy
+`test/run-tests.mjs` načte panel do Chromia, pošle mu syntetické zprávy hry (žádná data skutečných hráčů) a ověří klíčová čísla – stupeň VB, bonus Archy, medaile, násobitele bonusů, vyjednávání, GBG. Spouští se automaticky na GitHubu při každém pushi (Actions → Testy), ručně `npm i --no-save playwright@1.56.0 && npx playwright install chromium && node test/run-tests.mjs`.
+
 ## Poznámky
 - Odpovědi chodí v dávkách: k jednomu požadavku se může přibalit víc zpráv (např. `TimeService.updateTime`).
 - Stav hospody: bez `state` = volná židle, `isSitting` = už tam sedíte, `noChair` = plno, `alreadyVisited` = navštíveno (`nextVisitTime`).

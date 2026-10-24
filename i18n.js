@@ -466,6 +466,7 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['náš cech', 'our guild'],
     ['Strom výzkumu hra posílá při načtení – obnovte hru (F5).', 'The game sends the research tree on load – reload the game (F5).'],
     ['váš věk', 'your era'], ['vynechat volitelné technologie (slepé větve) od vašeho věku', 'skip optional technologies (dead ends) from your era on'], ['vynecháno', 'skipped'],
     ['Postup výzkumu ještě nepřišel – počítá se celý strom. Otevřete ve hře výzkum nebo obnovte hru.', 'Research progress not received yet – the whole tree is counted. Open research in the game or reload.'],

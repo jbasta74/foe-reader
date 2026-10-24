@@ -19,7 +19,7 @@ function viewGBG() {
     html += `<p>${esc(bg.league?.name || '')}${bg.endsAt ? ` · konec za ${dur(bg.endsAt - now)}` : ''}${att ? ` · opotřebení ${att.level}` : ''}</p>`;
     html += `<h4>Cechy na mapě</h4><table><thead><tr><th>Cech</th><th>Body vítězství</th><th>Provincie</th></tr></thead><tbody>${
       parts.slice().sort((a, b) => (b.victoryPoints || 0) - (a.victoryPoints || 0)).map((p) =>
-        `<tr class="${p.participantId === me ? 'sel' : ''}"><td>${esc(p.clan?.name || p.participantId)}</td>
+        `<tr class="${p.participantId === me ? 'me' : ''}"><td>${p.participantId === me ? '👤 ' : ''}${esc(p.clan?.name || p.participantId)}</td>
          <td class="num">${fmt(p.victoryPoints || 0)}</td><td class="num">${owned[p.participantId] || 0}</td></tr>`).join('')}</tbody></table>`;
     const prog = (p, pred) => (p.conquestProgress || []).filter(pred).filter((c) => c.progress > 0);
     const attacking = provs.filter((p) => prog(p, (c) => c.participantId === me).length)
@@ -120,7 +120,7 @@ function viewGbgMap(provs, me, pname, now) {
       const d = n === 1 ? `M${C - r1},${C}a${r1},${r1} 0 1,0 ${2 * r1},0a${r1},${r1} 0 1,0 ${-2 * r1},0Z`
         : (() => { const [x0, y0] = pt(r1, a0), [x1, y1] = pt(r1, a1), [x2, y2] = pt(r0, a1), [x3, y3] = pt(r0, a0), big = a1 - a0 > Math.PI ? 1 : 0;
           return `M${x0.toFixed(1)},${y0.toFixed(1)}A${r1},${r1} 0 ${big},1 ${x1.toFixed(1)},${y1.toFixed(1)}L${x2.toFixed(1)},${y2.toFixed(1)}${r0 ? `A${r0},${r0} 0 ${big},0 ${x3.toFixed(1)},${y3.toFixed(1)}` : ''}Z`; })();
-      const tip = `<b>${esc(provLabel(id))}</b><br>${own ? 'my' : esc(pname(p.ownerId))}${base ? ' · základna' : ''}<br>${p.isAttackBattleType ? '⚔ červená (útočná)' : '🛡 modrá (obranná)'}${locked ? `<br>odemkne se za ${dur(p.lockedUntil - now)}` : base ? '' : '<br><b>odemčená</b>'}${p.victoryPoints != null ? `<br>${fmt(p.victoryPoints)} bodů` : ''}${watch.has(id) ? '<br>★ sledovaná' : ''}`;
+      const tip = `<b>${esc(provLabel(id))}</b><br>${own ? 'náš cech' : esc(pname(p.ownerId))}${base ? ' · základna' : ''}<br>${p.isAttackBattleType ? '⚔ červená (útočná)' : '🛡 modrá (obranná)'}${locked ? `<br>odemkne se za ${dur(p.lockedUntil - now)}` : base ? '' : '<br><b>odemčená</b>'}${p.victoryPoints != null ? `<br>${fmt(p.victoryPoints)} bodů` : ''}${watch.has(id) ? '<br>★ sledovaná' : ''}`;
       g += `<path d="${d}" fill="${fill}" fill-opacity="${base ? 0.95 : locked ? 0.35 : 0.8}" stroke="${hit ? '#ff0' : atk ? '#000' : '#fbf6ec'}" stroke-width="${hit || atk ? 2.5 : 1}"
         ${own || base ? '' : `data-watch="${id}" style="cursor:pointer"`} data-tip="${esc(tip)}"/>`;
       const [lx, ly] = n === 1 ? [C, C] : pt((r0 + r1) / 2, am);
@@ -131,7 +131,7 @@ function viewGbgMap(provs, me, pname, now) {
   }
   const counts = {}; for (const p of provs) if (p.ownerId != null) counts[p.ownerId] = (counts[p.ownerId] || 0) + 1;
   return `<svg viewBox="0 0 ${S0} ${S0}" width="100%" style="max-width:520px;display:block;margin:0 auto">${g}</svg>
-    <div class="legend" style="justify-content:center">${parts.map((p) => `<span><i style="background:${col.get(p.participantId)};height:10px;width:10px"></i>${esc(p.participantId === me ? 'my' : p.clan?.name || p.participantId)} (${counts[p.participantId] || 0})</span>`).join('')}</div>
+    <div class="legend" style="justify-content:center">${parts.map((p) => `<span><i style="background:${col.get(p.participantId)};height:10px;width:10px"></i>${p.participantId === me ? '<b>👤 náš cech</b>' : esc(p.clan?.name || p.participantId)} (${counts[p.participantId] || 0})</span>`).join('')}</div>
     <p class="muted">Schéma (ne přesná mapa ze hry): kruhy podle čísla v názvu provincie. Bledá = zamčená, ⌂ základna, ★ sledovaná, černý okraj = útočíme, žlutý = útočí na nás;
       tečka ⚔ červená / 🛡 modrá. Klik na provincii ji označí ★ ke sledování; po najetí myší podrobnosti.</p>`;
 }
@@ -152,7 +152,7 @@ function viewProvinces(provs, me, pname, now) {
     list.map(({ p, id, left, own, near, base }) => `<tr class="${watch.has(id) ? 'sel' : own || base ? 'muted' : ''}">
       <td style="white-space:nowrap">${own || base ? '' : `<button class="star" data-watch="${id}" title="Sledovat">${watch.has(id) ? '★' : '☆'}</button>`}${btype(p)}</td>
       <td title="${esc(provFull(id))} · #${id}"><input type="text" class="pname" data-prov="${id}" value="${esc(names[id] || '')}" placeholder="#${id}" maxlength="30"></td>
-      <td>${own ? 'my' : esc(pname(p.ownerId))}</td>
+      <td>${own ? '👤 náš cech' : esc(pname(p.ownerId))}</td>
       <td>${near ? '<span class="hi">s námi</span>' : ''}</td>
       <td class="num">${base ? 'základna' : left > 0 ? 'za ' + dur(left) : own ? '' : '<b>teď</b>'}</td>
       <td class="num">${p.gainAttritionChance != null ? p.gainAttritionChance + ' %' : '–'}</td>

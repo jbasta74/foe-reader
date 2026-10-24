@@ -1718,7 +1718,7 @@
       return h + `<p class="muted">Kolik dané věci má budova vyrobit na jedno pole (včetně podílu cesty), aby za ni dostala 1 bod. Skóre = součet bodů.</p>
         <table><thead><tr><th>Započítat</th><th>Druh</th><th class="num">Na pole</th></tr></thead><tbody>${rateW().map((t) =>
           `<tr><td><input type="checkbox" data-ratew="${t.k}" data-f="on" ${t.on ? 'checked' : ''}></td><td>${esc(t.l)}</td>
-           <td class="num"><input type="number" step="0.05" min="0" style="width:80px" data-ratew="${t.k}" data-f="per" value="${t.per}"></td></tr>`).join('')}</tbody></table>
+           <td class="num"><input type="number" step="0.05" min="0" style="width:80px" data-ratew="${t.k}" data-f="per" value="${Number.isFinite(+t.per) ? +t.per : 0}"></td></tr>`).join('')}</tbody></table>
         <p><button data-act="ratereset">Obnovit výchozí hodnoty</button></p>`;
     }
     h += `<div class="copyrow" style="margin-bottom:4px;flex-wrap:wrap;align-items:center">
@@ -2020,17 +2020,18 @@
     const a = S.attrition;
     if (!a) return '';
     const reset = S.timers.find((t) => t.type === 'battlegroundsAttrition')?.at;
-    const target = attrTarget ?? a.level + 20;
-    const need = Math.max(0, target - a.level);
+    const lvl = a.level || 0; // úroveň 0 server neposílá (chybí pole) – po resetu by jinak vyšlo NaN
+    const target = attrTarget ?? lvl + 20;
+    const need = Math.max(0, target - lvl);
     const rows = [100, 60, 20].map((c) => `<tr><td>${c} %</td><td class="num">${fmt(Math.ceil(need / (c / 100)))}</td></tr>`).join('');
     return `<h4>Opotřebení</h4>
       <table><tbody>
-        <tr><td>Úroveň</td><td class="num"><b>${fmt(a.level)}</b></td></tr>
+        <tr><td>Úroveň</td><td class="num"><b>${fmt(lvl)}</b></td></tr>
         <tr><td>Bonus bránících armád</td><td class="num">${fmt(a.defendingArmyBonus)} %</td></tr>
         <tr><td>Násobitel vyjednávání</td><td class="num">${fmt(a.negotiationMultiplier)} %</td></tr>
         ${reset ? `<tr><td>Reset</td><td class="num">za ${dur(reset - nowServer())}</td></tr>` : ''}
       </tbody></table>
-      <p>Kolik bitev do úrovně <input type="number" data-input="attrTarget" value="${target}" min="${a.level}" style="width:70px"> (průměrně, podle šance provincie):</p>
+      <p>Kolik bitev do úrovně <input type="number" data-input="attrTarget" value="${target}" min="${lvl}" style="width:70px"> (průměrně, podle šance provincie):</p>
       <table><thead><tr><th>Šance na opotřebení</th><th>Bitev</th></tr></thead><tbody>${rows}</tbody></table>
       <p class="muted">Šanci ukazuje sloupec „Opotř.“ v tabulce provincií. Jak roste bonus obránců s úrovní, server neposílá, proto ho nepočítám dopředu.</p>`;
   }
@@ -2070,7 +2071,7 @@
   let alertCfgOpen = false; // nastavení upozornění je ve výchozím stavu sbalené
   function viewAlerts() {
     const chk = (k, label) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${label}</label>`;
-    const num = (k, label, w = 50) => `<label>${label} <input type="number" data-cfg="${k}" value="${cfg[k]}" min="0" style="width:${w}px"></label>`;
+    const num = (k, label, w = 50) => `<label>${label} <input type="number" data-cfg="${k}" value="${Number.isFinite(+cfg[k]) ? +cfg[k] : CFG_DEFAULT[k] ?? 0}" min="0" style="width:${w}px"></label>`;
     const ICON = { gbg: '⚔️', tav: '🍺', prod: '🏭', trade: '🤝', gb: '🏛️', lim: '⏳', msg: '✉️' };
     const cfgHtml = `<div class="cfg">
         <div>${chk('sound', 'Zvuk')} <button data-act="testsound">Vyzkoušet zvuk</button></div>

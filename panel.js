@@ -2252,6 +2252,105 @@
       <text x="${P}" y="${H + 12}" font-size="10" fill="#7a6a50">${esc(shortDate(points[0][0]))}</text>
       <text x="${W - P}" y="${H + 12}" font-size="10" fill="#7a6a50" text-anchor="end">${esc(shortDate(points[points.length - 1][0]))}</text></svg>`;
   }
+  // ---------- Grafy (SVG bez knihoven; popisek po najetí myší přes data-tip) ----------
+  let statView = 'own', statArea = 'gbg';
+  const SER_COL = ['#c0392b', '#e67e22', '#2e6db4', '#16a085'];
+  const kfmt = (n) => { const a = Math.abs(n), c = (x) => x.toFixed(1).replace('.', ',').replace(',0', '');
+    return a >= 1e9 ? c(n / 1e9) + ' mld' : a >= 1e6 ? c(n / 1e6) + ' mil' : a >= 1e4 ? c(n / 1e3) + ' tis' : fmt(Math.round(n)); };
+  function niceTicks(lo, hi, n = 4) {
+    const span = hi - lo || Math.abs(hi) || 1, raw = span / n, mag = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((x) => x >= raw) || raw;
+    const t = [], top = Math.ceil(hi / step - 1e-9) * step;
+    for (let v = Math.floor(lo / step) * step; v <= top + step * 1e-9; v += step) t.push(+v.toFixed(10));
+    return t;
+  }
+  // labels: popisky osy x; series: [{name, color, values:[číslo|null]}]; type: 'line' | 'bar'
+  function svgChart({ labels, series, type = 'line', height = 170, unit = '' }) {
+    const n = labels.length;
+    const vals = series.flatMap((x) => x.values).filter((v) => v != null);
+    if (!n || !vals.length) return '<p class="muted">Zatím málo dat.</p>';
+    const W = 560, H = height, L = 52, R = 8, T = 8, B = 20, iw = W - L - R, ih = H - T - B;
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (type === 'bar') { lo = Math.min(0, lo); hi = Math.max(0, hi); }
+    if (lo === hi) { lo -= Math.abs(lo) * 0.05 || 1; hi += Math.abs(hi) * 0.05 || 1; }
+    const ticks = niceTicks(lo, hi); lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+    const y = (v) => T + ih - ((v - lo) / (hi - lo)) * ih;
+    const bw = iw / n, x = (i) => (type === 'bar' ? L + bw * (i + 0.5) : n === 1 ? L + iw / 2 : L + (i * iw) / (n - 1));
+    let g = ticks.map((t) => `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="#e3d6bb"/>
+      <text x="${L - 5}" y="${(y(t) + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="#8a7a60">${esc(kfmt(t))}</text>`).join('');
+    const every = Math.max(1, Math.ceil(n / 7));
+    g += labels.map((l, i) => (i % every === 0 || i === n - 1) && (i === n - 1 || n - 1 - i >= every)
+      ? `<text x="${x(i).toFixed(1)}" y="${H - 5}" text-anchor="${n > 1 && type !== 'bar' ? (i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle') : 'middle'}" font-size="10" fill="#8a7a60">${esc(l)}</text>` : '').join('');
+    if (type === 'bar') {
+      const s0 = series[0];
+      g += s0.values.map((v, i) => v == null ? '' : `<rect x="${(x(i) - bw * 0.35).toFixed(1)}" width="${(bw * 0.7).toFixed(1)}" y="${Math.min(y(v), y(0)).toFixed(1)}"
+        height="${Math.max(1, Math.abs(y(v) - y(0))).toFixed(1)}" rx="2" fill="${v < 0 ? '#c0392b' : s0.color}"/>`).join('');
+    } else {
+      for (const sr of series) {
+        const pts = sr.values.map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`));
+        const segs = []; let cur = [];
+        for (const p of pts) { if (p) cur.push(p); else if (cur.length) { segs.push(cur); cur = []; } }
+        if (cur.length) segs.push(cur);
+        g += segs.map((sg) => `<polyline fill="none" stroke="${sr.color}" stroke-width="2" stroke-linejoin="round" points="${sg.join(' ')}"/>`).join('');
+        if (n <= 40) g += sr.values.map((v, i) => (v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="${sr.color}"/>`)).join('');
+      }
+    }
+    // sloupce pro popisek
+    g += labels.map((l, i) => {
+      const tip = `<b>${esc(l)}</b>` + series.map((sr) => sr.values[i] == null ? '' : `<br><span style="color:${sr.color}">●</span> ${esc(sr.name)}: <b>${fmt(Math.round(sr.values[i]))}${unit}</b>`).join('');
+      const cx = type === 'bar' ? x(i) - bw / 2 : n === 1 ? L : x(i) - iw / (n - 1) / 2;
+      const cw = type === 'bar' ? bw : n === 1 ? iw : iw / (n - 1);
+      return `<rect class="hov" x="${Math.max(L, cx).toFixed(1)}" y="${T}" width="${Math.min(cw, W - R - Math.max(L, cx)).toFixed(1)}" height="${ih}" data-tip="${esc(tip)}"/>`;
+    }).join('');
+    const legend = series.length > 1 ? `<div class="legend">${series.map((sr) => `<span><i style="background:${sr.color}"></i>${esc(sr.name)}</span>`).join('')}</div>` : '';
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">${g}</svg>${legend}`;
+  }
+  const AREA_LBL = { all: 'Všude', gbg: 'GBG', ge: 'Expedice', qi: 'QI' };
+  const ARMY_NAMES = ['Útok útočníka', 'Obrana útočníka', 'Útok obránce', 'Obrana obránce'];
+  function armyChart(daysArr, snapOf) {
+    return `<div class="seg">${Object.entries(AREA_LBL).map(([k, l]) => `<button class="fbtn ${statArea === k ? 'on' : ''}" data-statarea="${k}">${l}</button>`).join('')}</div>
+      ${svgChart({ labels: daysArr.map(shortDate), unit: ' %', series: ARMY_NAMES.map((nm, i) => ({ name: nm, color: SER_COL[i], values: daysArr.map((d) => snapOf(d).army?.[statArea]?.[i] ?? null) })) })}`;
+  }
+  function tile(label, big, sub, cls = '') {
+    return `<div class="tile"><div class="tl">${label}</div><div class="tb">${big}</div>${sub ? `<div class="ts ${cls}">${sub}</div>` : ''}</div>`;
+  }
+  const signed = (n) => (n > 0 ? '+' : '') + (Math.abs(n) >= 1e5 ? kfmt(n) : fmt(Math.round(n)));
+  function viewOwnStats(D) {
+    const days = Object.keys(D.own).sort();
+    if (!days.length) return '<p class="muted">První záznam se uloží chvíli po načtení hry.</p>';
+    const sn = (d) => D.own[d], first = sn(days[0]), last = sn(days[days.length - 1]);
+    const scoreDays = days.filter((d) => sn(d).score != null);
+    const sc0 = scoreDays.length ? sn(scoreDays[0]).score : null, sc1 = scoreDays.length ? sn(scoreDays[scoreDays.length - 1]).score : null;
+    const nd = scoreDays.length > 1 ? (new Date(scoreDays[scoreDays.length - 1]) - new Date(scoreDays[0])) / 864e5 : 0;
+    const gbg0 = first.army?.gbg?.[0], gbg1 = last.army?.gbg?.[0];
+    const lv0 = gbLevels(first), lv1 = gbLevels(last);
+    const grown = (last.gb || []).filter((g) => { const o = (first.gb || []).find((x) => x.id === g.id); return o && g.l > o.l; }).length;
+    let h = `<div class="tiles">
+      ${tile(`Skóre k ${esc(shortDate(scoreDays[scoreDays.length - 1] || days[days.length - 1]))}`, sc1 != null ? kfmt(sc1) : '–', sc1 != null && scoreDays.length > 1 ? `${signed(sc1 - sc0)} od ${esc(shortDate(scoreDays[0]))}` : '', 'up')}
+      ${tile('Průměrný přírůstek skóre za den', nd ? kfmt((sc1 - sc0) / nd) : '–', nd ? `za ${fmt(Math.round(nd))} dní` : 'potřeba aspoň 2 dny')}
+      ${tile('Útok útočníka v GBG', gbg1 != null ? fmt(gbg1) + ' %' : '–', days.length > 1 && gbg0 != null ? `${signed(gbg1 - gbg0)} b. od prvního dne` : '', gbg1 >= gbg0 ? 'up' : 'down')}
+      ${tile('Úrovně Velkých budov', fmt(lv1), days.length > 1 ? `${signed(lv1 - lv0)} (rostlo ${grown} VB)` : '', 'up')}
+    </div>`;
+    if (scoreDays.length) {
+      h += `<h4>Celkové skóre</h4>${svgChart({ labels: scoreDays.map(shortDate), series: [{ name: 'Skóre', color: '#8a4b12', values: scoreDays.map((d) => sn(d).score) }] })}`;
+      if (scoreDays.length > 1) {
+        const gl = scoreDays.slice(1), gv = gl.map((d, i) => sn(d).score - sn(scoreDays[i]).score);
+        h += `<h4>Přírůstek skóre mezi snímky</h4>${svgChart({ labels: gl.map(shortDate), type: 'bar', height: 140, series: [{ name: 'Přírůstek', color: '#b5651d', values: gv }] })}`;
+      }
+    }
+    h += `<h4>Bonusy armády</h4>${armyChart(days, sn)}`;
+    h += `<h4>Velké budovy</h4><table><thead><tr><th>Budova</th><th class="num">${esc(shortDate(days[0]))}</th><th class="num">${esc(shortDate(days[days.length - 1]))}</th><th class="num">Změna</th><th class="num">Max.</th></tr></thead><tbody>${
+      (last.gb || []).slice().sort((a, b) => b.l - a.l).map((g) => { const o = (first.gb || []).find((x) => x.id === g.id);
+        return `<tr><td>${esc(g.n)}</td><td class="num">${o ? o.l : '–'}</td><td class="num"><b>${g.l}</b></td><td class="num">${o && g.l > o.l ? `<span class="up">+${g.l - o.l}</span>` : ''}</td><td class="num muted">${g.m ?? ''}</td></tr>`; }).join('')}</tbody></table>`;
+    h += `<details><summary class="muted">Tabulka po dnech</summary>
+      <table><thead><tr><th>Den</th><th class="num">Skóre</th><th class="num">Všude útok / obr.</th><th class="num">GBG útok / obr.</th><th class="num">Exp. útok / obr.</th><th class="num">VB Σ</th></tr></thead><tbody>${
+        days.slice().reverse().slice(0, 120).map((d, i, arr) => { const x = sn(d), pv = D.own[arr[i + 1]];
+          return `<tr><td>${esc(shortDate(d))}</td><td class="num">${x.score != null ? fmt(x.score) : ''}</td><td class="num">${pair(x.army?.all)}</td>
+            <td class="num">${pair(x.army?.gbg)}${diff(x.army?.gbg?.[0], pv?.army?.gbg?.[0])}</td><td class="num">${pair(x.army?.ge)}</td>
+            <td class="num">${fmt(gbLevels(x))}${diff(gbLevels(x), pv && gbLevels(pv))}</td></tr>`; }).join('')}</tbody></table></details>`;
+    return h;
+  }
+
   function armyTable(a) {
     return `<table><thead><tr><th>Oblast</th><th>Útok útočníka</th><th>Obrana útočníka</th><th>Útok obránce</th><th>Obrana obránce</th></tr></thead><tbody>${
       [['all', 'Všude'], ['gbg', 'GBG'], ['ge', 'Expedice'], ['qi', 'Kvantové invaze']].map(([k, l]) =>
@@ -2275,7 +2374,11 @@
     const D = st.data(), f = st.folder();
     const store = f.name ? (f.perm === 'granted' ? `složka <b>${esc(f.name)}</b>${f.last ? ` (synchronizováno ${new Date(f.last).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })})` : ''}`
       : `složka <b>${esc(f.name)}</b> – <button data-act="stgrant">Povolit přístup</button>`) : 'jen v tomto prohlížeči (složku pro sdílení mezi počítači nastavíte v ℹ️)';
-    let h = `<p class="muted">Ukládání: ${store}${f.error ? ` · <span class="hi">${esc(f.error)}</span>` : ''}</p>${statMsg ? `<p class="hi">${esc(statMsg)}</p>` : ''}`;
+    let h = `<p>${[['own', 'Můj vývoj'], ['visits', `Navštívená města (${Object.keys(D.visits).length})`]].map(([k, l]) => `<button class="fbtn ${statView === k ? 'on' : ''}" data-statview="${k}">${l}</button>`).join('')}</p>`;
+    const foot = `<p style="margin-top:8px"><button data-act="stcsvown">CSV – můj vývoj</button> <button data-act="stcsvvis">CSV – navštívená města</button>
+      <button data-act="stjson">Záloha (JSON)</button> <button data-act="stimport">Načíst zálohu…</button><input type="file" accept=".json,application/json" data-stimport style="display:none"></p>
+      <p class="muted">Ukládání: ${store}${f.error ? ` · <span class="hi">${esc(f.error)}</span>` : ''}. CSV se otevře v Excelu (oddělovač středník). Záloha i načtení slučují data – nic se nepřepíše starším.</p>${statMsg ? `<p class="hi">${esc(statMsg)}</p>` : ''}`;
+    if (statView === 'own') return h + viewOwnStats(D) + foot;
     // --- navštívená města ---
     if (S.visit?.snap) {
       const hist = D.visits[S.visit.pid];
@@ -2305,6 +2408,7 @@
         h += `<h4>${esc(sel.name || '?')} – vývoj</h4>${isNow ? '' : visitCard(last, days.length > 1 ? sel.days[days[days.length - 2]] : null)}`;
         if (days.length < 2) h += '<p class="muted">Zatím jen jedna návštěva – vývoj bude vidět po další návštěvě v jiný den.</p>';
         if (days.length > 1) {
+          h += armyChart(days, (d) => sel.days[d]);
           h += `<table><thead><tr><th>Den</th><th class="num">GBG útok / obr.</th><th class="num">Exp. útok / obr.</th><th class="num">Všude útok / obr.</th><th class="num">VB Σ</th></tr></thead><tbody>${
             days.slice().reverse().map((d, i, arr) => { const sn = sel.days[d], pv = sel.days[arr[i + 1]];
               return `<tr><td>${esc(shortDate(d))}</td><td class="num">${pair(sn.army?.gbg)}${diff(sn.army?.gbg?.[0], pv?.army?.gbg?.[0])}</td>
@@ -2312,22 +2416,8 @@
         }
       }
     }
-    // --- vlastní vývoj ---
-    const days = Object.keys(D.own).sort();
-    h += `<h4>Můj vývoj (${days.length} ${days.length === 1 ? 'den' : days.length < 5 ? 'dny' : 'dní'})</h4>`;
-    if (days.length) {
-      h += `<div style="margin-bottom:4px">${Object.entries(OWN_METRICS).map(([k, l]) => `<button class="fbtn ${k === statMetric ? 'on' : ''}" data-statmetric="${k}">${l}</button>`).join('')}</div>
-        ${lineChart(days.map((d) => [d, metricVal(D.own[d], statMetric)]).filter((p) => p[1] != null))}
-        <table><thead><tr><th>Den</th><th class="num">Všude útok / obr.</th><th class="num">GBG útok / obr.</th><th class="num">Exp. útok / obr.</th><th class="num">VB Σ</th><th class="num">Bonus FP</th></tr></thead><tbody>${
-        days.slice().reverse().slice(0, 60).map((d, i, arr) => { const sn = D.own[d], pv = D.own[arr[i + 1]];
-          return `<tr><td>${esc(shortDate(d))}</td><td class="num">${pair(sn.army?.all)}${diff(sn.army?.all?.[0], pv?.army?.all?.[0])}</td>
-            <td class="num">${pair(sn.army?.gbg)}${diff(sn.army?.gbg?.[0], pv?.army?.gbg?.[0])}</td><td class="num">${pair(sn.army?.ge)}</td>
-            <td class="num">${fmt(gbLevels(sn))}${diff(gbLevels(sn), pv && gbLevels(pv))}</td><td class="num">${fmt(sn.fp)}</td></tr>`; }).join('')}</tbody></table>`;
-    } else h += '<p class="muted">První záznam se uloží chvíli po načtení hry.</p>';
-    h += `<p style="margin-top:8px"><button data-act="stcsvown">CSV – můj vývoj</button> <button data-act="stcsvvis">CSV – navštívená města</button>
-      <button data-act="stjson">Záloha (JSON)</button> <button data-act="stimport">Načíst zálohu…</button><input type="file" accept=".json,application/json" data-stimport style="display:none"></p>
-      <p class="muted">CSV se otevře v Excelu (oddělovač středník). Záloha i načtení slučují data – nic se nepřepíše starším.</p>`;
-    return h;
+    return h + foot;
+
   }
   function saveText(name, text, type) {
     const a = document.createElement('a');
@@ -2491,6 +2581,14 @@
       .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
       .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
       tr.safe td{background:#d6efc7}
+      .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin:4px 0 6px}
+      .tile{background:#f3ead6;border:1px solid #e0d2b4;border-radius:8px;padding:7px 9px}
+      .tile .tl{font-size:11px;color:#8a7a60}.tile .tb{font-size:21px;font-family:Georgia,serif;margin:2px 0}.tile .ts{font-size:11px;color:#8a7a60}
+      .tile .ts.up{color:#2e7d32}.tile .ts.down{color:#b0410f}
+      svg.chart{display:block;background:#fbf6ec}svg.chart .hov{fill:transparent;cursor:crosshair}svg.chart .hov:hover{fill:rgba(138,106,58,.12)}
+      .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:#7a6a50;margin:2px 0 6px}.legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle}
+      .seg{margin:2px 0 4px}
+      .ctip{position:fixed;z-index:2147483647;pointer-events:none;background:#fff;border:1px solid #c9b48c;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.25);padding:4px 8px;font-size:11px;line-height:1.45;white-space:nowrap;display:none}
       .bt{display:inline-block;min-width:18px;text-align:center;border-radius:4px;font-size:11px;line-height:16px;padding:0 2px;color:#fff}
       .bt.red{background:#c0392b}.bt.blue{background:#2e6db4}
       .turns{display:inline-block;font-size:15px;padding:4px 12px;margin:2px 0 4px;border-radius:6px;background:#d6efc7;color:#1f4d1f}.turns b{font-size:17px}
@@ -2519,12 +2617,28 @@
     });
     root.addEventListener('input', () => { lastInputAt = Date.now(); });
     root.addEventListener('change', onUiChange);
+    attachTips(root, host);
     attach();
     // Hra si stránku po načtení přestavuje – když panel zmizí, vrátíme ho.
     setInterval(() => { if (!host.isConnected) attach(); }, 2000);
     restoreTabWins();
     watchPanelSize();
     console.log('[FoE Reader] panel připraven');
+  }
+  // Popisky grafů (data-tip) – pro panel i samostatná okna.
+  function attachTips(r, hostEl) {
+    let tip = null;
+    const hide = () => { if (tip) tip.style.display = 'none'; };
+    r.addEventListener('mousemove', (ev) => {
+      const t = ev.target.closest?.('[data-tip]');
+      if (!t) return hide();
+      if (!tip || !tip.isConnected) { tip = document.createElement('div'); tip.className = 'ctip'; r.appendChild(tip); }
+      if (tip.dataset.k !== t.dataset.tip) { tip.innerHTML = t.dataset.tip; tip.dataset.k = t.dataset.tip; }
+      tip.style.display = 'block';
+      tip.style.left = Math.max(4, Math.min(innerWidth - tip.offsetWidth - 4, ev.clientX + 14)) + 'px';
+      tip.style.top = Math.max(4, ev.clientY - tip.offsetHeight - 10) + 'px';
+    });
+    hostEl.addEventListener('mouseleave', hide);
   }
   // Společné ovládání pro panel i samostatná okna záložek.
   function onUiClick(ev) {
@@ -2534,6 +2648,10 @@
       if (ev.target.closest('[data-act="download"]')) download();
       const sp = ev.target.closest('tr[data-statpid]');
       if (sp) { statSel = statSel === sp.dataset.statpid ? null : sp.dataset.statpid; render(); return; }
+      const sv = ev.target.closest('[data-statview]');
+      if (sv) { statView = sv.dataset.statview; render(); return; }
+      const sa2 = ev.target.closest('[data-statarea]');
+      if (sa2) { statArea = sa2.dataset.statarea; render(); return; }
       const sm = ev.target.closest('[data-statmetric]');
       if (sm) { statMetric = sm.dataset.statmetric; render(); return; }
       if (ev.target.closest('[data-act="bonusunlock"]')) {
@@ -2680,6 +2798,7 @@
     });
     r.addEventListener('input', () => { lastInputAt = Date.now(); });
     r.addEventListener('change', onUiChange);
+    attachTips(r, h);
     new ResizeObserver(() => { if (tabWins.has(id)) save(); }).observe(h);
     w.close = () => { save(true); h.remove(); tabWins.delete(id); renderIcons(); };
     if (!restore) save();

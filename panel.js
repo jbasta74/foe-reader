@@ -2094,7 +2094,8 @@
           <p class="muted">Sloupce 1 a 5 min = o kolik postoupil celý cech (bitva +1, vyjednávání +2). Přibývá-li víc, než děláte sám, jede tam někdo s vámi. Počítá se od otevření mapy GBG.</p>`;
       }
       html += viewAttrition();
-      html += viewProvinces(provs, me, pname, now);
+      html += `<p>${[['list', 'Seznam provincií'], ['map', 'Mapa (schéma)']].map(([k, l]) => `<button class="fbtn ${gbgView === k ? 'on' : ''}" data-gbgview="${k}">${l}</button>`).join('')}</p>`;
+      html += gbgView === 'map' ? viewGbgMap(provs, me, pname, now) : viewProvinces(provs, me, pname, now);
       const defending = provs.filter((p) => p.ownerId === me && prog(p, (c) => c.participantId !== me).length);
       if (defending.length) {
         html += `<h4>Kde útočí na nás</h4><table><thead><tr><th>Provincie</th><th>Útočník</th><th>Postup</th><th>1 min</th><th>5 min</th></tr></thead><tbody>${
@@ -2155,6 +2156,47 @@
   const btype = (p) => (p?.isSpawnSpot ? '' : p?.isAttackBattleType
     ? '<span class="bt red" title="Červená provincie – útočný typ boje">⚔</span>'
     : '<span class="bt blue" title="Modrá provincie – obranný typ boje">🛡</span>');
+  // ---------- Mapa GBG (schéma) ----------
+  // Souřadnice server neposílá – kruhové schéma podle názvů: číslice = kruh od středu, pořadí v kruhu podle id.
+  let gbgView = 'list';
+  const CLAN_COLS = ['#2e7d32', '#c0392b', '#2e6db4', '#e67e22', '#8e44ad', '#16a085', '#b8860b', '#7f8c8d'];
+  function viewGbgMap(provs, me, pname, now) {
+    const parts = (S.gbg.battlegroundParticipants || []).slice().sort((a, b) => (a.participantId === me ? -1 : b.participantId === me ? 1 : a.participantId - b.participantId));
+    const col = new Map(parts.map((p, i) => [p.participantId, CLAN_COLS[i % CLAN_COLS.length]]));
+    const ringOf = (id) => { const m = String(provLabel(id) || '').match(/^[A-Z]?(\d)/); return m ? +m[1] : null; };
+    const rings = new Map();
+    for (const p of provs) { const id = p.id ?? 0, r = ringOf(id); if (r == null) continue; (rings.get(r) || rings.set(r, []).get(r)).push(p); }
+    if (!rings.size) return '<p class="muted">Pro tuto mapu neumím schéma nakreslit (chybí názvy provincií).</p>';
+    const R = Math.max(...rings.keys()), S0 = 300, C = S0 / 2, step = (C - 6) / R, watch = loadWatch();
+    const pt = (r, a) => [C + r * Math.cos(a), C + r * Math.sin(a)];
+    let g = '';
+    for (const [r, list] of [...rings.entries()].sort((a, b) => a[0] - b[0])) {
+      list.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+      const n = list.length, r0 = n === 1 ? 0 : (r - 1) * step, r1 = r * step;
+      list.forEach((p, i) => {
+        const id = p.id ?? 0, a0 = -Math.PI / 2 + (i / n) * 2 * Math.PI, a1 = -Math.PI / 2 + ((i + 1) / n) * 2 * Math.PI, am = (a0 + a1) / 2;
+        const own = p.ownerId === me, base = !!p.isSpawnSpot, locked = (p.lockedUntil || 0) > now;
+        const atk = (p.conquestProgress || []).some((c) => c.progress > 0 && c.participantId === me);
+        const hit = own && (p.conquestProgress || []).some((c) => c.progress > 0);
+        const fill = col.get(p.ownerId) || '#bbb';
+        const d = n === 1 ? `M${C - r1},${C}a${r1},${r1} 0 1,0 ${2 * r1},0a${r1},${r1} 0 1,0 ${-2 * r1},0Z`
+          : (() => { const [x0, y0] = pt(r1, a0), [x1, y1] = pt(r1, a1), [x2, y2] = pt(r0, a1), [x3, y3] = pt(r0, a0), big = a1 - a0 > Math.PI ? 1 : 0;
+            return `M${x0.toFixed(1)},${y0.toFixed(1)}A${r1},${r1} 0 ${big},1 ${x1.toFixed(1)},${y1.toFixed(1)}L${x2.toFixed(1)},${y2.toFixed(1)}${r0 ? `A${r0},${r0} 0 ${big},0 ${x3.toFixed(1)},${y3.toFixed(1)}` : ''}Z`; })();
+        const tip = `<b>${esc(provLabel(id))}</b><br>${own ? 'my' : esc(pname(p.ownerId))}${base ? ' · základna' : ''}<br>${p.isAttackBattleType ? '⚔ červená (útočná)' : '🛡 modrá (obranná)'}${locked ? `<br>odemkne se za ${dur(p.lockedUntil - now)}` : base ? '' : '<br><b>odemčená</b>'}${p.victoryPoints != null ? `<br>${fmt(p.victoryPoints)} bodů` : ''}${watch.has(id) ? '<br>★ sledovaná' : ''}`;
+        g += `<path d="${d}" fill="${fill}" fill-opacity="${base ? 0.95 : locked ? 0.35 : 0.8}" stroke="${hit ? '#ff0' : atk ? '#000' : '#fbf6ec'}" stroke-width="${hit || atk ? 2.5 : 1}"
+          ${own || base ? '' : `data-watch="${id}" style="cursor:pointer"`} data-tip="${esc(tip)}"/>`;
+        const [lx, ly] = n === 1 ? [C, C] : pt((r0 + r1) / 2, am);
+        const short = (String(provLabel(id)).match(/^([A-Z]\d[A-Z]?)/) || [])[1] || id;
+        g += `<text x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="middle" font-size="${n > 20 ? 7 : 9}" fill="#fff" style="pointer-events:none;font-weight:700">${base ? '⌂' : watch.has(id) ? '★' : esc(short)}</text>`;
+        if (!base) { const [bx, by] = n === 1 ? [C, C + 10] : pt(r1 - 5, am); g += `<circle cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="2.6" fill="${p.isAttackBattleType ? '#c0392b' : '#2e6db4'}" stroke="#fff" stroke-width=".8" style="pointer-events:none"/>`; }
+      });
+    }
+    const counts = {}; for (const p of provs) if (p.ownerId != null) counts[p.ownerId] = (counts[p.ownerId] || 0) + 1;
+    return `<svg viewBox="0 0 ${S0} ${S0}" width="100%" style="max-width:520px;display:block;margin:0 auto">${g}</svg>
+      <div class="legend" style="justify-content:center">${parts.map((p) => `<span><i style="background:${col.get(p.participantId)};height:10px;width:10px"></i>${esc(p.participantId === me ? 'my' : p.clan?.name || p.participantId)} (${counts[p.participantId] || 0})</span>`).join('')}</div>
+      <p class="muted">Schéma (ne přesná mapa ze hry): kruhy podle čísla v názvu provincie. Bledá = zamčená, ⌂ základna, ★ sledovaná, černý okraj = útočíme, žlutý = útočí na nás;
+        tečka ⚔ červená / 🛡 modrá. Klik na provincii ji označí ★ ke sledování; po najetí myší podrobnosti.</p>`;
+  }
   function viewProvinces(provs, me, pname, now) {
     const watch = loadWatch();
     const names = provNames();
@@ -2839,6 +2881,8 @@
       if (ev.target.closest('[data-act="download"]')) download();
       const sp = ev.target.closest('tr[data-statpid]');
       if (sp) { statSel = statSel === sp.dataset.statpid ? null : sp.dataset.statpid; render(); return; }
+      const gv = ev.target.closest('[data-gbgview]');
+      if (gv) { gbgView = gv.dataset.gbgview; render(); return; }
       const gp = ev.target.closest('[data-guildper]');
       if (gp) { guildPer = +gp.dataset.guildper; render(); return; }
       const gs = ev.target.closest('[data-guildsort]');

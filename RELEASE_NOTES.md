@@ -9,6 +9,7 @@
 - **Expedice** (🧭): postup (úroveň, setkání v úrovni i celkem), konec expedice, zkouška, body cechu do další odměny a váš příspěvek, aktuální úsek mapy (boje a truhly) a deník otevřených truhel.
 - **GBG → Mapa (schéma)**: kruhové schéma provincií v barvách cechů – zamčené bledě, základny ⌂, sledované ★, kde útočíme (černý okraj) a kde útočí na nás (žlutý), typ ⚔/🛡 tečkou; po najetí myší podrobnosti, klikem se provincie označí ke sledování.
 - **Kvantové invaze** (🌀): akce a jejich sběr, měna a suroviny QI, armáda a bonusy pro QI, příští produkce v QI, stav kola a aktivita členů cechu (po otevření přehledu aktivity ve hře). Expedice ukazuje i počet pokusů.
+- Pod kapotou: `panel.js` je rozdělený do souborů `panel-*.js` podle oblastí a přibyly automatické testy, které na GitHubu při každé změně ověří klíčová čísla (stupeň VB, bonus Archy, medaile, násobitele, GBG, vyjednávání). **Aktualizace jen celým ZIPem** – soubor `panel.js` už neexistuje.
 
 ## Opravy
 - Opotřebení GBG na úrovni 0 (po resetu server úroveň neposílá) už nezpůsobuje chybu „NaN“ v poli „Kolik bitev do úrovně“.

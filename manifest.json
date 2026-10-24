@@ -23,7 +23,14 @@
         "nego-solver-helper.js",
         "nego.js",
         "stats.js",
-        "panel.js"
+        "panel-core.js",
+        "panel-city.js",
+        "panel-production.js",
+        "panel-gb.js",
+        "panel-gbg.js",
+        "panel-tabs.js",
+        "panel-stats.js",
+        "panel-ui.js"
       ],
       "run_at": "document_start"
     }

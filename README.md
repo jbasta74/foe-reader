@@ -17,10 +17,18 @@ Po každé úpravě kódu klikněte v `chrome://extensions` na ikonu obnovení u
 Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vydání (GitHub Actions, `.github/workflows/release.yml`): tag `v<verze>`, ZIP s rozšířením a seznam změn. Hotový ZIP je v záložce **Releases**.
 
 ## Soubory
-- `manifest.json`: vkládá dva skripty do `https://*.forgeofempires.com/game/*`.
+- `manifest.json`: vkládá skripty do `https://*.forgeofempires.com/game/*`.
 - `inject.js`: běží v kontextu stránky (`world: MAIN`) ještě před hrou. Obaluje `XMLHttpRequest`, `fetch` a `WebSocket` a přeposílá naparsované odpovědi (a ke čtení i odchozí dotazy hry, např. kterou VB hráč otevřel) z `/game/json?h=`, `/start/metadata?id=` a `wss://…/socket/` přes `window.postMessage`.
 - `provinces.js`: názvy a sousednost provincií GBG pro obě mapy (statická data převzatá z FoE Helperu, AGPL-3.0).
-- `panel.js`: běží v izolovaném světě. Třídí zprávy podle `requestClass.requestMethod` (objekt `H`), drží stav a kreslí panel ve Shadow DOM.
+- `nego-solver-helper.js`, `nego.js`: pomocník vyjednávání (přesný řešič z FoE Helperu, AGPL-3.0, a vlastní odhad).
+- `stats.js`: úložiště statistik a nastavení (chrome.storage, vybraná složka, synchronizace).
+- `panel-*.js`: panel, běží v izolovaném světě a sdílí jeden globální rozsah (načítají se v pořadí z manifestu):
+  `panel-core.js` (stav, třídění zpráv podle `requestClass.requestMethod` v objektu `H`, vyjednávání, příhody, upozornění, oznámení Chromu),
+  `panel-city.js` (mapa města, okna kalkulačky a mapy), `panel-production.js` (bonusy, produkce, denní přehled, rating),
+  `panel-gb.js` (kalkulačky VB), `panel-gbg.js` (GBG a jeho mapa), `panel-tabs.js` (upozornění, sklad, statistiky, expedice, QI),
+  `panel-stats.js` (grafy, cech, záložky), `panel-ui.js` (panel, lišta, okna, vykreslování).
+- `background.js`: service worker rozšíření – systémová oznámení Chromu a jejich plánování (chrome.alarms).
+- `test/`: automatické testy (viz Testy).
 
 ## Záložky
 Hlavní panel se dá roztáhnout oběma směry za pravý dolní roh, velikost se pamatuje. V záložce **ℹ️** lze vypnout záložky, které nepoužíváte (VB, Upozornění a ℹ️ zůstávají vždy); data se sbírají dál. Každou záložku lze tlačítkem **⧉** (vpravo v liště záložek) otevřít v samostatném okně. Okna jdou přesouvat a zvětšovat, kliknuté okno jde dopředu a otevřená okna se po F5 obnoví na stejném místě.

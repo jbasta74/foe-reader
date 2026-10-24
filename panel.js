@@ -1579,17 +1579,36 @@
   }
   // Denní produkce budovy (vše za 24 h, s motivací – jako FoE Helper). Velké budovy a budovy s volbou výroby (zboží, zásoby)
   // podle živého stavu, ostatní z metadat podle věku budovy; bez metadat ze živého stavu.
-  function buildingDaily(e, era = S.player?.era) {
+  // Bonusy k produkci ze seznamu bonusů serveru (v %), platí pro budovy kromě VB a radnice (jako FoE Helper).
+  function prodBoostSums() {
+    const out = {};
+    for (const b of S.boosts || []) if ((b.targetedFeature || 'all') === 'all') out[b.type] = (out[b.type] || 0) + (b.value || 0);
+    return out;
+  }
+  const NOT_BOOSTABLE = /CastleSystem|L_AllAge_EasterBonus1|L_AllAge_Expedition16|L_AllAge_ShahBonus17/;
+  function applyProdBoosts(bag, e, bs) {
+    if (!bs || e.type === 'greatbuilding' || e.type === 'main_building' || NOT_BOOSTABLE.test(e.cityentity_id)) return;
+    const r = bag.res, mul = (k, pct) => { if (r[k] && pct) r[k] = Math.round(r[k] * (1 + pct / 100)); };
+    mul('strategy_points', bs.forge_points_production); mul('money', bs.coin_production); mul('supplies', bs.supply_production);
+    for (const k of ['g_prev', 'g_cur', 'g_next', 'g_other']) mul(k, bs.goods_production);
+    mul('guild', bs.guild_goods_production);
+  }
+  // Denní produkce budovy (vše za 24 h, s motivací – jako FoE Helper). Metadata podle věku budovy se slučují se živým stavem
+  // (vyšší hodnota vyhrává): živý stav obsahuje bonusy sad a řetězů a u motivovaných budov dvojnásobné mince.
+  // Velké budovy a budovy s volbou výroby (zboží, zásoby) podle toho, co právě vyrábějí. bs = bonusy k produkci (null = bez).
+  function buildingDaily(e, era = S.player?.era, bs = null) {
     const bag = { res: {}, frags: {}, other: {}, src: '' };
     const st = e.state || {};
     const m = S.entProd.get(e.cityentity_id);
     const opts = m ? m[entEra(e, m, era)] || m.AllAge : null;
+    const live = { res: {}, frags: {}, other: {} };
+    if (st.productionOption?.products) for (const p of st.productionOption.products) addProduct(live, p, 86400 / (st.productionOption.time || 86400));
     if (e.type !== 'greatbuilding' && opts?.length === 1) {
       for (const p of opts[0].products) addProduct(bag, p, 86400 / (opts[0].time || 86400));
       bag.src = 'meta';
+      for (const part of ['res', 'frags', 'other']) for (const [k, v] of Object.entries(live[part])) if (v > (bag[part][k] || 0)) bag[part][k] = v;
     } else if (st.productionOption?.products) {
-      for (const p of st.productionOption.products) addProduct(bag, p, 86400 / (st.productionOption.time || 86400));
-      bag.src = 'live';
+      Object.assign(bag, live); bag.src = 'live';
     } else if (st.current_product) {
       const cp = st.current_product, k = 86400 / (cp.production_time || 86400);
       for (const p of cp.products || [cp]) {
@@ -1599,6 +1618,7 @@
       }
       bag.src = 'live';
     }
+    if (bag.src) applyProdBoosts(bag, e, bs);
     return bag;
   }
   const PROD_CATS = [
@@ -1611,9 +1631,10 @@
     const tot = {}, per = {}; // per[kat] = Map(název -> {n, v})
     let noData = 0;
     const frags = {}, other = {};
+    const bs = cfg.prodBoosted !== false ? prodBoostSums() : null;
     for (const e of S.entities.values()) {
       if (['street', 'off_grid', 'hub_part', 'hub_main', 'decoration'].includes(e.type)) continue;
-      const b = buildingDaily(e);
+      const b = buildingDaily(e, S.player?.era, bs);
       if (!b.src) { if (S.ent.has(e.cityentity_id) && !S.metaSeen.has(e.cityentity_id)) noData++; continue; }
       const name = S.names.get(e.cityentity_id) || entName(e.cityentity_id);
       for (const [k, v] of Object.entries(b.res)) {
@@ -1642,7 +1663,10 @@
       if (prodCat === 'frags' && Object.keys(o.frags).length) h += `<p class="muted">${Object.entries(o.frags).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(fragName(k))}: ${r1(v)}`).join(' · ')}</p>`;
     }
     if (Object.keys(o.other).length) h += `<h4>Ostatní odměny (průměr za den)</h4><p>${Object.entries(o.other).map(([k, v]) => `${esc(k)}: ${r1(v)}`).join(' · ')}</p>`;
-    h += `<p class="muted">Za 24 h s motivací (jako FoE Helper), náhodné odměny jako průměr. Bez bonusů k produkci (FP, mince, zásoby, zboží) a bez bonusů sad a řetězů.
+    const bs = prodBoostSums();
+    h += `<p><label><input type="checkbox" data-cfg="prodBoosted" ${cfg.prodBoosted !== false ? 'checked' : ''}> včetně bonusů k produkci</label>
+      <span class="muted">(FP +${fmt(bs.forge_points_production || 0)} %, zboží +${fmt(bs.goods_production || 0)} %, mince +${fmt(bs.coin_production || 0)} %, zásoby +${fmt(bs.supply_production || 0)} %${bs.guild_goods_production ? `, pokladna +${fmt(bs.guild_goods_production)} %` : ''})</span></p>
+      <p class="muted">Za 24 h s motivací (jako FoE Helper), náhodné odměny jako průměr. Bonusy sad a řetězů jsou v číslech u budov, které právě vyrábějí (podle hry).
       Velké budovy a budovy s volbou výroby podle toho, co právě vyrábějí.${o.noData ? ` Chybí metadata u ${o.noData} budov.` : ''}</p>`;
     return h;
   }
@@ -1668,9 +1692,11 @@
   const RATE_SKIP = ['street', 'off_grid', 'hub_part', 'hub_main', 'main_building', 'greatbuilding', 'military', 'friends_tavern', 'outpost_ship'];
   let rateSel = { size: 0, q: '', asc: true, settings: false };
   // Hodnoty budovy podle druhů ratingu (produkce za den + bonusy).
-  function rateValues(e) {
-    const b = buildingDaily(e), v = { ...b.res };
-    for (const x of entityBoosts(e, S.player?.era)) {
+  function rateValues(e, bs) {
+    const b = buildingDaily(e, S.player?.era, bs), v = { ...b.res };
+    // Bonusy budovy: přesně ze seznamu serveru (včetně sad a řetězů), jinak z metadat.
+    const srv = (S.boosts || []).filter((x) => x.entityId === e.id && x.origin !== 'ally');
+    for (const x of srv.length ? srv : entityBoosts(e, S.player?.era)) {
       const parts = BOOST_PARTS[x.type];
       if (parts) for (const p of parts) { const k = `${p}-${x.targetedFeature || 'all'}`; v[k] = (v[k] || 0) + (x.value || 0); }
       else v[x.type] = (v[x.type] || 0) + (x.value || 0);
@@ -1680,6 +1706,7 @@
   function ratedBuildings() {
     const W = rateW().filter((t) => t.on && t.per > 0);
     const groups = new Map();
+    const bs = cfg.prodBoosted !== false ? prodBoostSums() : null;
     for (const e of S.entities.values()) {
       if (RATE_SKIP.includes(e.type)) continue;
       const sz = S.ent.get(e.cityentity_id);
@@ -1689,7 +1716,7 @@
       const key = `${e.cityentity_id}|${era}`;
       const g = groups.get(key);
       if (g) { g.n++; continue; }
-      const { v, src } = rateValues(e);
+      const { v, src } = rateValues(e, bs);
       // pole: plocha + podíl cesty (polovina u budov širokých 1 pole), jako FoE Helper
       const road = sz.road ? (sz.w === 1 || sz.l === 1 ? 0.5 : 1) * sz.road : 0;
       const tiles = sz.w * sz.l + road;
@@ -1730,8 +1757,8 @@
         <td class="num">${b.w}×${b.l}${b.road ? `+${r2(b.road)}` : ''}</td><td class="num"><b>${r2(b.score)}</b></td>
         <td class="num">${b.v.strategy_points ? fmt(Math.round(b.v.strategy_points)) : ''}</td><td class="num">${goods(b.v) ? fmt(Math.round(goods(b.v))) : ''}</td>
         <td class="muted" style="font-size:11px">${b.parts.slice(0, 3).map(([t, x]) => `${esc(t.l)} ${r2(x)}`).join(' · ')}</td></tr>`).join('')}</tbody></table>
-      <p class="muted">Postup jako FoE Helper: hodnota na pole (plocha + podíl cesty) / očekávaná hodnota na pole, sečteno přes zapnuté druhy. Produkce za 24 h s motivací,
-        bez bonusů sad a řetězů. Stejné budovy stejného věku jsou v jednom řádku. Hodnoty si upravíte v „Nastavení hodnot“.</p>`;
+      <p class="muted">Postup jako FoE Helper: hodnota na pole (plocha + podíl cesty) / očekávaná hodnota na pole, sečteno přes zapnuté druhy. Produkce za 24 h s motivací
+        a s bonusy k produkci; bonusy armády přesně podle hry (včetně sad a řetězů). Stejné budovy stejného věku jsou v jednom řádku. Hodnoty si upravíte v „Nastavení hodnot“.</p>`;
     return h;
   }
 

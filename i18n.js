@@ -466,6 +466,18 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['Žádná rozehraná kulturní osada (nebo ještě nepřišel její přehled – načtěte hru).', 'No cultural settlement in progress (or its overview has not arrived yet – reload the game).'],
+    ['otevřít okno Osada se zahájením minihry obchodníka', 'open the Settlement window when the merchant minigame starts'], ['Osada:', 'Settlement:'],
+    ['Minihra – obchodník', 'Minigame – merchant'], ['Nalezeny všechny poklady', 'All treasures found'], ['nalezeno', 'found'], ['tahy minihry:', 'minigame turns:'], ['tahy', 'turns'], ['nejlepší tah:', 'best move:'], ['odhad', 'estimate'],
+    ['šance na poklad', 'treasure chance'], ['poklad', 'treasure'],
+    ['Čísla = šance v % na poklad v poli, ★ = jistý poklad, · = jistě prázdné, rámeček = nejlepší tah. Počítá se přesně ze všech možných rozmístění zbývajících pokladů. Tah dělejte ve hře – pomocník jen radí.', 'Numbers = % chance of a treasure in the tile, ★ = sure treasure, · = surely empty, frame = best move. Calculated exactly from all possible placements of the remaining treasures. Make the move in the game – the helper only advises.'],
+    ['průchod', 'playthrough'], ['šance na 4×', '4× chance'], ['průběžné součty', 'running totals'], ['cena odemčení', 'unlock cost'], ['chybějící', 'missing'],
+    ['Odemčení', 'Unlock'], ['Diplomacie', 'Diplomacy'], ['Další rozšíření', 'Next expansion'], ['Zbývá rozšíření za zboží', 'Expansions for goods left'], ['Potřeba', 'Needed'], ['Chybí / zbývá', 'Missing / left'],
+    ['chybí', 'missing'], ['Se šancí', 'With a'], ['na 4× produkci v průměru jen', 'chance of 4× production on average only'],
+    ['Seznam odemčení přijde po otevření osady ve hře.', 'The unlock list arrives after opening the settlement in the game.'],
+    ['Zboží a hlavní surovina: průběžný součet všech dalších odemčení (zeleně = na to už máte, červeně = chybí – kolik, ukáže najetí myší). Diplomacie se nespotřebuje – stačí jí mít dost pro dané odemčení. Sloupec', 'Goods and main resource: running total of all further unlocks (green = you already have it, red = missing – hover for how much). Diplomacy is not consumed – you just need enough for the unlock. Column'],
+    ['= kolik ho padne na výrobu chybějícího zboží', '= how much goes into producing the missing goods'], ['(podle nejlevnější výroby ve vaší osadě)', '(by the cheapest production in your settlement)'], ['(odhad 1000 za 5 kusů)', '(estimate 1000 per 5 pieces)'],
+    ['Další rozšíření se do součtů nepočítá.', 'The next expansion is not included in the totals.'], ['Na pole', 'Per tile'], ['Kolik na chybějící', 'How many for the missing'],
     ['Expedice končí za', 'The expedition ends in'], ['a máte', 'and you have'], ['nevyužitých pokusů', 'unused attempts'], ['Kvantové invaze končí za', 'Quantum Incursions end in'], ['nevyužitých akcí', 'unused actions'],
     ['konec expedice / QI', 'end of expedition / QI'], ['Expedice a QI:', 'Expedition and QI:'], ['konec s nevyužitými pokusy / akcemi', 'ending with unused attempts / actions'],
     ['Máte ve městě výrobnu tohoto zboží.', 'You have a building producing this good.'], ['Výrobnu nemáte – zboží je potřeba sehnat (obchod, cech, události).', 'No production building – get it elsewhere (trade, guild, events).'],
@@ -523,7 +535,7 @@ globalThis.FOE_I18N = {
   const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   function build() {
     map = new Map(globalThis.FOE_I18N.en);
-    const w = /[\\p{L}\\p{N}]/u;
+    const w = /[\p{L}\p{N}]/u;
     const keys = [...map.keys()].sort((a, b) => b.length - a.length)
       .map((k) => (w.test(k[0]) ? '(?<![\\p{L}\\p{N}])' : '') + esc(k) + (w.test(k.at(-1)) ? '(?![\\p{L}\\p{N}])' : ''));
     re = new RegExp(keys.join('|'), 'gu');

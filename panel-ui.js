@@ -72,6 +72,15 @@ function mount() {
     .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
     .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
     tr.safe td{background:#d6efc7}
+    .ok{color:#2e7d32}
+    tr.tot td{border-top:1px solid #c9b48c;font-weight:600}
+    table.op td,table.op th{padding:2px 4px;white-space:nowrap}
+    table.mgt{border-collapse:separate;border-spacing:2px;margin:4px 0}
+    table.mgt td.mg{width:30px;height:26px;text-align:center;font-size:11px;border-radius:4px;padding:0;border:0}
+    table.mgt td.mg.n{background:#f7f2e6;color:#6b5a40;font-weight:700}
+    table.mgt td.mg.r{background:#2e7d32;color:#fff;font-weight:700}
+    table.mgt td.mg.u{color:#2b2116;font-weight:600}
+    table.mgt td.mg.best{outline:3px solid #b0410f;outline-offset:-3px}
     tr.me td{background:#d6e4f5;font-weight:600} tr.me td:first-child{box-shadow:inset 3px 0 #3a6ea5}
     tr.done td{background:#d6efc7;font-weight:600}
     tr.gone td{text-decoration:line-through;color:#9a8a70;opacity:.6}
@@ -216,6 +225,8 @@ function onUiClick(ev) {
       hid.has(id) ? hid.delete(id) : hid.add(id);
       cfg.hiddenTabs = [...hid]; saveCfg(); renderTabs(); render();
     }
+    const os = ev.target.closest('[data-opsums]');
+    if (os) { opSums = os.dataset.opsums === '1'; render(); }
     const te = ev.target.closest('[data-techera]');
     if (te) { techEra = te.dataset.techera; render(); }
     const lg = ev.target.closest('[data-lang]');

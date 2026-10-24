@@ -37,6 +37,8 @@ S.grids = {};             // gridId -> {unlocked, blocked} (odemčená plocha)
 S.inv = new Map();        // celý inventář: id -> {name, stock, item}
 S.ascKit = new Map();     // ID pozvednuté (limitované) budovy -> {id, name} sady, která ji vytvoří
 S.myTavern = null;        // {unlocked, sitting}
+S.entDipl = new Map();    // metadata budov osady: id -> diplomacie (staticResources)
+S.entGoodsOpt = new Map(); // metadata výroben: id -> [{product:{good:n}, cost:{res:n}}]
 S.entGoods = new Map();   // metadata výroben zboží: id -> [good_id] (available_products)
 S.entProd = new Map();    // metadata budov: id -> {Věk: [{time, products}]} (produkce podle věku)
 S.entBoost = new Map();   // metadata budov: id -> {Věk: [BoostHint]} (bonusy podle věku, pro odhad cizích měst)
@@ -239,7 +241,7 @@ const H = {
     S.mapRev = (S.mapRev || 0) + 1;
     if (d.unlocked_areas) S.grids[d.gridId] = { unlocked: d.unlocked_areas, blocked: d.blocked_areas || [] };
     if (d.gridId === 'main') { for (const e of d.entities) S.entities.set(e.id, e); return; }
-    S.outpost = { gridId: d.gridId, entities: new Map(d.entities.map((e) => [e.id, e])), time: Date.now() };
+    S.outpost = { gridId: d.gridId, entities: new Map(d.entities.map((e) => [e.id, e])), tilesets: d.tilesets || [], time: Date.now() };
   },
   'OutpostService.getAll'(d) { if (Array.isArray(d)) S.outposts = d; },
   'AdvancementService.getAll'(d) { if (Array.isArray(d)) S.advancements = d; },
@@ -542,6 +544,11 @@ function handleRequest(r) {
     if (S.ring.length > RING_MAX) S.ring.shift();
   }
   if (r?.requestClass === 'ConversationService' && ['markMessageRead', 'getConversation'].includes(r.requestMethod) && Array.isArray(r.requestData)) messageRead(r.requestData[0]);
+  // Koupené rozšíření osady: ze seznamu kupovatelných ubrat (jako FoE Helper).
+  if (r?.requestClass === 'CityMapService' && r.requestMethod === 'placeExpansion' && S.outpost?.tilesets) {
+    const ty = r.requestData?.[0]?.type, i = S.outpost.tilesets.findIndex((t) => t.type === ty && t.available);
+    if (i >= 0) S.outpost.tilesets.splice(i, 1);
+  }
   if (r?.requestClass === 'ResearchService' && r.requestMethod === 'chooseBranch' && typeof r.requestData?.[0] === 'string') S.research.chosen.add(r.requestData[0]);
   if (r?.requestClass === 'GreatBuildingsService' && r.requestMethod === 'getConstruction' && Array.isArray(r.requestData)) {
     S.gbReq = { entityId: r.requestData[0], playerId: r.requestData[1], time: Date.now() };
@@ -568,6 +575,8 @@ function handleMetadata(m) {
     if (!o || typeof o !== 'object') return;
     if (o.id && o.name) S.names.set(o.id, o.name);
     // Výrobny zboží: které zboží umí vyrábět (pro Výzkum – co si vyrobíte sám a co musíte sehnat).
+    if (o.id && o.staticResources?.resources?.diplomacy) S.entDipl.set(o.id, o.staticResources.resources.diplomacy);
+    if (o.id && Array.isArray(o.available_products)) S.entGoodsOpt.set(o.id, o.available_products.map((p) => ({ product: { ...(p.product?.resources || {}) }, cost: { ...(p.requirements?.cost?.resources || {}) } })));
     if (o.id && Array.isArray(o.available_products)) S.entGoods.set(o.id, o.available_products.flatMap((p) => Object.keys(p.product?.resources || {})).filter((k) => k !== '__class__'));
     if (o.id && (o.components || o.abilities || o.width)) { S.metaSeen.add(o.id); const bm = boostMeta(o); if (bm) S.entBoost.set(o.id, bm); const pm = prodMeta(o); if (pm) S.entProd.set(o.id, pm); }
     // rozměry a potřeba cesty (starý formát width/length, nový components.AllAge)
@@ -618,6 +627,7 @@ const CFG_DEFAULT = {
   msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
   negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
   endOn: true, endLead: 3, sysEv: false, // konec expedice / QI s nevyužitými pokusy / akcemi
+  mgPopup: true, // okno Osada se otevře samo při zahájení minihry obchodníka
   techOpt: true, // výzkum: vynechat volitelné technologie
   lang: 'cs', // jazyk panelu: 'cs' | 'en'
   negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy

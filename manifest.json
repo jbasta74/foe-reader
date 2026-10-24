@@ -29,6 +29,7 @@
         "panel-production.js",
         "panel-gb.js",
         "panel-gbg.js",
+        "panel-outpost.js",
         "panel-tabs.js",
         "panel-stats.js",
         "panel-ui.js"

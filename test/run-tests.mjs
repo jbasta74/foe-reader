@@ -189,6 +189,28 @@ const tests = {
     if (!/Expedice končí za .* a máte 4 nevyužitých pokusů/.test(t)) throw new Error('chybí upozornění na konec expedice: ' + t.slice(0, 300));
     return errors;
   },
+  async 'Osada: součty odemčení a minihra obchodníka'() {
+    const adv = [{ id: 'a1', name: 'Svatyně', isUnlocked: true, rewards: [], requirements: { resources: { diplomacy: 50, beans: 10 } } },
+      { id: 'a2', name: 'Farma', rewards: [], requirements: { resources: { diplomacy: 200, beans: 30, hats: 5 } } },
+      { id: 'a3', name: 'Chrám', rewards: [], requirements: { resources: { diplomacy: 400, beans: 20, hats: 15 } } }];
+    const op = { content: 'aztecs', name: 'Aztécká osada', gridId: 'cultural_outpost', startedAt: 100, primaryResourceId: 'cocoa', goodsResourceIds: ['beans', 'hats'],
+      completedPlaythroughs: 1, playthroughs: [{ productionBonusProbability: 0.05 }, { productionBonusProbability: 0.1 }] };
+    const tile = (x, y, a, r) => ({ __class__: r ? 'CollectingMinigameRewardTile' : 'CollectingMinigameEmptyTile', ...(x ? { x } : {}), ...(y ? { y } : {}), ...(a ? { adjacentRewards: a } : {}) });
+    const { pg, errors } = await page([startup(), msg('OutpostService.getAll', [op]), msg('AdvancementService.getAll', adv),
+      msg('ResourceService.getPlayerResources', { resources: { cocoa: 3000, beans: 40, hats: 0, diplomacy: 250, aztecs_collecting_minigame_turns: 6 } }),
+      msg('CollectingMinigameService.start', { context: 'merchant', width: 3, height: 3, reward: { resources: { beans: 1 } } }),
+      msg('CollectingMinigameService.submitMove', [tile(2, 0, 0), tile(1, 0, 0), tile(2, 1, 0), tile(1, 1, 1), tile(0, 0, 0), tile(0, 1, 1)])]);
+    await pg.waitForTimeout(300);
+    const t = (await winText(pg, 'Osada')).replace(/\u00a0/g, ' ');
+    // beans: 30 + 20 = 50, máte 40 → −10; hats 20 → −20; kakao na chybějící zboží: ceil(10)*200 + 20*200 = 6 000
+    if (!/Potřeba\s+50\s+20\s+400\s+6 000/.test(t)) throw new Error('součty nesedí: ' + t.slice(0, 900));
+    if (!/Chybí \/ zbývá\s+-10\s+-20\s+-150\s+-3 000/.test(t)) throw new Error('chybí nesedí: ' + t.slice(0, 900));
+    if (!/průchod 2 \/ 2/.test(t) || !/šance na 4× 10 %/.test(t)) throw new Error('průchod / šance nesedí');
+    // minihra: 1 poklad; (2,1)=0 → (1,2) a (2,2) prázdné, (0,1)=1 → poklad jistě v (0,2)
+    const star = await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].map((w) => w.shadowRoot.querySelector('table.mgt')).find(Boolean)?.innerText || '');
+    if (!star.includes('★')) throw new Error('minihra: chybí jistý poklad ★: ' + star);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

@@ -22,6 +22,7 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - `provinces.js`: názvy a sousednost provincií GBG pro obě mapy (statická data převzatá z FoE Helperu, AGPL-3.0).
 - `nego-solver-helper.js`, `nego.js`: pomocník vyjednávání (přesný řešič z FoE Helperu, AGPL-3.0, a vlastní odhad).
 - `stats.js`: úložiště statistik a nastavení (chrome.storage, vybraná složka, synchronizace).
+- `panel-outpost.js`: kulturní osada a pomocník minihry obchodníka.
 - `i18n.js`: anglický překlad panelu (ℹ️ → Jazyk / Language).
 - `panel-*.js`: panel, běží v izolovaném světě a sdílí jeden globální rozsah (načítají se v pořadí z manifestu):
   `panel-core.js` (stav, třídění zpráv podle `requestClass.requestMethod` v objektu `H`, vyjednávání, příhody, upozornění, oznámení Chromu),
@@ -48,6 +49,7 @@ Hlavní panel se dá roztáhnout oběma směry za pravý dolní roh, velikost se
 - **Suroviny**, **Log**.
 - **Sklad**: zboží všech věků (po věcích, se součtem a zvýrazněním nejslabšího zboží) a části (fragmenty) – kolik máte, kolik je potřeba, kolikrát jde sestavit a co chybí.
 - **Výzkum** 🔬: kolik FP, mincí, zásob a zboží chybí k dokončení zvoleného věku (podle stromu technologií a vašeho postupu, volitelné technologie lze vynechat), odhad dní podle vaší denní produkce FP a které zboží vyrábíte (🏭) a které musíte sehnat (⇄).
+- **Osada** 🏝️: kulturní osada – průběžné součty zboží, diplomacie a hlavní suroviny na všechna další odemčení (co chybí, kolik hlavní suroviny padne na výrobu chybějícího zboží, odhad času), další rozšíření, diplomatické budovy podle diplomacie na pole a **pomocník minihry obchodníka** (Aztékové) s přesným výpočtem šance na poklad v každém poli.
 - **🔔 Upozornění**: historie upozornění a nastavení (mj. nové soukromé a cechovní zprávy); vybraná upozornění i jako systémové oznámení Chromu (sledované provincie GBG chodí přesně i na pozadí).
 - **ℹ️ O rozšíření**: verze, odkazy na GitHub (kód, vydání, hlášení chyb).
 

@@ -300,6 +300,8 @@ function addProduct(bag, p, k) {
   if (rid) {
     const parts = String(rid).split('#');
     const n = +parts[parts.length - 1] || 1;
+    // FSP (okamžité dokončení speciální produkce): jako FoE Helper ve fragmentech, celý předmět = 30 fragmentů
+    if (String(rid).includes('rush_event_buildings_instant')) bag.res.fsp = (bag.res.fsp || 0) + (parts[0] === 'fragment' ? n : 30 * n) * k;
     if (parts[0] === 'fragment') { const it = parts.slice(1, -1).join('#') || parts[1]; bag.frags[it] = (bag.frags[it] || 0) + n * k; bag.res.frags = (bag.res.frags || 0) + n * k; }
     else if (parts[0] === 'era_unit' || /unit_chest(\d+)$/.test(parts[0])) bag.res.units = (bag.res.units || 0) + (parts[0] === 'era_unit' ? n : +parts[0].match(/(\d+)$/)[1]) * k;
     else if (parts[0] === 'blueprint') bag.res.blueprints = (bag.res.blueprints || 0) + n * k;
@@ -406,7 +408,7 @@ const RATE_TYPES = [
   ['strategy_points', 'FP', 8, true], ['forge_points_production', 'Bonus produkce FP', 0.25, true],
   ['g_prev', 'Zboží – předchozí věk', 7, true], ['g_cur', 'Zboží – aktuální věk', 6, true], ['g_next', 'Zboží – další věk', 5, true],
   ['goods_production', 'Bonus produkce zboží', 0.25, true], ['guild', 'Cechovní pokladna', 10, true], ['units', 'Jednotky', 4, true],
-  ['frags', 'Fragmenty', 0.8, false], ['money', 'Mince', 0, false], ['supplies', 'Zásoby', 0, false], ['medals', 'Medaile', 0, false],
+  ['fsp', 'Fragmenty FSP (okamžité dokončení)', 0.8, true], ['frags', 'Fragmenty (všechny)', 0.8, false], ['money', 'Mince', 0, false], ['supplies', 'Zásoby', 0, false], ['medals', 'Medaile', 0, false],
   ['aa-all', 'Útok útočníka – všude', 8, true], ['ad-all', 'Obrana útočníka – všude', 8, true],
   ['da-all', 'Útok obránce – všude', 8, true], ['dd-all', 'Obrana obránce – všude', 8, true],
   ['aa-battleground', 'Útok útočníka – GBG', 10, true], ['ad-battleground', 'Obrana útočníka – GBG', 10, true],
@@ -432,12 +434,15 @@ function rateValues(e, bs) {
   }
   return { v, src: b.src || (S.entBoost.has(e.cityentity_id) ? 'meta' : '') };
 }
+// Režim „jako FoE Helper“: základní produkce bez městských bonusů k produkci a včetně Velkých budov.
+const rateBs = () => (cfg.rateFH ? null : cfg.prodBoosted !== false ? prodBoostSums() : null);
+const rateSkip = (type) => RATE_SKIP.includes(type) && !(cfg.rateFH && type === 'greatbuilding');
 function ratedBuildings() {
   const W = rateW().filter((t) => t.on && t.per > 0);
   const groups = new Map();
-  const bs = cfg.prodBoosted !== false ? prodBoostSums() : null;
+  const bs = rateBs();
   for (const e of S.entities.values()) {
-    if (RATE_SKIP.includes(e.type)) continue;
+    if (rateSkip(e.type)) continue;
     const sz = S.ent.get(e.cityentity_id);
     if (!sz) continue;
     const m = S.entProd.get(e.cityentity_id) || S.entBoost.get(e.cityentity_id);
@@ -470,7 +475,7 @@ function rateOne(e, sz, W, bs) {
 }
 // Budovy v inventáři: hodnotí se ve vašem věku (víceérové budovy se postaví ve věku hráče).
 function ratedInventory() {
-  const W = rateW().filter((t) => t.on && t.per > 0), bs = cfg.prodBoosted !== false ? prodBoostSums() : null;
+  const W = rateW().filter((t) => t.on && t.per > 0), bs = rateBs();
   const out = [], seen = new Set();
   let noMeta = 0;
   for (const it of S.inv.values()) {
@@ -478,7 +483,7 @@ function ratedInventory() {
     if (!id || seen.has(id) || !(it.stock > 0)) continue;
     seen.add(id);
     const sz = S.ent.get(id);
-    if (!sz || RATE_SKIP.includes(sz.type)) { if (!sz) noMeta++; continue; }
+    if (!sz || rateSkip(sz.type)) { if (!sz) noMeta++; continue; }
     const e = { cityentity_id: id, type: sz.type, level: ERAS.indexOf(S.player?.era), state: {} };
     out.push({ id, name: it.name || S.names.get(id) || id, n: it.stock, ...rateOne(e, sz, W, bs) });
   }
@@ -512,7 +517,8 @@ function viewRating() {
     .sort((a, b) => (rateSel.asc ? a.score - b.score : b.score - a.score));
   const r2 = (x) => (Math.round(x * 100) / 100).toLocaleString(LOC());
   const goods = (v) => (v.g_prev || 0) + (v.g_cur || 0) + (v.g_next || 0);
-  let h = `<div style="margin-bottom:4px"><button class="fbtn ${!rateSel.settings && !rateSel.inv ? 'on' : ''}" data-rate="list">Výsledky</button><button class="fbtn ${rateSel.inv ? 'on' : ''}" data-rate="inv">Z inventáře</button><button class="fbtn ${rateSel.settings ? 'on' : ''}" data-rate="settings">Nastavení hodnot</button></div>`;
+  let h = `<div style="margin-bottom:4px"><button class="fbtn ${!rateSel.settings && !rateSel.inv ? 'on' : ''}" data-rate="list">Výsledky</button><button class="fbtn ${rateSel.inv ? 'on' : ''}" data-rate="inv">Z inventáře</button><button class="fbtn ${rateSel.settings ? 'on' : ''}" data-rate="settings">Nastavení hodnot</button>
+    <label style="margin-left:8px" title="Základní produkce bez vašich bonusů k produkci FP a zboží a včetně Velkých budov – výsledky srovnatelné s FoE Helperem."><input type="checkbox" data-cfg="rateFH" ${cfg.rateFH ? 'checked' : ''}> jako FoE Helper</label></div>`;
   if (rateSel.settings) {
     return h + `<p class="muted">Kolik dané věci má budova vyrobit na jedno pole (včetně podílu cesty), aby za ni dostala 1 bod. Skóre = součet bodů.</p>
       <table><thead><tr><th>Započítat</th><th>Druh</th><th class="num">Na pole</th></tr></thead><tbody>${rateW().map((t) =>
@@ -542,7 +548,7 @@ function viewRating() {
       <td class="num">${b.v.strategy_points ? fmt(Math.round(b.v.strategy_points)) : ''}</td><td class="num">${goods(b.v) ? fmt(Math.round(goods(b.v))) : ''}</td>
       <td class="muted" style="font-size:11px">${b.parts.slice(0, 3).map(([t, x]) => `${esc(t.l)} ${r2(x)}`).join(' · ')}</td></tr>`).join('')}</tbody></table>
     <p class="muted">Postup jako FoE Helper: hodnota na pole (plocha + podíl cesty) / očekávaná hodnota na pole, sečteno přes zapnuté druhy. Produkce za 24 h s motivací
-      a s bonusy k produkci; bonusy armády přesně podle hry (včetně sad a řetězů). Stejné budovy stejného věku jsou v jednom řádku. Hodnoty si upravíte v „Nastavení hodnot“.</p>`;
+      ${cfg.rateFH ? '<b>bez bonusů k produkci (jako FoE Helper), včetně Velkých budov</b>' : cfg.prodBoosted !== false ? 'a s vašimi bonusy k produkci FP a zboží (vypnete volbou „jako FoE Helper“)' : 'bez bonusů k produkci'}; bonusy armády přesně podle hry (včetně sad a řetězů). Stejné budovy stejného věku jsou v jednom řádku. Hodnoty si upravíte v „Nastavení hodnot“.</p>`;
   return h;
 }
 

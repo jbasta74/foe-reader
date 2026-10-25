@@ -213,7 +213,16 @@ const H = {
     if (!Array.isArray(d)) return;
     guildPut(d.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, geP: r.expeditionPoints || 0, geE: r.solvedEncounters || 0, geT: r.currentTrial || 0, geW: S.geWeek || null })));
   },
-  'GuildRaidsService.getState'(d) { if (d?.__class__) S.qiState = d; if (/Running/.test(d?.__class__ || '') && d.endsAt) saveEnd('qi', d.endsAt); },
+  // ---- Quantum Pass (pass QI): náhled = další odměna a body v aktuálním stupni (chodí s každou akcí v QI), přehled = všechny stupně ----
+  'EventPassService.getPreview'(d) { qiPassPreview(d); },
+  'EventPassService.getOverview'(d) {
+    if (!/guild_raids/.test(d?.context || '')) return;
+    S.qiPass = { ...(S.qiPass || {}), ov: d, types: d.types || S.qiPass?.types, total: d.totalProgress, totalT: Date.now() };
+  },
+  'GuildRaidsService.getState'(d) {
+    const ch = d?.championship;
+    if (ch) { S.qiPass = { ...(S.qiPass || {}), endsAt: ch.endsAtTimestamp || S.qiPass?.endsAt }; if (ch.eventPassPreviewVO) qiPassPreview(ch.eventPassPreviewVO); }
+    if (d?.__class__) S.qiState = d; if (/Running/.test(d?.__class__ || '') && d.endsAt) saveEnd('qi', d.endsAt); },
   'GuildRaidsService.getMemberActivityOverview'(d) {
     const rows = d?.rows || (Array.isArray(d) ? d : null);
     if (!rows) return;
@@ -241,7 +250,9 @@ const H = {
     S.mapRev = (S.mapRev || 0) + 1;
     if (d.unlocked_areas) S.grids[d.gridId] = { unlocked: d.unlocked_areas, blocked: d.blocked_areas || [] };
     if (d.gridId === 'main') { for (const e of d.entities) S.entities.set(e.id, e); return; }
+    // Každá mřížka zvlášť (osada, QI, kolonie) – jinak by mapa QI přepsala osadu.
     S.outpost = { gridId: d.gridId, entities: new Map(d.entities.map((e) => [e.id, e])), tilesets: d.tilesets || [], time: Date.now() };
+    (S.gridMap ||= {})[d.gridId] = S.outpost;
   },
   'OutpostService.getAll'(d) { if (Array.isArray(d)) S.outposts = d; },
   'AdvancementService.getAll'(d) { if (Array.isArray(d)) S.advancements = d; },
@@ -344,8 +355,10 @@ function sumFpPacks() {
 
 // Budovy osad mají v ID název kultury (H_Aztecs_Townhall), budovy města věk nebo MultiAge/AllAge.
 const OUTPOST_ID = /^[A-Z]_(Aztecs|Vikings|Japanese|Egyptians|Mughals|Polynesia|Pirates)_/;
+const gridMapOf = (x) => Object.values(S.gridMap || {}).find((m) => m.entities.has(x.id))
+  || (OUTPOST_ID.test(x.cityentity_id || '') ? S.gridMap?.cultural_outpost : null);
 function isOutpostEntity(x) {
-  return !!S.outpost?.entities.has(x.id) || OUTPOST_ID.test(x.cityentity_id || '');
+  return !!gridMapOf(x) || OUTPOST_ID.test(x.cityentity_id || '');
 }
 
 // Obecné zachycení: kdekoli přijde CityMapEntity (např. po sbírání produkce
@@ -404,7 +417,7 @@ function genericScan(d) {
         }
       }
     } else if (isOutpostEntity(x)) {
-      S.outpost?.entities.set(x.id, x);
+      (gridMapOf(x) || S.outpost)?.entities.set(x.id, x);
     } else {
       S.entities.set(x.id, x);
     }
@@ -545,9 +558,10 @@ function handleRequest(r) {
   }
   if (r?.requestClass === 'ConversationService' && ['markMessageRead', 'getConversation'].includes(r.requestMethod) && Array.isArray(r.requestData)) messageRead(r.requestData[0]);
   // Koupené rozšíření osady: ze seznamu kupovatelných ubrat (jako FoE Helper).
-  if (r?.requestClass === 'CityMapService' && r.requestMethod === 'placeExpansion' && S.outpost?.tilesets) {
-    const ty = r.requestData?.[0]?.type, i = S.outpost.tilesets.findIndex((t) => t.type === ty && t.available);
-    if (i >= 0) S.outpost.tilesets.splice(i, 1);
+  const cop = S.gridMap?.cultural_outpost;
+  if (r?.requestClass === 'CityMapService' && r.requestMethod === 'placeExpansion' && cop?.tilesets) {
+    const ty = r.requestData?.[0]?.type, i = cop.tilesets.findIndex((t) => t.type === ty && t.available);
+    if (i >= 0) cop.tilesets.splice(i, 1);
   }
   if (r?.requestClass === 'ResearchService' && r.requestMethod === 'chooseBranch' && typeof r.requestData?.[0] === 'string') S.research.chosen.add(r.requestData[0]);
   if (r?.requestClass === 'GreatBuildingsService' && r.requestMethod === 'getConstruction' && Array.isArray(r.requestData)) {
@@ -556,6 +570,12 @@ function handleRequest(r) {
 }
 
 // Rozpracovaná technologie po vložení FP (odpověď nese technology.progress).
+function qiPassPreview(d) {
+  if (!/guild_raids/.test(d?.context || '')) return;
+  const t = d.teaserPrizes?.grandPrizes;
+  if (!Array.isArray(t) || !t.length) return;
+  S.qiPass = { ...(S.qiPass || {}), teaser: t, types: d.types || S.qiPass?.types, teaserT: Date.now() };
+}
 function researchStep(d) {
   const t = d?.technology;
   if (!t?.id) return;
@@ -964,13 +984,12 @@ function timeChecks() {
   // Osada a Kvantové invaze: jen časovač další hotové produkce (budovy server při načtení neposílá).
   if (cfg.prodOutpost) {
     // Známe-li budovy osady (po jejím otevření), hlásíme přesně; jinak jen podle časovače.
-    const known = S.outpost?.gridId;
-    if (known) {
-      const done = [...S.outpost.entities.values()].filter((e) => e.state?.__class__ === 'ProducingState' && passed(e.state.next_state_transition_at));
+    for (const [known, m] of Object.entries(S.gridMap || {})) {
+      const done = [...m.entities.values()].filter((e) => e.state?.__class__ === 'ProducingState' && passed(e.state.next_state_transition_at));
       if (done.length) alert('prod', `${GRID[known] || known}: hotovo ${done.length} ${done.length === 1 ? 'budova' : done.length < 5 ? 'budovy' : 'budov'} (${resList(sumProducts(done))}).`);
     }
     for (const t of S.timers) {
-      if (t.type === 'outpostProduction' && t.gridId !== known && passed(t.at)) alert('prod', `${GRID[t.gridId] || t.gridId}: produkce je hotová.`);
+      if (t.type === 'outpostProduction' && !S.gridMap?.[t.gridId] && passed(t.at)) alert('prod', `${GRID[t.gridId] || t.gridId}: produkce je hotová.`);
     }
   }
 }

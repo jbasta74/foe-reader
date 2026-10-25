@@ -476,7 +476,7 @@ function attach() {
 }
 
 function download() {
-  const ids = new Set([...S.entities.values(), ...(S.outpost?.entities?.values() || [])].map((e) => e.cityentity_id));
+  const ids = new Set([...S.entities.values(), ...Object.values(S.gridMap || {}).flatMap((m) => [...m.entities.values()])].map((e) => e.cityentity_id));
   const sizes = {};
   for (const id of ids) if (S.ent.has(id)) sizes[id] = { ...S.ent.get(id), name: S.names.get(id) };
   const extra = { t: Date.now(), channel: 'meta', key: 'FoEReader.mapData', data: { sizes, grids: S.grids, gbgMaps: S.gbgMapsMeta || null, gbgNames: S.gbgNames } };

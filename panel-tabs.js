@@ -298,6 +298,37 @@ function viewGE() {
 }
 
 // ---------- Kvantové invaze ----------
+// Quantum Pass: body, stupeň, postup k další odměně, nevyzvednuté odměny.
+// Stupeň má práh v bodech (po 250); náhled (s každou akcí v QI) nese další odměnu a body v rozpracovaném stupni,
+// přehled (otevření okna passu) všechny stupně a co je vyzvednuté.
+function qiPassHtml(now) {
+  const P = S.qiPass;
+  if (!P?.teaser && !P?.ov) return '<p class="muted">Quantum Pass: ukáže se po otevření QI ve hře (celý přehled po otevření okna passu).</p>';
+  const gp = P.ov?.prizes?.grandPrizes || [];
+  const thr = new Map(gp.map((p) => [p.prizeId || 0, p.totalNeedPoints || 0]));
+  const t0 = P.teaser?.[0], step = t0?.totalNeedPoints || 250;
+  const thrOf = (id) => (thr.has(id) ? thr.get(id) : Math.floor((id || 0) / 3) * step);
+  let total = P.total;
+  if (t0 && (P.total == null || (P.teaserT || 0) > (P.totalT || 0))) total = Math.max(0, thrOf(t0.prizeId || 0) - step + (t0.currentPoints || 0));
+  const levelsAll = gp.length ? [...new Set(gp.map((p) => p.totalNeedPoints || 0))].sort((a, b) => a - b) : null;
+  const reached = levelsAll ? levelsAll.filter((x) => x <= total).length : null;
+  const owned = new Set((P.types || []).filter((x) => x.unlocked).map((x) => x.type));
+  const TYPE = { grand_prize: 'zdarma', event_pass: 'Quantum Pass', golden_event_pass: 'zlatý pass' };
+  const cur = t0 ? t0.currentPoints || 0 : null;
+  const unclaimed = gp.filter((p) => (p.totalNeedPoints || 0) <= total && !p.claimed && owned.has(p.type));
+  const maxThr = levelsAll ? levelsAll[levelsAll.length - 1] : null;
+  const bar = (v, max) => `<div style="background:#efe3c8;border-radius:4px;height:8px;margin:3px 0"><div style="width:${Math.min(100, (v / max) * 100).toFixed(1)}%;height:8px;border-radius:4px;background:#7b4fb5"></div></div>`;
+  let h = `<h4>${esc(P.ov?.name || 'Quantum Pass')}</h4><div class="tiles">
+    ${tile('Body passu', total != null ? fmt(total) : '–', maxThr ? `z ${fmt(maxThr)}` : '')}
+    ${reached != null ? tile('Stupeň', `${reached} / ${levelsAll.length}`, '') : ''}
+    ${cur != null ? tile('Do další odměny', `${fmt(cur)} / ${fmt(step)}`, `chybí ${fmt(step - cur)}`) : ''}
+    ${P.endsAt ? tile('Pass končí', P.endsAt > now ? 'za ' + durLong(P.endsAt - now) : 'skončil', '') : ''}
+  </div>${cur != null ? bar(cur, step) : ''}`;
+  if (P.teaser?.length) h += `<p><b>Další odměny:</b> ${P.teaser.map((p) => `<span class="chip${owned.has(p.type) ? '' : ' muted'}" title="${esc(TYPE[p.type] || p.type)}${owned.has(p.type) ? '' : ' – nemáte'}">${owned.has(p.type) ? '' : '🔒 '}${esc(p.reward?.name || '?')}</span>`).join('')}</p>`;
+  if (P.ov) h += `<p>${unclaimed.length ? `<span class="hi">Nevyzvednuté odměny: <b>${unclaimed.length}</b></span> – ${unclaimed.slice(0, 6).map((p) => esc(p.reward?.name || '?')).join(', ')}${unclaimed.length > 6 ? ' …' : ''}` : '<span class="ok">Všechny dosažené odměny jsou vyzvednuté.</span>'}
+    ${maxThr && total < maxThr ? ` · do posledního stupně chybí <b>${fmt(maxThr - total)}</b> bodů` : ''}</p>`;
+  return h + '<p class="muted">Body se obnovují s každou akcí v QI; stupně a vyzvednuté odměny podle posledního otevření okna passu. 🔒 = odměna placeného passu, který nemáte.</p>';
+}
 function viewQI() {
   const r = S.resources, now = nowServer();
   let h = '';
@@ -314,6 +345,7 @@ function viewQI() {
     ${tile('Měna QI', r.guild_raids_currency != null ? fmt(r.guild_raids_currency) : '–', '')}
     ${tile('Produkce v QI', next ? (next.at > now ? 'za ' + dur(next.at - now) : 'hotová') : '–', '')}
   </div>`;
+  h += qiPassHtml(now);
   h += `<h4>Armáda v QI</h4><table><thead><tr><th>Útok útočníka</th><th>Obrana útočníka</th><th>Útok obránce</th><th>Obrana obránce</th></tr></thead>
     <tbody><tr>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(qa[k])} %</td>`).join('')}</tr></tbody></table>`;
   const qb = Object.entries(other).filter(([k]) => k.startsWith('guild_raids_'));

@@ -58,7 +58,7 @@ let mapGrid = 'main';
 function mapModel(gridId) {
   const g = S.grids[gridId];
   const list = gridId === 'main' ? [...S.entities.values()].filter((e) => (e.player_id == null || e.player_id === myId()))
-    : (S.outpost?.gridId === gridId ? [...S.outpost.entities.values()] : []);
+    : (S.gridMap?.[gridId] ? [...S.gridMap[gridId].entities.values()] : []);
   if (!g || !list.length) return null;
   const tiles = new Set();
   for (const a of g.unlocked) for (let x = 0; x < a.width; x++) for (let y = 0; y < a.length; y++) tiles.add(`${(a.x || 0) + x},${(a.y || 0) + y}`);

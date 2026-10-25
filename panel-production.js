@@ -224,8 +224,8 @@ function viewOutpost(now) {
   let html = '';
   const qi = tline('guild_raids');
   if (qi) html += `<p><b>Kvantové invaze:</b> další produkce ${qi}</p>`;
-  const op = S.outpost;
-  const info = (S.outposts || []).find((o) => o.gridId === (op?.gridId || 'cultural_outpost') && o.startedAt && !o.finishedAt);
+  const op = S.gridMap?.cultural_outpost;
+  const info = (S.outposts || []).find((o) => o.gridId === 'cultural_outpost' && o.startedAt && !o.finishedAt);
   if (!op) {
     const t = tline('cultural_outpost');
     return html + (t ? `<p><b>Osada${info ? ' – ' + esc(info.name) : ''}:</b> další produkce ${t} <span class="muted">(pro přehled budov osadu ve hře otevřete)</span></p>` : '');

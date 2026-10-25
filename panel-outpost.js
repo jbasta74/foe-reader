@@ -28,7 +28,7 @@ const outpostNow = () => (S.outposts || []).filter((o) => o.gridId === 'cultural
 // Kolik hlavní suroviny (kakao, mince …) stojí výroba jednoho kusu zboží – z nabídky výroben zboží v osadě (nejlevnější volba).
 function outpostGoodRates(info) {
   const prim = info.primaryResourceId === 'deben' ? 'egyptians_loot' : info.primaryResourceId, rates = {};
-  const ents = S.outpost ? [...S.outpost.entities.values()] : [];
+  const ents = S.gridMap?.cultural_outpost ? [...S.gridMap.cultural_outpost.entities.values()] : [];
   // právě běžící výroba zboží (cena a výnos přímo ze stavu budovy)
   for (const e of ents) {
     const cp = e.state?.current_product, c = cp?.requirements?.cost?.resources?.[prim];
@@ -62,7 +62,7 @@ function viewSettlement() {
   const p4 = runs[runIdx]?.productionBonusProbability || 0;
   // Produkce hlavní suroviny za 5 h (budovy, které právě vyrábějí).
   let per5h = 0;
-  for (const e of S.outpost ? S.outpost.entities.values() : []) {
+  for (const e of S.gridMap?.cultural_outpost ? S.gridMap.cultural_outpost.entities.values() : []) {
     const st = e.state, cp = st?.current_product;
     if (st?.__class__ !== 'ProducingState' || !cp || e.connected === 0) continue;
     const amt = (cp.product?.resources || cp.resources?.resources || {})[prim];
@@ -80,7 +80,7 @@ function viewSettlement() {
   const head = `<tr><th>Odemčení</th><th></th>${cols.map((c) => `<th class="num">${esc(c === 'diplomacy' ? 'Diplomacie' : resLabel(c))}</th>`).join('')}</tr>`;
   let rows = '';
   // Další rozšíření (nezapočítává se do součtů)
-  const tiles = (S.outpost?.tilesets || []).filter((t) => t.available && t.type === 'selectablePrice');
+  const tiles = (S.gridMap?.cultural_outpost?.tilesets || []).filter((t) => t.available && t.type === 'selectablePrice');
   if (tiles[0]) {
     const c = tiles[0].requirements?.cost?.resources || {};
     rows += `<tr class="muted"><td>Další rozšíření${tiles.length > 1 ? ` <span title="Zbývá rozšíření za zboží">(${tiles.length})</span>` : ''}</td><td></td>${cols.map((id) =>

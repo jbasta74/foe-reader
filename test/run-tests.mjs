@@ -244,6 +244,22 @@ const tests = {
     if (Math.abs(h2 - h0) > 2) throw new Error(`nerozbalilo se na původní výšku: ${h0} → ${h2}`);
     return errors;
   },
+  async 'QI: Quantum Pass – body, stupeň a nevyzvednuté odměny'() {
+    const R = (n) => ({ name: n });
+    const prizes = [];
+    for (let lv = 0; lv < 4; lv++) for (const [i, ty] of ['grand_prize', 'event_pass', 'golden_event_pass'].entries())
+      prizes.push({ ...(lv * 3 + i ? { prizeId: lv * 3 + i } : {}), ...(lv ? { totalNeedPoints: lv * 250 } : {}), type: ty, reward: R(`L${lv} ${ty}`), ...(ty === 'grand_prize' && lv < 1 ? { claimed: true } : {}) });
+    const types = [{ type: 'grand_prize', unlocked: true }, { type: 'event_pass' }, { type: 'golden_event_pass' }];
+    const { pg, errors } = await page([startup(),
+      msg('EventPassService.getOverview', { context: 'guild_raids_1_pass', name: 'Quantum Pass', totalProgress: 300, prizes: { grandPrizes: prizes }, types }),
+      msg('EventPassService.getPreview', { context: 'guild_raids_1_pass', teaserPrizes: { grandPrizes: [{ prizeId: 6, totalNeedPoints: 250, currentPoints: 120, type: 'grand_prize', reward: R('Další') }] }, types })]);
+    await openTab(pg, 'qi');
+    const t = (await winText(pg, 'QI')).replace(/\u00a0/g, ' ');
+    // náhled je novější: body = 500 − 250 + 120 = 370; stupně 0, 250 dosažené → 2 / 4; nevyzvednutá jen L1 grand_prize
+    if (!/Body passu\s+370/.test(t) || !/Stupeň\s+2 \/ 4/.test(t) || !/120 \/ 250/.test(t)) throw new Error('pass nesedí: ' + t.slice(0, 600));
+    if (!/Nevyzvednuté odměny: 1 – L1 grand_prize/.test(t)) throw new Error('nevyzvednuté nesedí: ' + t.slice(0, 800));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

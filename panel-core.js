@@ -221,7 +221,7 @@ const H = {
   },
   'GuildRaidsService.getState'(d) {
     const ch = d?.championship;
-    if (ch) { S.qiPass = { ...(S.qiPass || {}), endsAt: ch.endsAtTimestamp || S.qiPass?.endsAt }; if (ch.eventPassPreviewVO) qiPassPreview(ch.eventPassPreviewVO); }
+    if (ch) { S.qiPass = { ...(S.qiPass || {}), endsAt: ch.endsAtTimestamp || S.qiPass?.endsAt, startsAt: ch.startsAt || S.qiPass?.startsAt }; if (ch.eventPassPreviewVO) qiPassPreview(ch.eventPassPreviewVO); }
     if (d?.__class__) S.qiState = d; if (/Running/.test(d?.__class__ || '') && d.endsAt) saveEnd('qi', d.endsAt); },
   'GuildRaidsService.getMemberActivityOverview'(d) {
     const rows = d?.rows || (Array.isArray(d) ? d : null);
@@ -260,6 +260,9 @@ const H = {
     if (!Array.isArray(d)) return;
     S.resName ||= new Map();
     for (const r of d) if (r?.id) S.resName.set(r.id, r.name || r.id);
+    // Automatické doplňování (QI akce, pokusy expedice …): strop, přírůstek a interval – pro upozornění „plné“.
+    S.resRefill ||= new Map();
+    for (const r of d) { const a = r?.abilities?.autoRefill; if (r?.id && a?.maxAmount) S.resRefill.set(r.id, { max: a.maxAmount, amount: a.refillAmount || 0, interval: a.interval || 3600, boost: a.boostType || null }); }
   },
   // Události od ostatních hráčů – živě přes WebSocket (newEvent) i zpětně z historie událostí.
   'OtherPlayerService.newEvent'(d) { for (const e of Array.isArray(d) ? d : [d]) playerEvent(e, true); },
@@ -646,7 +649,7 @@ const CFG_DEFAULT = {
   uiBar: true, barVertical: false, // nástrojová lišta s ikonami (jinak jen tlačítko s panelem záložek)
   msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
   negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
-  endOn: true, endLead: 3, sysEv: false, // konec expedice / QI s nevyužitými pokusy / akcemi
+  endOn: true, endLead: 3, sysEv: false, fullOn: true, fullLead: 1, // konec expedice / QI s nevyužitými pokusy / akcemi
   mgPopup: true, // okno Osada se otevře samo při zahájení minihry obchodníka
   techOpt: true, // výzkum: vynechat volitelné technologie
   lang: 'cs', // jazyk panelu: 'cs' | 'en'
@@ -898,7 +901,32 @@ function saveEnd(k, end) {
   E[k] = { end, alerted: E[k]?.alerted ?? null };
   try { localStorage.setItem(ENDS_KEY, JSON.stringify(E)); } catch { /* ignore */ }
 }
+// Plné QI akce / pokusy expedice: odhad z poslední známé hodnoty + doplňování za hodinu (+ bonus ke sběru).
+// Upozorní jednou, když se zásoba blíží stropu (přírůstek nad strop propadá); znovu až po utracení.
+const fullSeen = {};
+function fullChecks() {
+  if (!cfg.fullOn || !S.resRefill) return;
+  const lead = Math.max(0, +cfg.fullLead || 0) * 3600, nowMs = Date.now();
+  const chk = (id, label, active) => {
+    const rf = S.resRefill.get(id), v = S.resources[id];
+    if (!rf || v == null || active === false) return;
+    const st = (fullSeen[id] ||= { v, t: nowMs, alerted: false });
+    if (st.v !== v) { if (v < st.v) st.alerted = false; st.v = v; st.t = nowMs; }
+    const boost = rf.boost ? (S.boosts || []).filter((b) => b.type === rf.boost).reduce((a, b) => a + (b.value || 0), 0) : 0;
+    const perSec = (rf.amount + boost) / rf.interval;
+    if (!perSec) return;
+    const now = Math.min(rf.max, v + perSec * (nowMs - st.t) / 1000);
+    const toFull = (rf.max - now) / perSec;
+    if (st.alerted || toFull > lead) return;
+    st.alerted = true;
+    alert('ev', toFull <= 0 ? `${label} jsou plné (${fmt(rf.max)}) – další přírůstek propadá.` : `${label} budou plné za ~${durLong(toFull)} (teď asi ${fmt(Math.floor(now))} / ${fmt(rf.max)}).`);
+  };
+  const qiRun = S.qiState ? /Running/.test(S.qiState.__class__ || '') : undefined;
+  chk('guild_raids_action_points', 'QI akce', qiRun);
+  chk('guild_expedition_attempt', 'Pokusy expedice', S.ge?.ov?.state ? S.ge.ov.state === 'active' : undefined);
+}
 function endChecks(now) {
+  fullChecks();
   if (!cfg.endOn) return;
   const lead = Math.max(0, +cfg.endLead || 0) * 3600, E = loadEnds();
   const chk = (k, have, txt) => {

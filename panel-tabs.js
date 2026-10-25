@@ -21,7 +21,7 @@ function viewAlerts() {
       <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')} ${chk('negoGbg', 'pomocník i v GBG')}</div>
       <div><b>Zprávy:</b> ${chk('msgSocial', 'soukromé')} ${chk('msgGuild', 'cechovní')} ${chk('msgSound', 'se zvukem')}</div>
       <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>
-      <div><b>Expedice a QI:</b> ${chk('endOn', 'konec s nevyužitými pokusy / akcemi')} ${num('endLead', 'hodin předem')}</div>
+      <div><b>Expedice a QI:</b> ${chk('endOn', 'konec s nevyužitými pokusy / akcemi')} ${num('endLead', 'hodin předem')} · ${chk('fullOn', 'plné akce / pokusy')} ${num('fullLead', 'hodin předem', 40)}</div>
       <div><b>Produkce:</b> ${chk('prodOn', 'město hotovo')} ${num('prodMin', 'od počtu budov')} ${chk('prodOutpost', 'osada a QI')}</div>
     </div>`;
   return `<p><button class="fbtn ${alertCfgOpen ? 'on' : ''}" data-act="alertcfg">⚙ Nastavení upozornění ${alertCfgOpen ? '▾' : '▸'}</button></p>
@@ -324,6 +324,15 @@ function qiPassHtml(now) {
     ${cur != null ? tile('Do další odměny', `${fmt(cur)} / ${fmt(step)}`, `chybí ${fmt(step - cur)}`) : ''}
     ${P.endsAt ? tile('Pass končí', P.endsAt > now ? 'za ' + durLong(P.endsAt - now) : 'skončil', '') : ''}
   </div>${cur != null ? bar(cur, step) : ''}`;
+  // Tempo: průměr od začátku sezóny passu → kam při něm dojdete do konce (a kolik bodů za den by bylo potřeba na poslední stupeň).
+  const m = /^(\d+)\/(\d+)\/(\d+)$/.exec(P.startsAt || '');
+  const start = m ? Date.UTC(2000 + +m[3], +m[1] - 1, +m[2]) / 1000 : null;
+  if (start && P.endsAt && total != null && levelsAll && now > start + 3600) {
+    const perDay = total / ((now - start) / 86400), daysLeft = Math.max(0, (P.endsAt - now) / 86400);
+    const proj = total + perDay * daysLeft, projLv = levelsAll.filter((x) => x <= proj).length;
+    const needDay = daysLeft > 0 ? Math.max(0, (maxThr - total) / daysLeft) : 0;
+    h += `<p>Tempo <b>${fmt(Math.round(perDay))}</b> bodů/den (od začátku sezóny) → do konce asi <b>${fmt(Math.round(Math.min(proj, maxThr)))}</b> bodů, stupeň <b>${projLv} / ${levelsAll.length}</b>${projLv >= levelsAll.length ? ' ✓' : ` · na poslední stupeň by bylo potřeba ${fmt(Math.ceil(needDay))} bodů/den`}.</p>`;
+  }
   if (P.teaser?.length) h += `<p><b>Další odměny:</b> ${P.teaser.map((p) => `<span class="chip${owned.has(p.type) ? '' : ' muted'}" title="${esc(TYPE[p.type] || p.type)}${owned.has(p.type) ? '' : ' – nemáte'}">${owned.has(p.type) ? '' : '🔒 '}${esc(p.reward?.name || '?')}</span>`).join('')}</p>`;
   if (P.ov) h += `<p>${unclaimed.length ? `<span class="hi">Nevyzvednuté odměny: <b>${unclaimed.length}</b></span> – ${unclaimed.slice(0, 6).map((p) => esc(p.reward?.name || '?')).join(', ')}${unclaimed.length > 6 ? ' …' : ''}` : '<span class="ok">Všechny dosažené odměny jsou vyzvednuté.</span>'}
     ${maxThr && total < maxThr ? ` · do posledního stupně chybí <b>${fmt(maxThr - total)}</b> bodů` : ''}</p>`;

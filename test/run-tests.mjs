@@ -260,6 +260,19 @@ const tests = {
     if (!/Nevyzvednuté odměny: 1 – L1 grand_prize/.test(t)) throw new Error('nevyzvednuté nesedí: ' + t.slice(0, 800));
     return errors;
   },
+  async 'QI akce: upozornění, že budou plné'() {
+    const defs = [{ id: 'guild_raids_action_points', name: 'Akce', abilities: { autoRefill: { interval: 3600, refillAmount: 5000, maxAmount: 244000, boostType: 'guild_raids_action_points_collection' } } }];
+    const { pg, errors } = await page([startup(), msg('ResourceService.getResourceDefinitions', defs),
+      msg('BoostService.getAllBoosts', [{ type: 'guild_raids_action_points_collection', value: 1000, targetedFeature: 'all' }]),
+      msg('GuildRaidsService.getState', { __class__: 'GuildRaidsRunningState', endsAt: Math.floor(Date.now() / 1000) + 5 * 86400 }),
+      msg('ResourceService.getPlayerResources', { resources: { guild_raids_action_points: 240000 } })]);
+    await openTab(pg, 'alerts');
+    let t = '';
+    for (let i = 0; i < 15 && !/QI akce budou plné/.test(t); i++) { await pg.waitForTimeout(1000); t = await winText(pg, 'Upozornění'); }
+    // 4 000 do stropu při 6 000/h → ~40 min
+    if (!/QI akce budou plné za ~40 min/.test(t)) throw new Error('chybí upozornění na plné QI akce: ' + t.slice(0, 300));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

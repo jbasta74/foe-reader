@@ -227,6 +227,23 @@ const tests = {
     if (Math.abs(b2.x - b1.x) > 2 || Math.abs(b2.y - b1.y) > 2) throw new Error(`poloha se nezapamatovala: ${JSON.stringify([b0, b1, b2])}`);
     return errors;
   },
+  async 'Okna: sbalení na záhlaví a rozbalení na původní výšku'() {
+    const { pg, errors } = await page([startup()]);
+    await openTab(pg, 'res');
+    const win = () => pg.evaluate(() => { const w = [...document.querySelectorAll('.foe-reader-win')].pop(); return Math.round(w.getBoundingClientRect().height); });
+    const h0 = await win();
+    await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].pop().shadowRoot.querySelector('[data-w="min"]').click());
+    await pg.waitForTimeout(200);
+    const h1 = await win();
+    if (h1 > 45) throw new Error('okno se nesbalilo: ' + h1);
+    const saved = await pg.evaluate(() => JSON.parse(localStorage.getItem('foeReaderTabWins')).res.h);
+    if (Math.abs(saved - h0) > 2) throw new Error('uložila se výška sbaleného okna: ' + saved);
+    await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].pop().shadowRoot.querySelector('[data-w="min"]').click());
+    await pg.waitForTimeout(200);
+    const h2 = await win();
+    if (Math.abs(h2 - h0) > 2) throw new Error(`nerozbalilo se na původní výšku: ${h0} → ${h2}`);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

@@ -270,6 +270,28 @@ function onUiChange(ev) {
   if (inp) { attrTarget = +inp.value || null; render(); }
 }
 
+// ---------- Sbalení okna na záhlaví (▁ nebo dvojklik na záhlaví) – pamatuje se i po F5 ----------
+const COLL_KEY = 'foeReaderCollapsed';
+const collLoad = () => { try { return JSON.parse(localStorage.getItem(COLL_KEY) || '{}'); } catch { return {}; } };
+const winCollapsed = (key) => !!collLoad()[key];
+// Výška okna pro uložení: u sbaleného ta před sbalením.
+const winFullH = (h, key) => collLoad()[key]?.h || h.getBoundingClientRect().height;
+function winSetCollapsed(h, key, head, on, minH) {
+  const c = collLoad();
+  if (on) {
+    if (!c[key]) c[key] = { h: h.getBoundingClientRect().height };
+    h.style.minHeight = '0'; h.style.height = head.offsetHeight + 2 + 'px'; h.style.resize = 'none';
+  } else {
+    const fh = c[key]?.h;
+    delete c[key];
+    h.style.minHeight = minH + 'px'; if (fh) h.style.height = fh + 'px'; h.style.resize = 'both';
+  }
+  try { localStorage.setItem(COLL_KEY, JSON.stringify(c)); } catch { /* ignore */ }
+  const b = h.shadowRoot?.querySelector('[data-w="min"], #min, [data-z="min"]');
+  if (b) { b.textContent = on ? '▢' : '▁'; b.title = on ? 'Rozbalit' : 'Sbalit na záhlaví'; }
+}
+const minBtn = (attr, key) => `<button ${attr} title="${winCollapsed(key) ? 'Rozbalit' : 'Sbalit na záhlaví'}">${winCollapsed(key) ? '▢' : '▁'}</button>`;
+
 // ---------- Záložky v samostatných oknech (⧉) – otevřená okna se pamatují i po F5 ----------
 const TABWIN_KEY = 'foeReaderTabWins';
 const tabWins = new Map(); // id záložky -> {host, root, body}
@@ -293,7 +315,7 @@ function openTabWin(id, restore) {
     .whead b{flex:1}
     .whead button{background:#4a3a26;color:#f3d9a4;border:1px solid #8a6a3a;border-radius:4px;padding:0 7px;cursor:pointer}
     .wbody{overflow:auto;padding:8px 10px;height:calc(100% - 30px)}
-  </style><div class="whead"><b>${{ '🔔': '🔔 Upozornění', 'ℹ️': 'ℹ️ O rozšíření a nastavení' }[def[1]] || def[1]}</b><button data-w="close" title="Zavřít">✕</button></div><div class="wbody"></div>`);
+  </style><div class="whead"><b>${{ '🔔': '🔔 Upozornění', 'ℹ️': 'ℹ️ O rozšíření a nastavení' }[def[1]] || def[1]}</b>${minBtn('data-w="min"', 'tab:' + id)}<button data-w="close" title="Zavřít">✕</button></div><div class="wbody"></div>`);
   document.documentElement.appendChild(h);
   toFront(h);
   h.addEventListener('pointerdown', () => toFront(h), true);
@@ -304,7 +326,7 @@ function openTabWin(id, restore) {
   const save = (closed) => {
     const c = loadTabWinCfg();
     if (closed) { if (c[id]) c[id].open = false; }
-    else { const b = h.getBoundingClientRect(); c[id] = { x: b.left, y: b.top, w: b.width, h: b.height, open: true }; }
+    else { const b = h.getBoundingClientRect(); c[id] = { x: b.left, y: b.top, w: b.width, h: winFullH(h, 'tab:' + id), open: true }; }
     saveTabWinCfg(c);
   };
   r.querySelector('.whead').addEventListener('pointerdown', (ev) => {
@@ -314,7 +336,12 @@ function openTabWin(id, restore) {
     const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); save(); };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   });
+  const head = r.querySelector('.whead'), ck = 'tab:' + id;
+  const toggle = () => winSetCollapsed(h, ck, head, !winCollapsed(ck), 140);
+  head.addEventListener('dblclick', (ev) => { if (!ev.target.closest('button')) toggle(); });
+  if (winCollapsed(ck)) winSetCollapsed(h, ck, head, true, 140);
   r.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-w="min"]')) { toggle(); return; }
     if (ev.target.closest('[data-w="close"]')) { closeTabWin(id); return; }
     onUiClick(ev);
   });

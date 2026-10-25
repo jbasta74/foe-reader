@@ -466,6 +466,7 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['Sbalit na záhlaví', 'Collapse to title bar'], ['Rozbalit', 'Expand'],
     ['Žádná rozehraná kulturní osada (nebo ještě nepřišel její přehled – načtěte hru).', 'No cultural settlement in progress (or its overview has not arrived yet – reload the game).'],
     ['otevřít okno Osada se zahájením minihry obchodníka', 'open the Settlement window when the merchant minigame starts'], ['Osada:', 'Settlement:'],
     ['Minihra – obchodník', 'Minigame – merchant'], ['Nalezeny všechny poklady', 'All treasures found'], ['nalezeno', 'found'], ['tahy minihry:', 'minigame turns:'], ['tahy', 'turns'], ['nejlepší tah:', 'best move:'], ['odhad', 'estimate'],

@@ -185,12 +185,12 @@ function openCalcWin() {
     .wbody{overflow:auto;padding:8px 10px;height:calc(100% - 30px)}
   </style><div class="whead" id="whead"><b>Kalkulačka VB</b>
     <label title="Otevřít samo s otevřením Velké budovy ve hře"><input type="checkbox" id="auto" ${cfg.gbCalcPopup ? 'checked' : ''}> otevírat samo</label>
-    <button id="close" title="Zavřít">✕</button></div><div class="wbody" id="wbody"></div>`);
+    ${minBtn('id="min"', 'calc')}<button id="close" title="Zavřít">✕</button></div><div class="wbody" id="wbody"></div>`);
   document.documentElement.appendChild(h);
   toFront(h); h.addEventListener('pointerdown', () => toFront(h), true);
   calcWin = { host: h, root: r };
   // Po zavření okna hlásí ResizeObserver nulovou velikost – to neukládat (jinak se okno příště otevřelo vlevo nahoře).
-  const save = () => { if (!h.isConnected) return; const b = h.getBoundingClientRect(); if (!b.width || !b.height) return; try { localStorage.setItem(CALCWIN_KEY, JSON.stringify({ x: b.left, y: b.top, w: b.width, h: b.height })); } catch { /* ignore */ } };
+  const save = () => { if (!h.isConnected) return; const b = h.getBoundingClientRect(); if (!b.width || !b.height) return; try { localStorage.setItem(CALCWIN_KEY, JSON.stringify({ x: b.left, y: b.top, w: b.width, h: winFullH(h, 'calc') })); } catch { /* ignore */ } };
   r.getElementById('whead').addEventListener('pointerdown', (ev) => {
     if (ev.target.closest('button,input,label')) return;
     const sx = ev.clientX, sy = ev.clientY, b = h.getBoundingClientRect();
@@ -199,6 +199,10 @@ function openCalcWin() {
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   });
   r.getElementById('close').addEventListener('click', () => { save(); h.remove(); calcWin = null; });
+  const chead = r.getElementById('whead'), ctoggle = () => winSetCollapsed(h, 'calc', chead, !winCollapsed('calc'), 160);
+  r.getElementById('min').addEventListener('click', ctoggle);
+  chead.addEventListener('dblclick', (ev) => { if (!ev.target.closest('button,input,label')) ctoggle(); });
+  if (winCollapsed('calc')) winSetCollapsed(h, 'calc', chead, true, 160);
   r.getElementById('auto').addEventListener('change', (ev) => { cfg.gbCalcPopup = ev.target.checked; saveCfg(); render(); });
   r.addEventListener('click', (ev) => {
     const fb = ev.target.closest('[data-factor]');
@@ -241,7 +245,7 @@ function mapWinState() {
 function saveMapWin() {
   if (!mapWin) return;
   const r = mapWin.host.getBoundingClientRect();
-  try { localStorage.setItem(MAPWIN_KEY, JSON.stringify({ x: r.left, y: r.top, w: r.width, h: r.height, zoom: mapWin.zoom })); } catch { /* ignore */ }
+  try { localStorage.setItem(MAPWIN_KEY, JSON.stringify({ x: r.left, y: r.top, w: r.width, h: winFullH(mapWin.host, 'map'), zoom: mapWin.zoom })); } catch { /* ignore */ }
 }
 function openMapWin() {
   if (mapWin) { renderMapWin(); return; }
@@ -306,17 +310,20 @@ function openMapWin() {
     else if (b.dataset.z === 'in') { mapWin.zoom = Math.min(40, Math.round(mapWin.zoom * 1.25)); renderMapWin(); saveMapWin(); }
     else if (b.dataset.z === 'out') { mapWin.zoom = Math.max(3, Math.round(mapWin.zoom / 1.25)); renderMapWin(); saveMapWin(); }
     else if (b.dataset.z === 'fit') { renderMapWin(true); saveMapWin(); }
+    else if (b.dataset.z === 'min') winSetCollapsed(h, 'map', r.getElementById('head'), !winCollapsed('map'), 240);
     else if (b.dataset.z === 'close') { saveMapWin(); h.remove(); mapWin = null; }
   });
   new ResizeObserver(() => saveMapWin()).observe(h);
   renderMapWin(!localStorage.getItem(MAPWIN_KEY));
+  r.getElementById('head').addEventListener('dblclick', (ev) => { if (!ev.target.closest('button,select')) winSetCollapsed(h, 'map', r.getElementById('head'), !winCollapsed('map'), 240); });
+  if (winCollapsed('map')) winSetCollapsed(h, 'map', r.getElementById('head'), true, 240);
 }
 function renderMapWin(fit) {
   if (!mapWin) return;
   const r = mapWin.root;
   const M = Object.keys(S.grids).length ? mapModel(mapGrid) : null;
   r.getElementById('head').innerHTML = L(`<b>FoE Reader – mapa</b>${Object.keys(S.grids).length ? gridPicker().replace(/class="fbtn /g, 'class="') : ''}
-    <span class="sp"></span><button data-z="out" title="Oddálit">−</button><button data-z="fit" title="Přizpůsobit oknu">⤢</button><button data-z="in" title="Přiblížit">+</button><button data-z="close" title="Zavřít">✕</button>`);
+    <span class="sp"></span><button data-z="out" title="Oddálit">−</button><button data-z="fit" title="Přizpůsobit oknu">⤢</button><button data-z="in" title="Přiblížit">+</button>${minBtn('data-z="min"', 'map')}<button data-z="close" title="Zavřít">✕</button>`);
   const view = r.getElementById('view');
   if (!M) { r.getElementById('stats').innerHTML = ''; view.innerHTML = L('<p style="color:#efe6d2;padding:10px">Pro tuto mapu zatím nejsou data.</p>'); return; }
   if (fit) {

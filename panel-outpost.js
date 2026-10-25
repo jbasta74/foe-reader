@@ -146,7 +146,7 @@ let MG = null; // {w, h, total, grid: [y][x] = 'u' | 'r' | číslo, t}
 function mgStart(d) {
   if (!d || d.context && d.context !== 'merchant' || !d.width || !d.height) return;
   const total = Object.values(d.reward?.resources || {}).filter((v) => typeof v === 'number')[0] || 0;
-  MG = { w: d.width, h: d.height, total, grid: Array.from({ length: d.height }, () => Array(d.width).fill('u')), t: Date.now() };
+  MG = { w: d.width, h: d.height, total, grid: Array.from({ length: d.height }, () => Array(d.width).fill('u')), t: Date.now(), rev: 0 };
   // Rozehraná hra (pokud ji server pošle i s odkrytými poli)
   for (const v of Object.values(d)) if (Array.isArray(v)) mgApply(v);
   if (cfg.mgPopup !== false) setTimeout(() => openTabWin('osada'), 50);
@@ -167,7 +167,7 @@ function mgMove(d) {
 // Přesný výpočet pravděpodobností (rozdělení hranice na nezávislé části, výčet s ořezáváním).
 let mgCache = null;
 function mgSolve() {
-  if (mgCache?.rev === MG.rev && mgCache.mg === MG) return mgCache.r;
+  if (mgCache && mgCache.rev === MG.rev && mgCache.mg === MG) return mgCache.r;
   const r = mgSolveRaw();
   mgCache = { rev: MG.rev, mg: MG, r };
   return r;

@@ -4,4 +4,5 @@
 - Okna (záložky v okně, kalkulačka VB, mapa) jdou **sbalit na záhlaví** tlačítkem ▁ nebo dvojklikem na záhlaví; ▢ / další dvojklik je rozbalí na původní výšku. Sbalení se pamatuje i po F5.
 
 ## Opravy
+- Pomocník minihry obchodníka: hned po zahájení hry (před prvním tahem) se okno Osada nevykreslilo. Ověřeno na skutečné hře – všechny poklady byly v polích, která pomocník označil jako jisté (100 %).
 - Panel Produkce / Osada: po otevření QI se mapa QI už nepovažuje za osadu (každá mřížka – osada, QI, kolonie – se drží zvlášť).

@@ -273,6 +273,20 @@ const tests = {
     if (!/QI akce budou plné za ~40 min/.test(t)) throw new Error('chybí upozornění na plné QI akce: ' + t.slice(0, 300));
     return errors;
   },
+  async 'Minihra: okno hned po zahájení (bez tahu) a skutečný průběh hry'() {
+    // Tahy ze skutečné hry (11×7, 10 pokladů): první tah odkryje oblast, další míří na jisté poklady.
+    const E = (x, y, a) => ({ ...(x ? { x } : {}), ...(y ? { y } : {}), ...(a ? { adjacentRewards: a } : {}), __class__: 'CollectingMinigameEmptyTile' });
+    const { pg, errors } = await page([startup(), msg('CollectingMinigameService.start', { context: 'merchant', width: 11, height: 7, reward: { resources: { stone_figures: 10 } } })]);
+    await pg.waitForTimeout(700);
+    let t = await winText(pg, 'Osada');
+    if (!/nalezeno 0 \/ 10/.test(t)) throw new Error('okno minihry se po zahájení neukázalo: ' + t.slice(0, 200));
+    await pg.evaluate((m) => window.postMessage({ source: 'foe-reader', channel: 'http', messages: [{ requestClass: 'CollectingMinigameService', requestMethod: 'submitMove', responseData: m }] }, '*'),
+      [E(4, 3), E(3, 2, 1), E(4, 2, 1), E(5, 2), E(3, 3), E(5, 3), E(3, 4), E(4, 4), E(5, 4, 1), E(4, 1, 2)]);
+    await pg.waitForTimeout(700);
+    t = await winText(pg, 'Osada');
+    if (!/nalezeno 0 \/ 10/.test(t) || /odhad/.test(t)) throw new Error('po prvním tahu: ' + t.slice(0, 300));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

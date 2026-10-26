@@ -287,6 +287,19 @@ const tests = {
     if (!/nalezeno 0 \/ 10/.test(t) || /odhad/.test(t)) throw new Error('po prvním tahu: ' + t.slice(0, 300));
     return errors;
   },
+  async 'QI: výnos výroby s euforií a bonusy (jako hra / FoE Helper)'() {
+    const prodE = (id, type, res) => ({ id, cityentity_id: id === 1 ? 'H_QI' : 'W_QI' + id, type, state: { __class__: 'ProducingState', next_state_transition_at: Math.floor(Date.now() / 1000) + 3600,
+      productionOption: { time: 36000, products: [{ type: 'resources', playerResources: { resources: res } }] } } });
+    const map = { gridId: 'guild_raids', entities: [prodE(1, 'main_building', { guild_raids_money: 50000 }), prodE(2, 'generic_building', { guild_raids_money: 12500, guild_raids_chrono_alloy: 10 }),
+      prodE(3, 'generic_building', { guild_raids_supplies: 12000 })] };
+    const { pg, errors } = await page([startup(), msg('BoostService.getAllBoosts', [{ type: 'guild_raids_coins_production', value: 66 }, { type: 'guild_raids_supplies_production', value: 83 }]),
+      msg('ResourceService.getPlayerResources', { resources: { guild_raids_happiness: 1880, guild_raids_total_population: 430 } }), msg('CityMapService.getCityMap', map)]);
+    await openTab(pg, 'qi');
+    const t = (await winText(pg, 'QI')).replace(/\u00a0/g, ' ');
+    // mince 50 000 + 12 500 × (1,5 + 0,66) = 77 000; zásoby 12 000 × 2,33 = 27 960; chrono 10 × 1,5 = 15
+    if (!/Celkem v běžící výrobě:.*77 000/.test(t) || !/27 960/.test(t) || !/chrono alloy 15|Chrono Alloy 15|chrono_alloy 15/i.test(t)) throw new Error('výnos QI nesedí: ' + t.slice(0, 500));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

@@ -26,7 +26,7 @@ const BOOST_NAME = {
   goods_production: 'Produkce zboží', guild_raids_action_points_collection: 'QI akce – sběr',
   guild_raids_action_points_capacity: 'QI akce – kapacita', guild_raids_supplies_production: 'QI zásoby – produkce',
   guild_raids_supplies_start: 'QI zásoby – start', guild_raids_coins_production: 'QI mince – produkce',
-  guild_raids_coins_start: 'QI mince – start', guild_raids_goods_start: 'QI zboží – start',
+  guild_raids_coins_start: 'QI mince – start', guild_raids_goods_start: 'QI zboží – start', guild_raids_units_start: 'QI jednotky – start',
   antiques_dealer_slot: 'Antikvář – sloty', army_scout_time: 'Čas průzkumu', construction_time: 'Čas stavby',
   cop_playthrough_reward: 'Odměna za průchod CoP', item_exchange_gemstone_value: 'Výměna předmětů – drahokamy',
   item_exchange_tradecoin_value: 'Výměna předmětů – obch. mince', outpost_cooldown_time: 'Základna – cooldown',

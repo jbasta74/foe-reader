@@ -466,6 +466,8 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['QI jednotky – start', 'QI units – start'],
+    ['Výnos včetně euforie', 'Yield including euphoria'], ['a bonusů k produkci (mince', 'and production boosts (coins'], ['zásoby', 'supplies'], ['radnice bez bonusů.', 'town hall without boosts.'], ['Podle mapy QI z posledního otevření ve hře (obnoví se i při výběru nebo spuštění výroby).', 'From the QI map as last opened in the game (also refreshes when collecting or starting production).'],
     ['Výroba budov QI se ukáže po otevření mapy QI ve hře.', 'QI building production shows after opening the QI map in the game.'], ['Výroba v QI', 'QI production'],
     ['Celkem v běžící výrobě:', 'Total in running production:'], ['Průměr za hodinu:', 'Average per hour:'], ['stojí:', 'idle:'], ['vyrábí:', 'producing:'], ['k vybrání:', 'to collect:'],
     ['Podle mapy QI z posledního otevření ve hře (obnoví se i při výběru nebo spuštění výroby).', 'From the QI map as last opened in the game (also refreshes when collecting or starting production).'],

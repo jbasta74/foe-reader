@@ -345,14 +345,23 @@ function qiProdHtml(now) {
   const lbl = (k) => { const n = resLabel(k); return n === k ? k.replace(/^guild_raids_/, '').replace(/_/g, ' ') : n; };
   const list = (o) => Object.entries(o).filter(([, v]) => v).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="chip">${esc(lbl(k))} <b>${fmt(Math.round(v))}</b></span>`).join('') || '–';
   const ents = [...m.entities.values()];
+  // Skutečný výnos jako ve hře (a FoE Helperu): základ × (bonus z euforie + bonus k produkci mincí / zásob); radnice bez bonusů.
+  // Euforie: poměr euforie / obyvatelé → 0,2 … 1,5 (od poměru 2 výš 150 %).
+  const R = S.resources, ratio = (R.guild_raids_happiness || 0) / (R.guild_raids_total_population || 1);
+  const eu = !R.guild_raids_total_population ? 1 : ratio <= 0.2 ? 0.2 : ratio <= 0.6 ? 0.6 : ratio <= 0.8 ? 0.8 : ratio <= 1.2 ? 1 : ratio <= 1.4 ? 1.1 : ratio < 2 ? 1.2 : 1.5;
+  const bsum = (t) => (S.boosts || []).filter((b) => b.type === t).reduce((a, b) => a + (b.value || 0), 0);
+  const bc = bsum('guild_raids_coins_production'), bsup = bsum('guild_raids_supplies_production');
+  const mult = (e, k) => (e.type === 'main_building' ? 1 : eu + (/money/.test(k) ? bc : /suppl/.test(k) ? bsup : 0) / 100);
+  const entProd = (e) => { const o = {}; for (const p of entityProducts(e)) if (p.res) for (const [k, v] of Object.entries(p.res)) o[k] = (o[k] || 0) + Math.round(v * mult(e, k)); return o; };
+  const sumP = (es) => { const o = {}; for (const e of es) for (const [k, v] of Object.entries(entProd(e))) o[k] = (o[k] || 0) + v; return o; };
   const prod = ents.filter((e) => e.state?.__class__ === 'ProducingState' && e.state.next_state_transition_at);
   const ready = ents.filter((e) => e.state?.__class__ === 'ProductionFinishedState' || (e.state?.__class__ === 'ProducingState' && e.state.next_state_transition_at <= now));
   const idle = ents.filter((e) => e.state?.__class__ === 'IdleState' && entityProducts(e).length === 0 && ['production', 'goods', 'residential'].includes(e.type));
-  const total = sumProducts(prod), perH = {};
+  const total = sumP(prod), perH = {};
   for (const e of prod) {
     const t = e.state.current_product?.production_time || e.state.productionOption?.time;
     if (!t) continue;
-    for (const p of entityProducts(e)) if (p.res) for (const [k, v] of Object.entries(p.res)) perH[k] = (perH[k] || 0) + (v * 3600) / t;
+    for (const [k, v] of Object.entries(entProd(e))) perH[k] = (perH[k] || 0) + (v * 3600) / t;
   }
   const groups = new Map();
   for (const e of prod) { const k = Math.ceil(e.state.next_state_transition_at / 60) * 60; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
@@ -361,8 +370,8 @@ function qiProdHtml(now) {
     <p><b>Celkem v běžící výrobě:</b> ${list(total)}</p>
     ${Object.keys(perH).length ? `<p><b>Průměr za hodinu:</b> ${list(perH)}</p>` : ''}
     ${rows.length ? `<table><thead><tr><th>Hotovo</th><th class="num">Budov</th><th>Co</th></tr></thead><tbody>${rows.map(([t, es]) =>
-      `<tr><td>${t > now ? 'za ' + dur(t - now) : '<span class="hi">teď</span>'}</td><td class="num">${es.length}</td><td>${Object.entries(sumProducts(es)).map(([k, v]) => `${fmt(v)}× ${esc(lbl(k))}`).join(', ')}</td></tr>`).join('')}</tbody></table>` : ''}
-    <p class="muted">Podle mapy QI z posledního otevření ve hře (obnoví se i při výběru nebo spuštění výroby).</p>`;
+      `<tr><td>${t > now ? 'za ' + dur(t - now) : '<span class="hi">teď</span>'}</td><td class="num">${es.length}</td><td>${Object.entries(sumP(es)).map(([k, v]) => `${fmt(v)}× ${esc(lbl(k))}`).join(', ')}</td></tr>`).join('')}</tbody></table>` : ''}
+    <p class="muted">Výnos včetně euforie ${fmt(Math.round(eu * 100))} % a bonusů k produkci (mince +${fmt(bc)} %, zásoby +${fmt(bsup)} %); radnice bez bonusů. Podle mapy QI z posledního otevření ve hře (obnoví se i při výběru nebo spuštění výroby).</p>`;
 }
 function viewQI() {
   const r = S.resources, now = nowServer();

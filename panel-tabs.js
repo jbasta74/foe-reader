@@ -338,6 +338,32 @@ function qiPassHtml(now) {
     ${maxThr && total < maxThr ? ` · do posledního stupně chybí <b>${fmt(maxThr - total)}</b> bodů` : ''}</p>`;
   return h + '<p class="muted">Body se obnovují s každou akcí v QI; stupně a vyzvednuté odměny podle posledního otevření okna passu. 🔒 = odměna placeného passu, který nemáte.</p>';
 }
+// Výroba budov v QI: co a kdy bude hotové, součet běžící výroby a průměr za hodinu (podle mapy QI, po jejím otevření ve hře).
+function qiProdHtml(now) {
+  const m = S.gridMap?.guild_raids;
+  if (!m) return '<p class="muted">Výroba budov QI se ukáže po otevření mapy QI ve hře.</p>';
+  const lbl = (k) => { const n = resLabel(k); return n === k ? k.replace(/^guild_raids_/, '').replace(/_/g, ' ') : n; };
+  const list = (o) => Object.entries(o).filter(([, v]) => v).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="chip">${esc(lbl(k))} <b>${fmt(Math.round(v))}</b></span>`).join('') || '–';
+  const ents = [...m.entities.values()];
+  const prod = ents.filter((e) => e.state?.__class__ === 'ProducingState' && e.state.next_state_transition_at);
+  const ready = ents.filter((e) => e.state?.__class__ === 'ProductionFinishedState' || (e.state?.__class__ === 'ProducingState' && e.state.next_state_transition_at <= now));
+  const idle = ents.filter((e) => e.state?.__class__ === 'IdleState' && entityProducts(e).length === 0 && ['production', 'goods', 'residential'].includes(e.type));
+  const total = sumProducts(prod), perH = {};
+  for (const e of prod) {
+    const t = e.state.current_product?.production_time || e.state.productionOption?.time;
+    if (!t) continue;
+    for (const p of entityProducts(e)) if (p.res) for (const [k, v] of Object.entries(p.res)) perH[k] = (perH[k] || 0) + (v * 3600) / t;
+  }
+  const groups = new Map();
+  for (const e of prod) { const k = Math.ceil(e.state.next_state_transition_at / 60) * 60; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
+  const rows = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+  return `<h4>Výroba v QI</h4><p>${ready.length ? `<span class="chip hi">k vybrání: ${ready.length}</span>` : ''}<span class="chip">vyrábí: ${prod.length - ready.filter((e) => e.state?.__class__ === 'ProducingState').length}</span>${idle.length ? `<span class="chip hi">stojí: ${idle.length}</span>` : ''}</p>
+    <p><b>Celkem v běžící výrobě:</b> ${list(total)}</p>
+    ${Object.keys(perH).length ? `<p><b>Průměr za hodinu:</b> ${list(perH)}</p>` : ''}
+    ${rows.length ? `<table><thead><tr><th>Hotovo</th><th class="num">Budov</th><th>Co</th></tr></thead><tbody>${rows.map(([t, es]) =>
+      `<tr><td>${t > now ? 'za ' + dur(t - now) : '<span class="hi">teď</span>'}</td><td class="num">${es.length}</td><td>${Object.entries(sumProducts(es)).map(([k, v]) => `${fmt(v)}× ${esc(lbl(k))}`).join(', ')}</td></tr>`).join('')}</tbody></table>` : ''}
+    <p class="muted">Podle mapy QI z posledního otevření ve hře (obnoví se i při výběru nebo spuštění výroby).</p>`;
+}
 function viewQI() {
   const r = S.resources, now = nowServer();
   let h = '';
@@ -354,6 +380,7 @@ function viewQI() {
     ${tile('Měna QI', r.guild_raids_currency != null ? fmt(r.guild_raids_currency) : '–', '')}
     ${tile('Produkce v QI', next ? (next.at > now ? 'za ' + dur(next.at - now) : 'hotová') : '–', '')}
   </div>`;
+  h += qiProdHtml(now);
   h += qiPassHtml(now);
   h += `<h4>Armáda v QI</h4><table><thead><tr><th>Útok útočníka</th><th>Obrana útočníka</th><th>Útok obránce</th><th>Obrana obránce</th></tr></thead>
     <tbody><tr>${['aa', 'ad', 'da', 'dd'].map((k) => `<td class="num">${fmt(qa[k])} %</td>`).join('')}</tr></tbody></table>`;

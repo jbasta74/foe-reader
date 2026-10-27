@@ -300,6 +300,15 @@ const tests = {
     if (!/Celkem v běžící výrobě:.*77 000/.test(t) || !/27 960/.test(t) || !/chrono alloy 15|Chrono Alloy 15|chrono_alloy 15/i.test(t)) throw new Error('výnos QI nesedí: ' + t.slice(0, 500));
     return errors;
   },
+  async 'Oznámení Chromu: v titulku svět a hráč, alarm klíčovaný světem'() {
+    const { pg, errors } = await page([startup()]);
+    const sent = await pg.evaluate(() => { const out = []; chrome.runtime.sendMessage = async (m) => { out.push(m); };
+      sysSend({ type: 'notify', title: 'FoE Reader', message: 'x' }); sysSend({ type: 'schedule', key: 'A|1|5', when: 1, title: 'FoE Reader – GBG', message: 'y' }); return out; });
+    const w = await pg.evaluate(() => location.hostname.split('.')[0]);
+    if (sent[0].title !== `FoE Reader · ${w} · Tester`) throw new Error('titulek: ' + sent[0].title);
+    if (sent[1].key !== `${w}|A|1|5`) throw new Error('klíč alarmu: ' + sent[1].key);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

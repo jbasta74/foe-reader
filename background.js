@@ -14,7 +14,7 @@ async function notify(id, title, message, tab) {
 
 chrome.runtime.onMessage.addListener((m, sender) => {
   const tab = sender.tab ? { tabId: sender.tab.id, windowId: sender.tab.windowId } : null;
-  if (m?.type === 'notify') notify('i' + Date.now(), m.title, m.message, tab);
+  if (m?.type === 'notify') notify('i' + Date.now() + Math.random().toString(36).slice(2, 6), m.title, m.message, tab);
   else if (m?.type === 'schedule' && m.key && m.when) {
     const name = 'w:' + m.key;
     chrome.storage.session.set({ [name]: { title: m.title, message: m.message, tab } });

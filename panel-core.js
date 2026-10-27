@@ -865,8 +865,11 @@ const unlockAlerted = new Set();
 const limAlerted = new Set();
 // ---------- Systémová oznámení Chromu (background.js) ----------
 // Bez spojení s rozšířením (test, nebo po aktualizaci rozšíření před F5) se tiše nic nestane.
+// Oznámení Chromu nesou svět a hráče (při hře na více světech je hned jasné, odkud jsou); alarmy jsou klíčované i světem.
 function sysSend(msg) {
-  if (msg.title) msg.title = L(msg.title);
+  const world = location.hostname.split('.')[0];
+  if (msg.title) msg.title = `${L(msg.title)} · ${world}${S.player?.user_name ? ' · ' + S.player.user_name : ''}`;
+  if (msg.key) msg = { ...msg, key: `${world}|${msg.key}` };
   if (msg.message) msg.message = L(msg.message);
   try { const r = chrome.runtime?.sendMessage?.(msg); if (r?.catch) r.catch(() => {}); } catch { /* kontext rozšíření zneplatněn */ }
 }

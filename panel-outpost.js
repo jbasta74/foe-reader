@@ -50,7 +50,7 @@ function outpostGoodRates(info) {
 let opSums = true; // zobrazit průběžné součty (jinak cena jednotlivých odemčení)
 function viewSettlement() {
   const now = nowServer();
-  let html = mgHtml();
+  let html = MG && !MG.done ? `<p class="hi">Minihra obchodníka běží – pomocník je v okně 🧩 Minihra. <button class="fbtn" data-act="mgopen">Otevřít</button></p>` : '';
   const info = outpostNow();
   if (!info) return html + '<p class="muted">Žádná rozehraná kulturní osada (nebo ještě nepřišel její přehled – načtěte hru).</p>' + viewOutpost(now);
   const prim = info.primaryResourceId, loot = prim === 'deben' ? 'egyptians_loot' : prim;
@@ -149,7 +149,24 @@ function mgStart(d) {
   MG = { w: d.width, h: d.height, total, grid: Array.from({ length: d.height }, () => Array(d.width).fill('u')), t: Date.now(), rev: 0 };
   // Rozehraná hra (pokud ji server pošle i s odkrytými poli)
   for (const v of Object.values(d)) if (Array.isArray(v)) mgApply(v);
-  if (cfg.mgPopup !== false) setTimeout(() => openTabWin('osada'), 50);
+  if (cfg.mgPopup !== false) setTimeout(() => { openTabWin('mg'); renderIcons(); }, 50);
+  renderIcons();
+}
+// Jako FoE Helper: okno se zavře, když dojdou tahy nebo jsou nalezené všechny poklady; po dokoupení tahů se otevře znovu.
+function mgWatch() {
+  if (!MG || MG.done) return;
+  const turns = S.resources.aztecs_collecting_minigame_turns;
+  const found = MG.grid.flat().filter((v) => v === 'r').length;
+  if (MG.total && found >= MG.total) {
+    MG.done = true;
+    setTimeout(() => { closeTabWin('mg'); renderIcons(); }, 4000);
+    return;
+  }
+  if (turns === 0 && !MG.paused) { MG.paused = true; closeTabWin('mg'); renderIcons(); }
+  else if (turns > 0 && MG.paused) { MG.paused = false; if (cfg.mgPopup !== false) openTabWin('mg'); renderIcons(); }
+}
+function viewMinigame() {
+  return MG ? mgHtml() : '<p class="muted">Pomocník se ukáže po zahájení minihry obchodníka v aztécké osadě.</p>';
 }
 function mgApply(tiles) {
   for (const t of tiles) {
@@ -256,7 +273,7 @@ function mgHtml() {
   if (!MG) return '';
   const turns = S.resources.aztecs_collecting_minigame_turns;
   const { prob, R, found, exact } = mgSolve();
-  if (!R && found) return `<h4>Minihra – obchodník</h4><p>Nalezeny všechny poklady (${fmt(found)}) 🎉</p>`;
+  if (!R && found) return `<p>Nalezeny všechny poklady (${fmt(found)}) 🎉</p>`;
   let best = -1, bestCells = [];
   for (const [c, p] of prob) { if (p > best + 1e-9) { best = p; bestCells = [c]; } else if (Math.abs(p - best) <= 1e-9) bestCells.push(c); }
   const bestSet = new Set(best > 0 ? bestCells : []);
@@ -276,8 +293,11 @@ function mgHtml() {
     }
     rows += '</tr>';
   }
-  return `<h4>Minihra – obchodník</h4>
-    <p><span class="chip">nalezeno <b>${fmt(found)}</b> / ${fmt(MG.total)}</span>${turns != null ? `<span class="chip">tahy <b>${fmt(turns)}</b></span>` : ''}${best > 0 ? `<span class="chip">nejlepší tah: <b>${fmt(Math.round(best * 1000) / 10)} %</b></span>` : ''}${exact ? '' : '<span class="chip">odhad</span>'}</p>
+  const legend = [[0, '0 %'], [0.2, ''], [0.4, '33 %'], [0.55, '50 %'], [0.7, '66 %'], [0.85, '75 %'], [1, '100 %']]
+    .map(([p, l]) => `<span class="mgl" style="background:${p === 0 ? '#e9e2d2' : col(p)}">${l}</span>`).join('');
+  return `<p><span class="chip">nalezeno <b>${fmt(found)}</b> / ${fmt(MG.total)}</span>${turns != null ? `<span class="chip">tahy <b>${fmt(turns)}</b></span>` : ''}${best > 0 ? `<span class="chip">nejlepší tah: <b>${fmt(Math.round(best * 1000) / 10)} %</b></span>` : ''}${exact ? '' : '<span class="chip">odhad</span>'}</p>
     <table class="mgt"><tbody>${rows}</tbody></table>
+    <div class="mgleg">${legend}</div>
+    ${turns === 0 ? '<p class="hi">Došly tahy – po dokoupení se okno otevře znovu.</p>' : turns != null && R > turns ? `<p class="muted">Zbývá ${fmt(R)} pokladů a ${fmt(turns)} tahů – na všechny tahy nestačí.</p>` : ''}
     <p class="muted">Čísla = šance v % na poklad v poli, ★ = jistý poklad, · = jistě prázdné, rámeček = nejlepší tah. Počítá se přesně ze všech možných rozmístění zbývajících pokladů. Tah dělejte ve hře – pomocník jen radí.</p>`;
 }

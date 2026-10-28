@@ -80,6 +80,7 @@ function mount() {
     table.mgt td.mg.n{background:#f7f2e6;color:#6b5a40;font-weight:700}
     table.mgt td.mg.r{background:#2e7d32;color:#fff;font-weight:700}
     table.mgt td.mg.u{color:#2b2116;font-weight:600}
+    .mgleg{display:flex;gap:2px;margin:2px 0 4px}.mgl{flex:1;text-align:center;font-size:10px;border-radius:3px;padding:1px 0;color:#2b2116}
     table.mgt td.mg.best{outline:3px solid #b0410f;outline-offset:-3px}
     tr.me td{background:#d6e4f5;font-weight:600} tr.me td:first-child{box-shadow:inset 3px 0 #3a6ea5}
     tr.done td{background:#d6efc7;font-weight:600}
@@ -225,6 +226,7 @@ function onUiClick(ev) {
       hid.has(id) ? hid.delete(id) : hid.add(id);
       cfg.hiddenTabs = [...hid]; saveCfg(); renderTabs(); render();
     }
+    if (ev.target.closest('[data-act="mgopen"]')) openTabWin('mg');
     const os = ev.target.closest('[data-opsums]');
     if (os) { opSums = os.dataset.opsums === '1'; render(); }
     const te = ev.target.closest('[data-techera]');
@@ -304,7 +306,7 @@ function openTabWin(id, restore) {
   if (!def || (BONUS_TABS.includes(id) && !bonusOn())) return;
   if (tabWins.has(id)) { renderTabWin(id); return; }
   const all = loadTabWinCfg();
-  const st = { x: 140 + tabWins.size * 30, y: 80 + tabWins.size * 30, w: 560, h: 480, ...(all[id] || {}) };
+  const st = { x: 140 + tabWins.size * 30, y: 80 + tabWins.size * 30, w: id === 'mg' ? 430 : 560, h: id === 'mg' ? 400 : 480, ...(all[id] || {}) };
   const h = document.createElement('div');
   h.className = 'foe-reader-win';
   h.style.cssText = `position:fixed;z-index:2147483645;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w}px;height:${st.h}px;resize:both;overflow:hidden;min-width:280px;min-height:140px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45)`;
@@ -504,7 +506,8 @@ async function bonusUnlock(code) {
   cfg.bonusKey = hex; saveCfg(); renderTabs();
   return true;
 }
-const tabVisible = (id) => (!BONUS_TABS.includes(id) || bonusOn()) && (FIXED_TABS.includes(id) || !(cfg.hiddenTabs || []).includes(id));
+// Minihra jen během hry (jako tlačítko ve FoE Helperu).
+const tabVisible = (id) => (id !== 'mg' || (!!MG && !MG.done)) && (!BONUS_TABS.includes(id) || bonusOn()) && (FIXED_TABS.includes(id) || !(cfg.hiddenTabs || []).includes(id));
 function renderTabs() {
   renderIcons();
   const el = root?.getElementById('tabs');

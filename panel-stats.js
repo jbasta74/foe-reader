@@ -272,7 +272,7 @@ function viewAbout() {
     <div class="cfg"><div>${[['cs', 'Čeština'], ['en', 'English']].map(([k, l]) => `<button data-lang="${k}" class="fbtn${(cfg.lang || 'cs') === k ? ' on' : ''}">${l}</button>`).join(' ')}</div>
       <div class="muted">Názvy z hry (budovy, zboží, hráči) zůstávají v jazyce hry. / Names from the game stay in the game's language.</div></div>
     <h4>Nastavení – zobrazené záložky</h4>
-    <div class="cfg"><div>${TABS.filter(([id]) => !FIXED_TABS.includes(id) && (!BONUS_TABS.includes(id) || bonusOn())).map(([id, l]) =>
+    <div class="cfg"><div>${TABS.filter(([id]) => !FIXED_TABS.includes(id) && id !== 'mg' && (!BONUS_TABS.includes(id) || bonusOn())).map(([id, l]) =>
       `<label><input type="checkbox" data-tabtoggle="${id}" ${tabVisible(id) ? 'checked' : ''}> ${l}</label>`).join(' ')}</div>
       <div class="muted">VB, Upozornění a ℹ️ zůstávají vždy. Vypnutá záložka jen zmizí z lišty – data se sbírají dál a upozornění fungují.</div>
       <div>${['uiBar', 'barVertical'].map((k) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${k === 'uiBar' ? 'nástrojová lišta s ikonami' : 'lišta svisle'}</label>`).join(' ')}
@@ -303,11 +303,11 @@ function viewLog() {
 }
 
 // Ikony nástrojové lišty
-const ICONS = { gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', ge: '🧭', qi: '🌀', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', tech: '🔬', osada: '🏝️', log: '📜', alerts: '🔔', about: 'ℹ️' };
+const ICONS = { gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', ge: '🧭', qi: '🌀', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', tech: '🔬', osada: '🏝️', mg: '🧩', log: '📜', alerts: '🔔', about: 'ℹ️' };
 const TABS = [
   ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction], ['rate', 'Rating', viewRating],
   ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['ge', 'Expedice', viewGE], ['qi', 'QI', viewQI], ['tav', 'Hospody', viewTaverns],
-  ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['stat', 'Statistiky', viewStats], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['tech', 'Výzkum', viewResearch], ['osada', 'Osada', viewSettlement], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
+  ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['stat', 'Statistiky', viewStats], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['tech', 'Výzkum', viewResearch], ['osada', 'Osada', viewSettlement], ['mg', 'Minihra', viewMinigame], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
 ];
 let tab = 'gb';
 let open = false;

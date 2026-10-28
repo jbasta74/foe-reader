@@ -201,6 +201,7 @@ const tests = {
       msg('CollectingMinigameService.start', { context: 'merchant', width: 3, height: 3, reward: { resources: { beans: 1 } } }),
       msg('CollectingMinigameService.submitMove', [tile(2, 0, 0), tile(1, 0, 0), tile(2, 1, 0), tile(1, 1, 1), tile(0, 0, 0), tile(0, 1, 1)])]);
     await pg.waitForTimeout(300);
+    await openTab(pg, 'osada');
     const t = (await winText(pg, 'Osada')).replace(/\u00a0/g, ' ');
     // beans: 30 + 20 = 50, máte 40 → −10; hats 20 → −20; kakao na chybějící zboží: ceil(10)*200 + 20*200 = 6 000
     if (!/Potřeba\s+50\s+20\s+400\s+6 000/.test(t)) throw new Error('součty nesedí: ' + t.slice(0, 900));
@@ -278,13 +279,20 @@ const tests = {
     const E = (x, y, a) => ({ ...(x ? { x } : {}), ...(y ? { y } : {}), ...(a ? { adjacentRewards: a } : {}), __class__: 'CollectingMinigameEmptyTile' });
     const { pg, errors } = await page([startup(), msg('CollectingMinigameService.start', { context: 'merchant', width: 11, height: 7, reward: { resources: { stone_figures: 10 } } })]);
     await pg.waitForTimeout(700);
-    let t = await winText(pg, 'Osada');
+    let t = await winText(pg, 'Minihra');
     if (!/nalezeno 0 \/ 10/.test(t)) throw new Error('okno minihry se po zahájení neukázalo: ' + t.slice(0, 200));
     await pg.evaluate((m) => window.postMessage({ source: 'foe-reader', channel: 'http', messages: [{ requestClass: 'CollectingMinigameService', requestMethod: 'submitMove', responseData: m }] }, '*'),
       [E(4, 3), E(3, 2, 1), E(4, 2, 1), E(5, 2), E(3, 3), E(5, 3), E(3, 4), E(4, 4), E(5, 4, 1), E(4, 1, 2)]);
     await pg.waitForTimeout(700);
-    t = await winText(pg, 'Osada');
+    t = await winText(pg, 'Minihra');
     if (!/nalezeno 0 \/ 10/.test(t) || /odhad/.test(t)) throw new Error('po prvním tahu: ' + t.slice(0, 300));
+    // jako FoE Helper: došly tahy → okno se zavře, po dokoupení se otevře znovu
+    const res = (n) => pg.evaluate((n) => window.postMessage({ source: 'foe-reader', channel: 'http', messages: [{ requestClass: 'ResourceService', requestMethod: 'getPlayerResources', responseData: { resources: { aztecs_collecting_minigame_turns: n } } }] }, '*'), n);
+    const open = () => pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].some((w) => /Minihra/.test(w.shadowRoot.querySelector('.whead b')?.textContent || '')));
+    await res(0); await pg.waitForTimeout(6000);
+    if (await open()) throw new Error('okno minihry se po vyčerpání tahů nezavřelo');
+    await res(5); await pg.waitForTimeout(6000);
+    if (!(await open())) throw new Error('okno minihry se po dokoupení tahů neotevřelo');
     return errors;
   },
   async 'QI: výnos výroby s euforií a bonusy (jako hra / FoE Helper)'() {

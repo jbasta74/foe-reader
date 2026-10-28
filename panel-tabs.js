@@ -17,7 +17,7 @@ function viewAlerts() {
       <div class="muted">Systémové oznámení Chromu se ukáže i mimo hru (když je okno na pozadí nebo minimalizované); klik na něj přepne na hru. Musí být povolená oznámení Chromu v systému (Windows / macOS).</div>
       <div><b>GBG okno:</b> ${chk('gbgPopup', 'otevřít okno GBG při vstupu do GBG')}</div>
       <div><b>Moje VB:</b> ${chk('gbContribOn', 'někdo přispěl (tiše)')} ${chk('gbCalcPopup', 'otevřít kalkulačku VB v okně s otevřením budovy')}</div>
-      <div><b>Osada:</b> ${chk('mgPopup', 'otevřít okno Osada se zahájením minihry obchodníka')}</div>
+      <div><b>Osada:</b> ${chk('mgPopup', 'otevřít okno 🧩 Minihra se zahájením minihry obchodníka')}</div>
       <div><b>Vyjednávání:</b> ${chk('negoPopup', 'otevřít okno vyjednávání při zahájení')} ${chk('negoGbg', 'pomocník i v GBG')}</div>
       <div><b>Zprávy:</b> ${chk('msgSocial', 'soukromé')} ${chk('msgGuild', 'cechovní')} ${chk('msgSound', 'se zvukem')}</div>
       <div><b>Limitované budovy:</b> ${chk('limOn', 'vypršení')} ${num('limLead', 'hodin předem')} ${chk('limInv', 'po načtení: co lze pozvednout (tiše)')}</div>

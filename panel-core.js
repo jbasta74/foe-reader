@@ -947,6 +947,7 @@ function timeChecks() {
   const now = nowServer();
   syncWatchAlarms();
   endChecks(now);
+  try { mgWatch(); } catch { /* ignore */ }
   // Sledované provincie: upozornit X minut před odemknutím.
   if (cfg.gbgWatch && S.gbg) {
     // Hlásí se jednou za každé zamčení – i když je provincie označena až v posledních minutách.

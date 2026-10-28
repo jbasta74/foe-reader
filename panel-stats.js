@@ -275,6 +275,7 @@ function viewAbout() {
     <div class="cfg"><div>${TABS.filter(([id]) => !FIXED_TABS.includes(id) && id !== 'mg' && (!BONUS_TABS.includes(id) || bonusOn())).map(([id, l]) =>
       `<label><input type="checkbox" data-tabtoggle="${id}" ${tabVisible(id) ? 'checked' : ''}> ${l}</label>`).join(' ')}</div>
       <div class="muted">VB, Upozornění a ℹ️ zůstávají vždy. Vypnutá záložka jen zmizí z lišty – data se sbírají dál a upozornění fungují.</div>
+      <div><label><input type="checkbox" data-cfg="fpBar" ${cfg.fpBar ? 'checked' : ''}> okénko „FP ve skladu“ u lišty FP ve hře</label></div>
       <div>${['uiBar', 'barVertical'].map((k) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${k === 'uiBar' ? 'nástrojová lišta s ikonami' : 'lišta svisle'}</label>`).join(' ')}
         <span class="muted">Ikona otevře / zavře okno záložky, ⠿ otevře panel se záložkami.</span></div>
       <div><button data-act="resetsize">Obnovit výchozí velikost panelu</button> <span class="muted">Panel se dá roztáhnout tažením za pravý dolní roh.</span></div></div>

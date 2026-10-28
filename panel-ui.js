@@ -536,6 +536,30 @@ function render() {
 
 let lastInputAt = 0;
 let pending = false;
+// ---------- Okénko „FP ve skladu“ u lišty FP ve hře (jako FoE Helper; vypnutelné v ℹ️, přesunutelné tažením) ----------
+const FPBAR_KEY = 'foeReaderFpBar';
+let fpBar = null;
+function renderFpBar() {
+  if (!cfg.fpBar || S.packageFP == null) { fpBar?.remove(); fpBar = null; return; }
+  if (!fpBar) {
+    fpBar = document.createElement('div');
+    fpBar.id = 'foe-reader-fpbar';
+    let p = null;
+    try { p = JSON.parse(localStorage.getItem(FPBAR_KEY) || 'null'); } catch { /* ignore */ }
+    fpBar.style.cssText = `position:fixed;z-index:2147483640;${p ? `left:${p.x}px;top:${p.y}px` : 'left:calc(50vw + 130px);top:2px'};height:26px;line-height:26px;padding:0 7px;`
+      + 'background:rgba(0,0,0,.55);border:1px solid #714a23;border-radius:4px;color:#f3d9a4;font:600 13px system-ui,Segoe UI,sans-serif;cursor:grab;user-select:none;white-space:nowrap;touch-action:none';
+    let st = null;
+    fpBar.addEventListener('pointerdown', (e) => { const b = fpBar.getBoundingClientRect(); st = { mx: e.clientX, my: e.clientY, x: b.left, y: b.top }; fpBar.setPointerCapture(e.pointerId); e.stopPropagation(); });
+    fpBar.addEventListener('pointermove', (e) => { if (!st) return; fpBar.style.left = Math.max(0, st.x + e.clientX - st.mx) + 'px'; fpBar.style.top = Math.max(0, st.y + e.clientY - st.my) + 'px'; });
+    fpBar.addEventListener('pointerup', () => { if (!st) return; st = null; const b = fpBar.getBoundingClientRect(); try { localStorage.setItem(FPBAR_KEY, JSON.stringify({ x: b.left, y: b.top })); } catch { /* ignore */ } });
+    fpBar.addEventListener('dblclick', () => { try { localStorage.removeItem(FPBAR_KEY); } catch { /* ignore */ } fpBar.style.left = 'calc(50vw + 130px)'; fpBar.style.top = '2px'; });
+    for (const t of ['mousedown', 'mouseup', 'click', 'wheel']) fpBar.addEventListener(t, (e) => e.stopPropagation());
+    (document.body || document.documentElement).appendChild(fpBar);
+  }
+  const bar = S.resources.strategy_points || 0, pk = S.packageFP || 0;
+  fpBar.textContent = `📦 ${fmt(pk)}`;
+  fpBar.title = L(`FP v balíčcích ve skladu: ${fmt(pk)} · v liště: ${fmt(bar)} · celkem: ${fmt(pk + bar)}\nTáhnutím přesunete, dvojklik vrátí na výchozí místo. Vypnout jde v ℹ️.`);
+}
 function scheduleRender() {
   if (pending) return;
   pending = true;
@@ -545,6 +569,7 @@ function scheduleRender() {
     render();
     if (mapWin && mapWin.rev !== S.mapRev) { mapWin.rev = S.mapRev; renderMapWin(); }
     renderCalcWin();
+    try { renderFpBar(); } catch { /* ignore */ }
   }, 500);
 }
 setInterval(() => {

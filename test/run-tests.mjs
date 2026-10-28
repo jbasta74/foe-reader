@@ -317,6 +317,15 @@ const tests = {
     if (sent[1].key !== `${w}|A|1|5`) throw new Error('klíč alarmu: ' + sent[1].key);
     return errors;
   },
+  async 'Okénko FP ve skladu u lišty FP'() {
+    const { pg, errors } = await page([startup(), msg('ResourceService.getPlayerResources', { resources: { strategy_points: 7 } }), msg('GreatBuildingsService.getAvailablePackageForgePoints', [1234])]);
+    await pg.waitForTimeout(600);
+    const t = await pg.evaluate(() => document.querySelector('#foe-reader-fpbar')?.textContent || '');
+    if (!/1\s?234/.test(t.replace(/\u00a0/g, ' '))) throw new Error('okénko FP: ' + t);
+    await pg.evaluate(() => { cfg.fpBar = false; renderFpBar(); });
+    if (await pg.evaluate(() => !!document.querySelector('#foe-reader-fpbar'))) throw new Error('okénko FP se nevyplo');
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

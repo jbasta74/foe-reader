@@ -466,6 +466,8 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['okénko „FP ve skladu“ u lišty FP ve hře', '“FP in stock” box next to the game FP bar'], ['FP v balíčcích ve skladu:', 'FP in packs in stock:'], ['v liště:', 'in bar:'], ['celkem:', 'total:'],
+    ['Táhnutím přesunete, dvojklik vrátí na výchozí místo. Vypnout jde v ℹ️.', 'Drag to move, double-click to reset. Turn off in ℹ️.'],
     ['Minihra obchodníka běží – pomocník je v okně 🧩 Minihra.', 'The merchant minigame is running – the helper is in the 🧩 Minigame window.'], ['Otevřít', 'Open'], ['Minihra', 'Minigame'],
     ['Pomocník se ukáže po zahájení minihry obchodníka v aztécké osadě.', 'The helper appears when the merchant minigame starts in the Aztec settlement.'],
     ['Došly tahy – po dokoupení se okno otevře znovu.', 'Out of turns – the window reopens after buying more.'], ['Zbývá', 'Left:'], ['pokladů a', 'treasures and'], ['tahů – na všechny tahy nestačí.', 'turns – not enough turns for all.'],

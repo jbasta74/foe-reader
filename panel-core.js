@@ -652,6 +652,7 @@ const CFG_DEFAULT = {
   endOn: true, endLead: 3, sysEv: false, fullOn: true, fullLead: 1, // konec expedice / QI s nevyužitými pokusy / akcemi
   mgPopup: true, // okno Osada se otevře samo při zahájení minihry obchodníka
   rateFH: false, // Rating jako FoE Helper (bez bonusů k produkci, s VB)
+  fpBar: true, // okénko FP ve skladu u lišty FP ve hře
   techOpt: true, // výzkum: vynechat volitelné technologie
   lang: 'cs', // jazyk panelu: 'cs' | 'en'
   negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy

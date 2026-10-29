@@ -83,6 +83,9 @@ function mount() {
     table.mgt td.mg.u{color:#2b2116;font-weight:600}
     .mgleg{display:flex;gap:2px;margin:2px 0 4px}.mgl{flex:1;text-align:center;font-size:10px;border-radius:3px;padding:1px 0;color:#2b2116}
     table.mgt td.mg.best{outline:3px solid #b0410f;outline-offset:-3px}
+    th.sortable{cursor:pointer;white-space:nowrap}th.sortable:hover{text-decoration:underline}th small{font-weight:400;color:#8a7a60}
+    table.pt td,table.pt th{padding:2px 5px}
+    table.rt tr.inv td{background:#e3eef8} table.rt td:first-child{min-width:170px} table.rt td.num,table.rt th.num{white-space:nowrap}
     tr.me td{background:#d6e4f5;font-weight:600} tr.me td:first-child{box-shadow:inset 3px 0 #3a6ea5}
     tr.done td{background:#d6efc7;font-weight:600}
     tr.gone td{text-decoration:line-through;color:#9a8a70;opacity:.6}
@@ -192,9 +195,18 @@ function onUiClick(ev) {
     if (ev.target.closest('[data-act="testsound"]')) { ensureAudio(); const was = cfg.sound; cfg.sound = true; beep(true); cfg.sound = was; }
     const ra = ev.target.closest('[data-rate]');
     if (ra) { const a = ra.dataset.rate; if (a === 'sort') rateSel.asc = !rateSel.asc; else { rateSel.settings = a === 'settings'; rateSel.inv = a === 'inv'; } render(); return; }
+    const rs = ev.target.closest('[data-rsort]');
+    if (rs) { const k = rs.dataset.rsort; if (rateSel.sort === k) rateSel.desc = !rateSel.desc; else { rateSel.sort = k; rateSel.desc = k !== 'name'; } render(); return; }
     const rz = ev.target.closest('[data-ratesize]');
     if (rz) { rateSel.size = +rz.dataset.ratesize; render(); return; }
     if (ev.target.closest('[data-act="ratereset"]')) { cfg.ratingW = {}; saveCfg(); render(); return; }
+    const ptt = ev.target.closest('[data-pttype]');
+    if (ptt) { ptSel.type = ptt.dataset.pttype; if (ptSel.type === 'army' && !PT_FEAT.some(([f]) => f === ptSel.sort)) { ptSel.sort = 'battleground'; ptSel.desc = true; } else if (ptSel.type === 'goods' && !PT_GOODS.some(([g]) => g === ptSel.sort) && ptSel.sort !== 'done') { ptSel.sort = 'g_cur'; ptSel.desc = true; } else if (!['army', 'goods'].includes(ptSel.type) && !['day', 'cur', 'name', 'n', 'era', 'done'].includes(ptSel.sort)) { ptSel.sort = 'day'; ptSel.desc = true; } render(); return; }
+    const pts = ev.target.closest('[data-psort]');
+    if (pts) { const k = pts.dataset.psort; if (ptSel.sort === k) ptSel.desc = !ptSel.desc; else { ptSel.sort = k; ptSel.desc = !['name', 'era', 'done'].includes(k); } render(); return; }
+    if (ev.target.closest('[data-ptgroup]')) { ptSel.group = !ptSel.group; render(); return; }
+    const pta = ev.target.closest('[data-ptarmy]');
+    if (pta) { ptSel.army = pta.dataset.ptarmy; render(); return; }
     const pv = ev.target.closest('[data-prodview]');
     if (pv) { prodView = pv.dataset.prodview; render(); return; }
     const pc = ev.target.closest('tr[data-prodcat]');
@@ -255,6 +267,10 @@ function onUiChange(ev) {
   if (pn) { setProvName(+pn.dataset.prov, pn.value); render(); }
   const bc = ev.target.closest('[data-input="bonusCode"]');
   if (bc) { bonusCode = bc.value; bonusUnlock(bonusCode).then((ok) => { if (ok) { bonusCode = ''; bonusMsg = ''; tab = 'stat'; render(); } }); }
+  const ro = ev.target.closest('[data-rateopt]');
+  if (ro) { rateSel[ro.dataset.rateopt] = ro.checked; render(); }
+  const ptq = ev.target.closest('[data-input="ptQ"]');
+  if (ptq) { ptSel.q = ptq.value; render(); }
   const rq = ev.target.closest('[data-input="rateQ"]');
   if (rq) { rateSel.q = rq.value; render(); }
   const rw = ev.target.closest('[data-ratew]');

@@ -1,2 +1,4 @@
 ## Novinky
+- **Produkce → Podle druhu** (nový výchozí pohled, jako ve FoE Helperu): záložky FP / Zboží / Pokladna / Mince / Zásoby / Medaile / Jednotky / FSP / Fragmenty / Armáda; u každé budovy výroba teď a za den, věk a čas dokončení. Řazení klikem na hlavičku sloupce, součty pod hlavičkou, hledání, přepínač „skupiny“ (stejné budovy v jednom řádku s počtem). Zboží po věcích (předchozí / aktuální / další / jiné), Armáda po oblastech (Všude / GBG / Expedice / QI) pro zvolený bonus.
+- **Rating** jako ve FoE Helperu: sloupec za každý započítaný druh (FP, zboží, pokladna, bonusy armády …), řazení klikem na kteroukoli hlavičku (výchozí nejlepší nahoře), volba „na pole“ a „📦 z inventáře“ – budovy z inventáře přímo v tabulce s nejlepším návrhem, co by nahradily. Najetí myší na hodnotu ukáže body za ni.
 - U ikony 🎁 Příhody je zelený odznak s počtem příhod, které jsou právě ve městě k vybrání (obnovuje se průběžně, jak příhody přibývají a mizí).

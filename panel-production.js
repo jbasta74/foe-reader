@@ -357,7 +357,7 @@ const PROD_CATS = [
   ['g_spec', 'Speciální zboží'], ['g_other', 'Zboží – jiné věky'], ['guild', 'Cechovní pokladna'], ['money', 'Mince'], ['supplies', 'Zásoby'],
   ['medals', 'Medaile'], ['units', 'Jednotky'], ['frags', 'Fragmenty'], ['blueprints', 'Plánky'],
 ];
-let prodView = 'cycle', prodCat = 'strategy_points';
+let prodView = 'types', prodCat = 'strategy_points';
 function dailyOverview() {
   const tot = {}, per = {}; // per[kat] = Map(název -> {n, v})
   let noData = 0;
@@ -421,7 +421,11 @@ const RATE_TYPES = [
 ];
 const rateW = () => { const w = cfg.ratingW || {}; return RATE_TYPES.map(([k, l, d, on]) => ({ k, l, per: w[k]?.per ?? d, on: w[k]?.on ?? on })); };
 const RATE_SKIP = ['street', 'off_grid', 'hub_part', 'hub_main', 'main_building', 'greatbuilding', 'military', 'friends_tavern', 'outpost_ship'];
-let rateSel = { size: 0, q: '', asc: true, settings: false, inv: false };
+let rateSel = { size: 0, q: '', asc: true, settings: false, inv: false, sort: 'score', desc: true, tile: false, withInv: false };
+// Krátké názvy druhů pro hlavičky sloupců Ratingu.
+const RATE_SHORT = { strategy_points: 'FP', forge_points_production: 'FP %', g_prev: 'Zb −1', g_cur: 'Zboží', g_next: 'Zb +1', goods_production: 'Zb %', guild: 'Pokl.', units: 'Jedn.',
+  fsp: 'FSP', frags: 'Frag.', money: 'Mince', supplies: 'Zás.', medals: 'Med.', guild_raids_action_points_collection: 'QI akce', guild_raids_coins_start: 'QI min.', guild_raids_supplies_start: 'QI zás.' };
+const rateShort = (k) => RATE_SHORT[k] || (() => { const [a, f] = k.split('-'); return ({ aa: 'ÚÚ', ad: 'OÚ', da: 'ÚO', dd: 'OO' }[a] || a) + ({ all: '', battleground: ' GBG', guild_expedition: ' Exp', guild_raids: ' QI' }[f] ?? ' ' + f); })();
 // Hodnoty budovy podle druhů ratingu (produkce za den + bonusy).
 function rateValues(e, bs) {
   const b = buildingDaily(e, S.player?.era, bs), v = { ...b.res };
@@ -514,7 +518,7 @@ function viewRating() {
   const sizes = [...new Set(all.map((b) => b.w * b.l))].sort((a, b) => a - b);
   const q = rateSel.q.trim().toLowerCase();
   const list = all.filter((b) => (!rateSel.size || b.w * b.l === rateSel.size) && (!q || b.name.toLowerCase().includes(q)))
-    .sort((a, b) => (rateSel.asc ? a.score - b.score : b.score - a.score));
+    ;
   const r2 = (x) => (Math.round(x * 100) / 100).toLocaleString(LOC());
   const goods = (v) => (v.g_prev || 0) + (v.g_cur || 0) + (v.g_next || 0);
   let h = `<div style="margin-bottom:4px"><button class="fbtn ${!rateSel.settings && !rateSel.inv ? 'on' : ''}" data-rate="list">Výsledky</button><button class="fbtn ${rateSel.inv ? 'on' : ''}" data-rate="inv">Z inventáře</button><button class="fbtn ${rateSel.settings ? 'on' : ''}" data-rate="settings">Nastavení hodnot</button>
@@ -538,23 +542,136 @@ function viewRating() {
           <td class="num"><b>${r2i(b.score)}</b></td><td style="font-size:11px">${sw.length ? sw.map((r) => `${r.parts.map((x) => esc(x.name)).join(' + ')} <span class="up">+${r2i(r.gain)}</span>`).join('<br>') : '<span class="muted">–</span>'}</td></tr>`; }).join('')}</tbody></table>
       ${noMeta ? `<p class="muted">U ${noMeta} budov z inventáře hra ještě nenačetla popis (rozměry, produkci) – načte ho třeba při otevření inventáře nebo při stavbě.</p>` : ''}`;
   }
-  h += `<div class="copyrow" style="margin-bottom:4px;flex-wrap:wrap;align-items:center">
+  // Tabulka jako ve FoE Helperu: sloupec za každý započítaný druh, řazení klikem na hlavičku, volitelně hodnoty na pole a budovy z inventáře.
+  let rows = list.map((b) => ({ ...b, inv: false }));
+  if (rateSel.withInv && S.invLoaded) {
+    const city = all.filter((b) => !b.limited);
+    for (const b of ratedInventory().list) {
+      if ((rateSel.size && b.w * b.l !== rateSel.size) || (q && !b.name.toLowerCase().includes(q))) continue;
+      rows.push({ ...b, inv: true, swap: swapSuggestions(b, city)[0] || null });
+    }
+  }
+  const W = rateW().filter((t) => t.on && t.per > 0);
+  const cols = W.filter((t) => rows.some((b) => (b.v[t.k] || 0) > 0));
+  const val = (b, k) => (rateSel.tile ? (b.v[k] || 0) / b.tiles : b.v[k] || 0);
+  const sk = rateSel.sort || 'score', dir = rateSel.desc === false ? 1 : -1;
+  const keyOf = (b) => (sk === 'name' ? b.name : sk === 'tiles' ? b.tiles : sk === 'score' ? b.score : val(b, sk));
+  rows.sort((a, b) => (sk === 'name' ? a.name.localeCompare(b.name) * -dir : (keyOf(a) - keyOf(b)) * dir) || a.name.localeCompare(b.name));
+  const th = (key, label, title = '') => `<th class="${key === 'name' ? '' : 'num '}sortable" data-rsort="${key}"${title ? ` title="${esc(title)}"` : ''}>${label}${sk === key ? (dir < 0 ? ' ▼' : ' ▲') : ''}</th>`;
+  const cell = (b, k) => { const x = val(b, k); if (!x) return '<td class="num muted">·</td>'; const pts = (b.v[k] || 0) / b.tiles / (W.find((t) => t.k === k)?.per || 1);
+    return `<td class="num" title="${esc(r2(pts))} b.">${rateSel.tile ? r2(x) : fmt(Math.round(x))}${/^(a|d)[ad]-|_production$/.test(k) ? ' %' : ''}</td>`; };
+  h += `<div class="copyrow" style="margin-bottom:4px;flex-wrap:wrap;align-items:center;gap:6px">
       <input class="pname" data-input="rateQ" placeholder="Hledat budovu" value="${esc(rateSel.q)}">
       <span><button class="fbtn ${!rateSel.size ? 'on' : ''}" data-ratesize="0">vše</button>${sizes.map((z) => `<button class="fbtn ${rateSel.size === z ? 'on' : ''}" data-ratesize="${z}">${z}</button>`).join('')}</span>
-      <button class="fbtn" data-rate="sort">${rateSel.asc ? 'nejhorší nahoře ▲' : 'nejlepší nahoře ▼'}</button></div>
-    <table><thead><tr><th>Budova</th><th class="num">Polí</th><th class="num">Skóre</th><th class="num">FP/den</th><th class="num">Zboží/den</th><th>Skladba skóre</th></tr></thead><tbody>${
-    list.map((b) => `<tr title="${esc(b.id)}"><td>${esc(b.name)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td>
-      <td class="num">${b.w}×${b.l}${b.road ? `+${r2(b.road)}` : ''}</td><td class="num"><b>${r2(b.score)}</b></td>
-      <td class="num">${b.v.strategy_points ? fmt(Math.round(b.v.strategy_points)) : ''}</td><td class="num">${goods(b.v) ? fmt(Math.round(goods(b.v))) : ''}</td>
-      <td class="muted" style="font-size:11px">${b.parts.slice(0, 3).map(([t, x]) => `${esc(t.l)} ${r2(x)}`).join(' · ')}</td></tr>`).join('')}</tbody></table>
-    <p class="muted">Postup jako FoE Helper: hodnota na pole (plocha + podíl cesty) / očekávaná hodnota na pole, sečteno přes zapnuté druhy. Produkce za 24 h s motivací
+      <label><input type="checkbox" data-rateopt="tile" ${rateSel.tile ? 'checked' : ''}> na pole</label>
+      <label><input type="checkbox" data-rateopt="withInv" ${rateSel.withInv ? 'checked' : ''}> 📦 z inventáře</label></div>
+    <div style="overflow-x:auto"><table class="pt rt"><thead><tr>${th('name', 'Budova')}${th('tiles', 'Polí')}${th('score', 'Skóre')}${cols.map((t) => th(t.k, rateShort(t.k), t.l)).join('')}${rateSel.withInv ? '<th>Nahradí</th>' : ''}</tr></thead><tbody>${
+    rows.map((b) => `<tr class="${b.inv ? 'inv' : ''}" title="${esc(b.id)}"><td>${b.inv ? '📦 ' : ''}${esc(b.name)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td>
+      <td class="num">${b.w}×${b.l}${b.road ? `+${r2(b.road)}` : ''}</td><td class="num"><b>${r2(b.score)}</b></td>${cols.map((t) => cell(b, t.k)).join('')}
+      ${rateSel.withInv ? `<td style="font-size:11px">${b.swap ? `${b.swap.parts.map((x) => esc(x.name)).join(' + ')} <span class="up">+${r2(b.swap.gain)}</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+    ${rateSel.withInv && !S.invLoaded ? '<p class="muted">Inventář ještě nebyl načten – otevřete ho ve hře.</p>' : ''}
+    <p class="muted">Klik na hlavičku řadí (znovu = obráceně); najetí myší na hodnotu ukáže body za ni. Postup jako FoE Helper: hodnota na pole (plocha + podíl cesty) / očekávaná hodnota na pole, sečteno přes zapnuté druhy. Produkce za 24 h s motivací
       ${cfg.rateFH ? '<b>bez bonusů k produkci (jako FoE Helper), včetně Velkých budov</b>' : cfg.prodBoosted !== false ? 'a s vašimi bonusy k produkci FP a zboží (vypnete volbou „jako FoE Helper“)' : 'bez bonusů k produkci'}; bonusy armády přesně podle hry (včetně sad a řetězů). Stejné budovy stejného věku jsou v jednom řádku. Hodnoty si upravíte v „Nastavení hodnot“.</p>`;
   return h;
 }
 
+// ---------- Výroba po druzích (jako FoE Helper): záložky druhů, tabulka budov, řazení klikem na hlavičku, skupiny, filtr ----------
+const PT_TYPES = [['strategy_points', 'FP'], ['goods', 'Zboží'], ['guild', 'Pokladna'], ['money', 'Mince'], ['supplies', 'Zásoby'], ['medals', 'Medaile'], ['units', 'Jednotky'], ['fsp', 'FSP'], ['frags', 'Fragmenty'], ['army', 'Armáda']];
+const PT_GOODS = [['g_prev', 'Předch. věk'], ['g_cur', 'Aktuální věk'], ['g_next', 'Další věk'], ['g_other', 'Jiné věky']];
+const PT_FEAT = [['all', 'Všude'], ['battleground', 'GBG'], ['guild_expedition', 'Expedice'], ['guild_raids', 'QI']];
+const PT_ARMY = [['aa', 'Útok útočníka'], ['ad', 'Obrana útočníka'], ['da', 'Útok obránce'], ['dd', 'Obrana obránce']];
+let ptSel = { type: 'strategy_points', group: true, q: '', sort: 'day', desc: true, army: 'aa' };
+// Výnos právě běžící výroby (jeden cyklus, s bonusy k produkci).
+function buildingCurrent(e, bs) {
+  const st = e.state || {}, bag = { res: {}, frags: {}, other: {} };
+  if (st.productionOption?.products) for (const p of st.productionOption.products) addProduct(bag, p, 1);
+  else if (st.current_product) {
+    for (const p of st.current_product.products || [st.current_product]) {
+      if (p.goods) bag.res.guild = (bag.res.guild || 0) + p.goods.reduce((a, g) => a + (g.value || 0), 0);
+      const r = p.product?.resources || p.resources?.resources;
+      if (r) for (const [id, v] of Object.entries(r)) { const key = goodKey(id); bag.res[key] = (bag.res[key] || 0) + v; }
+    }
+  }
+  applyProdBoosts(bag, e, bs);
+  return bag.res;
+}
+function ptRows() {
+  const bs = cfg.prodBoosted !== false ? prodBoostSums() : null, era = S.player?.era, out = [];
+  const goodsSum = (r) => PT_GOODS.reduce((a, [k]) => a + (r[k] || 0), 0);
+  for (const e of S.entities.values()) {
+    if (['street', 'off_grid', 'hub_part', 'hub_main', 'decoration'].includes(e.type)) continue;
+    const st = e.state || {};
+    const m = S.entProd.get(e.cityentity_id) || S.entBoost.get(e.cityentity_id);
+    const r = { name: S.names.get(e.cityentity_id) || entName(e.cityentity_id), era: m ? entEra(e, m, era) : '', n: 1,
+      done: /Finished/.test(st.__class__ || '') ? 0 : st.__class__ === 'ProducingState' ? st.next_state_transition_at || null : null };
+    if (ptSel.type === 'army') {
+      const v = rateValues(e, bs).v;
+      for (const [f] of PT_FEAT) r[f] = v[`${ptSel.army}-${f}`] || 0;
+      if (!PT_FEAT.some(([f]) => r[f])) continue;
+    } else {
+      const d = buildingDaily(e, era, bs).res, c = buildingCurrent(e, bs);
+      if (ptSel.type === 'goods') { for (const [k] of PT_GOODS) r[k] = d[k] || 0; r.day = goodsSum(d); r.cur = goodsSum(c); }
+      else { r.day = d[ptSel.type] || 0; r.cur = c[ptSel.type] || 0; }
+      if (!r.day && !r.cur) continue;
+      // Server u řady budov obsah běžící výroby neposílá (prázdný seznam) – odhad podle denní produkce a délky cyklu.
+      const po = st.productionOption;
+      if (!r.cur && st.__class__ === 'ProducingState' && po && !(po.products || []).length && r.day) { r.cur = (r.day * (po.time || 86400)) / 86400; r.est = true; }
+    }
+    out.push(r);
+  }
+  return out;
+}
+function viewProdTypes() {
+  const now = nowServer(), all = ptRows();
+  let rows = all;
+  if (ptSel.group) {
+    const g = new Map();
+    for (const r of all) {
+      const k = `${r.name}|${r.era}`, x = g.get(k);
+      if (!x) { g.set(k, { ...r }); continue; }
+      x.n++; x.est = x.est || r.est;
+      for (const f of ['day', 'cur', ...PT_GOODS.map(([k]) => k), ...PT_FEAT.map(([k]) => k)]) if (r[f] != null) x[f] = (x[f] || 0) + r[f];
+      if (r.done != null && (x.done == null || r.done < x.done)) x.done = r.done;
+    }
+    rows = [...g.values()];
+  }
+  const q = ptSel.q.trim().toLowerCase();
+  if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q));
+  const k = ptSel.sort, dir = ptSel.desc ? -1 : 1;
+  rows.sort((a, b) => (k === 'name' || k === 'era' ? String(a[k]).localeCompare(String(b[k])) : (a[k] ?? 9e15) - (b[k] ?? 9e15)) * dir || a.name.localeCompare(b.name));
+  const th = (key, label, cls = 'num') => `<th class="${cls} sortable" data-psort="${key}">${label}${ptSel.sort === key ? (ptSel.desc ? ' ▼' : ' ▲') : ''}</th>`;
+  const when = (t) => { if (t === 0) return '<span class="ok">hotovo</span>'; if (t == null) return '<span class="muted">–</span>';
+    const d = new Date((t - S.serverOffset) * 1000); return t - now < 86400 ? d.toLocaleTimeString(LOC(), { hour: '2-digit', minute: '2-digit' }) : d.toLocaleString(LOC(), { weekday: 'short', hour: '2-digit', minute: '2-digit' }); };
+  const n1 = (v) => (v ? fmt(Math.round(v)) : '<span class="muted">–</span>');
+  // součty za všechny budovy (bez filtru)
+  const sum = (f) => all.reduce((a, r) => a + (r[f] || 0), 0);
+  const bs = prodBoostSums(), boostPct = { strategy_points: bs.forge_points_production, goods: bs.goods_production, guild: bs.guild_goods_production, money: bs.coin_production, supplies: bs.supply_production }[ptSel.type];
+  const tabs = PT_TYPES.map(([t, l]) => `<button class="fbtn ${ptSel.type === t ? 'on' : ''}" data-pttype="${t}">${esc(l)}</button>`).join('');
+  let head, body;
+  if (ptSel.type === 'army') {
+    head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${PT_FEAT.map(([f, l]) => th(f, `${l}<br><small>${fmt(sum(f))} %</small>`)).join('')}</tr>`;
+    body = rows.map((r) => `<tr><td>${esc(r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_FEAT.map(([f]) => `<td class="num">${r[f] ? fmt(r[f]) + ' %' : '<span class="muted">–</span>'}</td>`).join('')}</tr>`).join('');
+  } else if (ptSel.type === 'goods') {
+    head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${PT_GOODS.map(([g, l]) => th(g, `${l}<br><small>${fmt(Math.round(sum(g)))}</small>`)).join('')}${th('done', 'Hotovo')}</tr>`;
+    body = rows.map((r) => `<tr><td>${esc(r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_GOODS.map(([g]) => `<td class="num">${n1(r[g])}</td>`).join('')}<td class="num">${when(r.done)}</td></tr>`).join('');
+  } else {
+    head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${th('cur', `Teď<br><small>${fmt(Math.round(sum('cur')))}</small>`)}${th('day', `Za den<br><small>${fmt(Math.round(sum('day')))}</small>`)}${th('era', 'Věk', '')}${th('done', 'Hotovo')}</tr>`;
+    body = rows.map((r) => `<tr><td>${esc(r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}<td class="num${r.est ? ' muted' : ''}"${r.est ? ' title="odhad – hra obsah výroby neposlala"' : ''}>${r.est ? '≈' : ''}${n1(r.cur)}</td><td class="num"><b>${n1(r.day)}</b></td><td class="muted" style="font-size:11px">${esc(ERA[r.era] || r.era || '')}</td><td class="num">${when(r.done)}</td></tr>`).join('');
+  }
+  return `<p style="display:flex;flex-wrap:wrap;gap:2px">${tabs}</p>
+    <div class="copyrow" style="margin-bottom:4px;flex-wrap:wrap;align-items:center;gap:6px">
+      <input class="pname" data-input="ptQ" placeholder="Hledat budovu" value="${esc(ptSel.q)}">
+      <button class="fbtn ${ptSel.group ? 'on' : ''}" data-ptgroup="1">skupiny</button>
+      ${ptSel.type === 'army' ? PT_ARMY.map(([a, l]) => `<button class="fbtn ${ptSel.army === a ? 'on' : ''}" data-ptarmy="${a}">${esc(l)}</button>`).join('') : ''}
+      ${ptSel.type !== 'army' ? `<label><input type="checkbox" data-cfg="prodBoosted" ${cfg.prodBoosted !== false ? 'checked' : ''}> s bonusy</label>${boostPct ? `<span class="muted">bonus +${fmt(boostPct)} %</span>` : ''}` : ''}
+    </div>
+    ${rows.length ? `<table class="pt"><thead>${head}</thead><tbody>${body}</tbody></table>` : '<p class="muted">Žádná budova tohoto druhu.</p>'}
+    <p class="muted">Klik na hlavičku sloupce řadí (znovu = obráceně). „Teď“ = právě běžící výroba (≈ odhad, když hra obsah neposlala), „Za den“ = za 24 h s motivací, náhodné odměny jako průměr. Čísla pod hlavičkou = součet všech budov.</p>`;
+}
 function viewProduction() {
-  const sw = `<p>${[['cycle', 'Aktuální cyklus'], ['daily', 'Denní přehled']].map(([k, l]) => `<button class="fbtn ${prodView === k ? 'on' : ''}" data-prodview="${k}">${l}</button>`).join('')}</p>`;
+  const sw = `<p>${[['types', 'Podle druhu'], ['cycle', 'Aktuální cyklus'], ['daily', 'Denní přehled']].map(([k, l]) => `<button class="fbtn ${prodView === k ? 'on' : ''}" data-prodview="${k}">${l}</button>`).join('')}</p>`;
   if (prodView === 'daily') return sw + (S.entities.size ? viewDaily() : '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>');
+  if (prodView === 'types') return sw + (S.entities.size ? viewProdTypes() : '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>');
   return sw + viewCycle();
 }
 function viewCycle() {

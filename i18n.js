@@ -466,6 +466,7 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['Aktivní příhody ve městě:', 'Active incidents in the city:'],
     ['okénko „FP ve skladu“ u lišty FP ve hře', '“FP in stock” box next to the game FP bar'], ['FP v balíčcích ve skladu:', 'FP in packs in stock:'], ['v liště:', 'in bar:'], ['celkem:', 'total:'],
     ['Táhnutím přesunete, dvojklik vrátí na výchozí místo. Vypnout jde v ℹ️.', 'Drag to move, double-click to reset. Turn off in ℹ️.'],
     ['Minihra obchodníka běží – pomocník je v okně 🧩 Minihra.', 'The merchant minigame is running – the helper is in the 🧩 Minigame window.'], ['Otevřít', 'Open'], ['Minihra', 'Minigame'],

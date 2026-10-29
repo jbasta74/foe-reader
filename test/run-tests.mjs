@@ -326,6 +326,18 @@ const tests = {
     if (await pg.evaluate(() => !!document.querySelector('#foe-reader-fpbar'))) throw new Error('okénko FP se nevyplo');
     return errors;
   },
+  async 'Příhody: odznak s počtem aktivních u ikony'() {
+    const now = Math.floor(Date.now() / 1000);
+    const list = [{ hiddenRewardId: 1, type: 'incident_fisherman', startTime: now - 100, expireTime: now + 3600, position: { context: 'cityRoadSmall' } },
+      { hiddenRewardId: 2, type: 'incident_wine_cask', startTime: now - 100, expireTime: now + 3600, position: { context: 'cityRoadSmall' } },
+      { hiddenRewardId: 3, type: 'incident_pothole_1x1', startTime: now + 3600, expireTime: now + 7200, position: { context: 'cityRoadSmall' } },
+      { hiddenRewardId: 4, type: 'ge_relic_common', startTime: now - 100, expireTime: now + 3600, position: { context: 'guildExpedition' } }];
+    const { pg, errors } = await page([startup(), msg('HiddenRewardService.getOverview', { hiddenRewards: list })]);
+    await pg.waitForTimeout(600);
+    const b = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="inc"] .bdg')?.textContent);
+    if (b !== '2') throw new Error('odznak příhod: ' + b);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

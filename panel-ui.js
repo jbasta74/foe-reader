@@ -24,6 +24,7 @@ function mount() {
     .ico{position:relative;width:34px;height:30px;background:#2b2116;border:1px solid #8a6a3a;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.4)}
     .ico:hover{background:#4a3a26}.ico.on{background:#8a6a3a;border-color:#f3d9a4}
     .upd{background:#e6f2dc;border:1px solid #7aa35a;border-radius:6px;padding:6px 8px;margin:6px 0}
+    .ico .bdg.inc{background:#2e7d32}
     .ico .bdg{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;border-radius:8px;background:#b0410f;color:#fff;font-size:10px;font-weight:700;line-height:16px;padding:0 3px}
     .ico.alert{animation:pulse 1s ease-in-out infinite}
     .panel{display:none;position:absolute;top:calc(100% + 6px);left:0;width:580px;max-width:96vw;background:#fbf6ec;color:#2b2116;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;flex-direction:column}
@@ -357,6 +358,8 @@ function openTabWin(id, restore) {
 }
 function closeTabWin(id) { tabWins.get(id)?.close(); }
 // Nástrojová lišta: ikona = okno záložky (klik otevře / zavře), odznaky u upozornění.
+// Počet příhod, které jsou teď ve městě k vybrání (jako záložka Příhody: jen incident_*, ne relikvie expedice).
+const activeIncidents = () => { const now = nowServer(); return (S.incidents?.list || []).filter((h) => /^incident_/.test(h.type) && h.startTime <= now && now < h.expireTime).length; };
 function renderIcons() {
   const el = root?.getElementById('icons'), bar = root?.getElementById('bar');
   if (!el) return;
@@ -364,7 +367,8 @@ function renderIcons() {
   const tg = root.getElementById('toggle');
   if (!cfg.uiBar) { el.innerHTML = ''; return; }
   el.innerHTML = L(TABS.filter(([id]) => tabVisible(id)).map(([id, l]) => {
-    const badge = id === 'alerts' && S.unread ? `<span class="bdg">${S.unread}</span>` : id === 'about' && updateAvail() ? '<span class="bdg">↑</span>' : '';
+    const inc = id === 'inc' ? activeIncidents() : 0;
+    const badge = id === 'alerts' && S.unread ? `<span class="bdg">${S.unread}</span>` : id === 'about' && updateAvail() ? '<span class="bdg">↑</span>' : inc ? `<span class="bdg inc" title="Aktivní příhody ve městě: ${inc}">${inc}</span>` : '';
     const alertCls = id === 'alerts' && (S.unreadLoud || 0) > 0 ? ' alert' : '';
     return `<button class="ico${tabWins.has(id) ? ' on' : ''}${alertCls}" data-ico="${id}" title="${l === '🔔' ? 'Upozornění' : l === 'ℹ️' ? (updateAvail() ? `Nová verze ${update.tag} – O rozšíření a nastavení` : 'O rozšíření a nastavení') : l}">${ICONS[id] || '•'}${badge}</button>`;
   }).join(''));
@@ -570,9 +574,11 @@ function scheduleRender() {
     if (mapWin && mapWin.rev !== S.mapRev) { mapWin.rev = S.mapRev; renderMapWin(); }
     renderCalcWin();
     try { renderFpBar(); } catch { /* ignore */ }
+    renderIcons();
   }, 500);
 }
 setInterval(() => {
+  renderIcons(); // odznak příhod (začínají a končí s časem)
   if (open && ['tav', 'gbg', 'prod', 'inc'].includes(tab)) render();
   else for (const id of tabWins.keys()) if (['tav', 'gbg', 'prod', 'inc'].includes(id)) renderTabWin(id);
 }, 15000);

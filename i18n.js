@@ -466,6 +466,7 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['Nához – koeficient', 'Bid – factor'], ['Kolik na místo vložit při náhozu podle zvoleného koeficientu', 'How much to invest per place when bidding with the chosen factor'], ['Při náhozu dostanete', 'When bidding you get'],
     ['Podle druhu', 'By type'], ['Pokladna', 'Treasury'], ['skupiny', 'groups'], ['s bonusy', 'with boosts'], ['bonus', 'boost'], ['Teď', 'Now'], ['Hotovo', 'Done'], ['hotovo', 'done'],
     ['Žádná budova tohoto druhu.', 'No building of this type.'], ['odhad – hra obsah výroby neposlala', 'estimate – the game did not send the production content'],
     ['Klik na hlavičku sloupce řadí (znovu = obráceně). „Teď“ = právě běžící výroba (≈ odhad, když hra obsah neposlala), „Za den“ = za 24 h s motivací, náhodné odměny jako průměr. Čísla pod hlavičkou = součet všech budov.', 'Click a column header to sort (again = reverse). “Now” = running production (≈ estimate when the game did not send it), “Per day” = per 24 h with motivation, random rewards as average. Numbers under the header = sum of all buildings.'],

@@ -338,6 +338,18 @@ const tests = {
     if (b !== '2') throw new Error('odznak příhod: ' + b);
     return errors;
   },
+  async 'Kalkulačka VB: nához se přepočítá po přepnutí koeficientu'() {
+    const { pg, errors } = await page([startup([arc]), foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'), msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })]);
+    const click = (f) => pg.evaluate((f) => document.querySelector('#foe-reader-calc').shadowRoot.querySelector(`[data-factor="${f}"]`).click(), f);
+    await click('1.9'); await pg.waitForTimeout(300);
+    let t = (await calcText(pg)).replace(/\u00a0/g, ' ');
+    // P1 920 × 1,9 = 1 748
+    if (!/1 748/.test(t)) throw new Error('nához ×1,9 nesedí: ' + t.slice(0, 400));
+    await click('arc'); await pg.waitForTimeout(300);
+    t = (await calcText(pg)).replace(/\u00a0/g, ' ');
+    if (/1 748/.test(t) || !/1 830/.test(t)) throw new Error('po přepnutí na Arc se nához nepřepočítal: ' + t.slice(0, 400));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

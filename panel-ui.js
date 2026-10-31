@@ -218,7 +218,7 @@ function onUiClick(ev) {
     const mg = ev.target.closest('[data-mapgrid]');
     if (mg) { mapGrid = mg.dataset.mapgrid; render(); renderMapWin(); return; }
     const fb = ev.target.closest('[data-factor]');
-    if (fb) { cfg.arcFactor = fb.dataset.factor === 'arc' ? 'arc' : +fb.dataset.factor; saveCfg(); render(); return; }
+    if (fb) { cfg.arcFactor = fb.dataset.factor === 'arc' ? 'arc' : +fb.dataset.factor; saveCfg(); render(); renderCalcWin(); return; }
     const cp = ev.target.closest('[data-act="copy"]');
     if (cp) {
       const txt = cp.dataset.text;
@@ -260,7 +260,7 @@ function onUiClick(ev) {
 function onUiChange(ev) {
   const el = ev.target.closest('[data-cfg]');
   if (el) {
-    cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render();
+    cfg[el.dataset.cfg] = el.type === 'checkbox' ? el.checked : +el.value; saveCfg(); render(); renderCalcWin();
     if (['uiBar', 'barVertical'].includes(el.dataset.cfg)) { updateBadge(); placePanel(); }
   }
   const pn = ev.target.closest('[data-prov]');

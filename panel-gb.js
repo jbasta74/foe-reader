@@ -111,13 +111,17 @@ function foreignCalcHtml() {
       .sort((a, b) => a.rank - b.rank);
     html += `<p><b>${esc(gb ? entName(gb.cityentity_id) : 'Otevřená VB')}</b> · ${esc(owner)}${gb ? ` · úr. ${gb.level}` : ''}<br>
       Chybí: <b>${remaining != null ? fmt(remaining) : '?'}</b> FP · bonus Archy ${fmt(arc)} % (${gold ? 'zlatý' : 'měděný'}) · váš vklad ${fmt(mine)}${S.packageFP != null ? ` · máte ${fmt((S.resources.strategy_points || 0) + S.packageFP)} FP` : ''}</p>`;
+    // Nához podle zvoleného koeficientu (Arc / 1,9 / vlastní) – přepočítá se hned po přepnutí.
+    const nc = gb && rk ? nahozCalc(rk, gb, S.players.get(gb.player_id)?.name || S.gbRanking?.ownerName || '') : null;
+    const nahozOf = new Map((nc?.places || []).map((x) => [x.rank, x.val]));
+    if (nc) html += `<div class="cfg"><div>Nához – koeficient ${factorPicker(nc.gold)}</div></div>`;
     if (places.length) {
       // Po vlastním náhozu: nejlepší místo, které už máte jisté (nikdo vás nepředběhne), je zelené „✓ vaše“;
       // horší místa jsou přeškrtnutá (dvě místa mít nejde), lepší místa ukazují, kolik přidat na posun výš.
       const costOf = (i) => (remaining != null ? Math.max(0, Math.ceil((remaining + (others[i]?.forge_points || 0) - mine) / 2)) : null);
       const doneIdx = mine > 0 ? places.findIndex((p, i) => costOf(i) === 0) : -1;
       const myRank = (rk || []).find((r) => r.player?.player_id === myId())?.rank;
-      html += `<table><thead><tr><th>Místo</th><th>Drží (bez vás)</th><th>Odměna FP</th><th>Medaile</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
+      html += `<table><thead><tr><th>Místo</th><th>Drží (bez vás)</th><th>Odměna FP</th><th>Medaile</th><th title="Kolik na místo vložit při náhozu podle zvoleného koeficientu">Nához ×${dec(factorNow(gold))}</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
         places.map((p, i) => {
           const holder = others[i]?.forge_points || 0;
           const base = p.reward.strategy_point_amount || 0;
@@ -133,6 +137,7 @@ function foreignCalcHtml() {
           return `<tr class="${cls}"${done ? ' title="Místo máte jisté – nikdo vás už nepředběhne."' : gone ? ' title="Horší než místo, které už máte."' : mine > 0 && possible ? ` title="Přidat k vašim ${fmt(mine)} FP"` : ''}><td>${p.rank}.${p.rank === myRank ? ' 👤' : ''}</td><td class="num">${fmt(holder)}</td>
             <td class="num">${fmt(base)} → <b>${fmt(withArc)}</b></td>
             <td class="num" title="${medBase ? `${fmt(medBase)} bez bonusu Archy` : ''}">${medBase ? fmt(medArc) : ''}</td>
+            <td class="num"${nahozOf.has(p.rank) ? ` title="Při náhozu dostanete ${fmt(withArc)} FP: ${withArc - nahozOf.get(p.rank) >= 0 ? '+' : ''}${fmt(withArc - nahozOf.get(p.rank))}"` : ''}><b>${nahozOf.has(p.rank) ? fmt(nahozOf.get(p.rank)) : ''}</b></td>
             <td class="num">${costTxt}</td>
             <td class="num ${profit > 0 ? 'hi' : ''}">${profit != null ? (profit > 0 ? '+' : '') + fmt(profit) : ''}</td></tr>`;
         }).join('')}</tbody></table>
@@ -145,7 +150,7 @@ function foreignCalcHtml() {
   }
   if (gb && rk) {
     const c = nahozCalc(rk, gb, S.players.get(gb.player_id)?.name || S.gbRanking.ownerName || '');
-    if (c && c.text) html += `<div class="cfg"><div><b>Text do vlákna</b> · koeficient ${factorPicker(c.gold)}</div>
+    if (c && c.text) html += `<div class="cfg"><div><b>Text do vlákna</b> <span class="muted">(koeficient ${dec(factorNow(c.gold))})</span></div>
       <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>`;
   }
   return html;

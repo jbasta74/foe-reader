@@ -217,6 +217,10 @@ function onUiClick(ev) {
     if (ev.target.closest('[data-act="calcwin"]')) { openCalcWin(); return; }
     const mg = ev.target.closest('[data-mapgrid]');
     if (mg) { mapGrid = mg.dataset.mapgrid; render(); renderMapWin(); return; }
+    const mmo = ev.target.closest('[data-mapmode]');
+    if (mmo) { mapMode = mmo.dataset.mapmode; render(); renderMapWin(); return; }
+    const mf = ev.target.closest('[data-mapfit]');
+    if (mf) { mapFit = mapFit === mf.dataset.mapfit ? null : mf.dataset.mapfit; render(); renderMapWin(); return; }
     const fb = ev.target.closest('[data-factor]');
     if (fb) { cfg.arcFactor = fb.dataset.factor === 'arc' ? 'arc' : +fb.dataset.factor; saveCfg(); render(); renderCalcWin(); return; }
     const cp = ev.target.closest('[data-act="copy"]');

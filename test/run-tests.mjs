@@ -361,6 +361,25 @@ const tests = {
     if (!r.uiBar || r.barVertical || r.hidden || r.sound !== false) throw new Error('synchronizace: ' + JSON.stringify(r));
     return errors;
   },
+  async 'Mapa: odebratelné cesty a volné místo'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      // 10×6: radnice 2×2 vlevo nahoře, cesta v řádku y=2 (x 0–9) + odbočka x=5,y=3 (vede jen k budově, která cestu nepotřebuje)
+      S.grids.main = { unlocked: [{ x: 0, y: 0, width: 10, length: 6 }], blocked: [] };
+      S.ent.set('H_T', { w: 2, l: 2, road: 1, type: 'main_building' }); S.ent.set('S_R', { w: 1, l: 1, road: 1, type: 'street' });
+      S.ent.set('R_A', { w: 2, l: 2, road: 1, type: 'residential' }); S.ent.set('D_X', { w: 1, l: 1, road: 0, type: 'decoration' });
+      const E = new Map(); let id = 1; const add = (c, x, y, conn = 1) => E.set(id, { id: id++, player_id: myId(), cityentity_id: c, x, y, connected: conn });
+      add('H_T', 0, 0); for (let x = 0; x < 10; x++) add('S_R', x, 2); add('S_R', 5, 3); add('R_A', 3, 0); add('R_A', 6, 3); add('D_X', 5, 4);
+      S.entities = E;
+      const M = mapModel('main');
+      return { rem: M.removable.sort(), lf: largestFree(M), fit22: freeFits(M, 2, 2).length };
+    });
+    // stačí cesta x 1–6 v řádku 2 (radnice se dotýká x1, A x3–4, B x6); odebrat jde x0, x7, x8, x9 a odbočka 5,3
+    if (JSON.stringify(r.rem) !== JSON.stringify(['0,2', '5,3', '7,2', '8,2', '9,2'])) throw new Error('odebratelné cesty: ' + JSON.stringify(r.rem));
+    if (!r.lf || r.lf.w * r.lf.l < 4) throw new Error('největší volný obdélník: ' + JSON.stringify(r.lf));
+    if (!(r.fit22 >= 2)) throw new Error('volné místo 2×2: ' + r.fit22);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

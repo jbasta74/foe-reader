@@ -55,11 +55,22 @@ function viewTaverns() {
 
 // ===================== Mapa města / osady =====================
 let mapGrid = 'main';
+// Model mapy se počítá znovu jen při změně rozmístění (rozbor cest a volného místa je náročnější).
+let mapCache = null;
 function mapModel(gridId) {
   const g = S.grids[gridId];
   const list = gridId === 'main' ? [...S.entities.values()].filter((e) => (e.player_id == null || e.player_id === myId()))
     : (S.gridMap?.[gridId] ? [...S.gridMap[gridId].entities.values()] : []);
   if (!g || !list.length) return null;
+  let h = list.length * 7 + S.ent.size;
+  for (const e of list) h = (h * 31 + (e.x || 0) * 977 + (e.y || 0) * 131 + e.cityentity_id.length) % 1e9;
+  const key = `${gridId}|${h}|${g.unlocked.length}`;
+  if (mapCache?.key === key) return mapCache.M;
+  const M = mapModelRaw(g, list);
+  mapCache = { key, M };
+  return M;
+}
+function mapModelRaw(g, list) {
   const tiles = new Set();
   for (const a of g.unlocked) for (let x = 0; x < a.width; x++) for (let y = 0; y < a.length; y++) tiles.add(`${(a.x || 0) + x},${(a.y || 0) + y}`);
   const occ = new Map(); // "x,y" -> entity
@@ -100,8 +111,90 @@ function mapModel(gridId) {
   const noRoadAtRoad = items.filter((it) => !it.isRoad && !it.isImp && it.m.road === 0 && it.m.type !== 'main_building' && touchesRoad(it));
   const notConnected = items.filter((it) => !it.isRoad && it.m.road > 0 && !it.e.connected);
   const xs = [...tiles].map((k) => +k.split(',')[0]), ys = [...tiles].map((k) => +k.split(',')[1]);
-  return { tiles, items, occ, road, deadRoads, free, noRoadAtRoad, notConnected, missing,
+  const removable = removableRoads(items, road, occ, nb);
+  return { tiles, items, occ, road, deadRoads, free, noRoadAtRoad, notConnected, missing, removable,
     minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+}
+// Cesty, které jde odebrat, aniž by se odpojila některá budova, která je teď připojená k radnici.
+// Po kusech cest (dvouproudá 2×2 je jeden kus) od konců se zkusí každý odebrat; zůstane-li vše připojené, odebere se natrvalo –
+// výsledek je sada, kterou jde odebrat celou najednou. Budovy s dvouproudou cestou potřebují spojení po dvouproudých cestách.
+function removableRoads(items, road, occ, nb) {
+  const th = items.find((it) => it.m.type === 'main_building');
+  const roads = items.filter((it) => it.isRoad);
+  if (!th || !roads.length) return [];
+  const tilesOf = (it) => { const o = []; for (let x = 0; x < it.m.w; x++) for (let y = 0; y < it.m.l; y++) o.push(`${it.x0 + x},${it.y0 + y}`); return o; };
+  const edge = (it) => { const o = []; for (let x = -1; x <= it.m.w; x++) for (let y = -1; y <= it.m.l; y++) { if ((x === -1 || x === it.m.w) === (y === -1 || y === it.m.l)) continue; o.push(`${it.x0 + x},${it.y0 + y}`); } return o; };
+  const thEdge = edge(th);
+  const gone = new Set();
+  const lvlAt = (k) => { const it = occ.get(k); return it && it.isRoad && !gone.has(it) ? it.m.road || 1 : 0; };
+  const reach = (L) => { const seen = new Set(), q = thEdge.filter((k) => lvlAt(k) >= L); for (const k of q) seen.add(k);
+    while (q.length) { const k = q.pop(); for (const n of nb(k)) if (!seen.has(n) && lvlAt(n) >= L) { seen.add(n); q.push(n); } } return seen; };
+  const needers = items.filter((it) => !it.isRoad && !it.isImp && it.m.road > 0 && it.m.type !== 'main_building').map((it) => ({ it, ed: edge(it), L: Math.min(2, it.m.road) }));
+  const conn = (r1, r2, n) => n.ed.some((k) => (n.L > 1 ? r2 : r1).has(k));
+  const b1 = reach(1), b2 = reach(2);
+  // Opatrně: budova, kterou hra hlásí jako připojenou, ale model ji při její úrovni cesty nespojí (dvouproudé cesty), se hlídá aspoň
+  // jako jednoproudá; když ani to ne, cesty kolem ní se neodebírají.
+  const keep = new Set();
+  for (const n of needers) if (!conn(b1, b2, n) && n.it.e.connected) { if (n.ed.some((k) => b1.has(k))) n.L = 1; else for (const k of n.ed) { const r = occ.get(k); if (r?.isRoad) keep.add(r); } }
+  const need = needers.filter((n) => conn(b1, b2, n));
+  const ok = () => { const r1 = reach(1), r2 = reach(2); return need.every((n) => conn(r1, r2, n)); };
+  const deg = (it) => tilesOf(it).reduce((a, k) => a + nb(k).filter((n) => lvlAt(n) && occ.get(n) !== it).length, 0);
+  const out = [];
+  for (const it of roads.sort((a, b) => deg(a) - deg(b))) {
+    if (keep.has(it)) continue;
+    gone.add(it);
+    if (!tilesOf(it).some((k) => b1.has(k)) || ok()) out.push(...tilesOf(it)); else gone.delete(it);
+  }
+  return out;
+}
+// Volné místo: kolik budov dané velikosti se vejde (hladově, bez překryvu, bez ohledu na cestu) a kam.
+function freeFits(M, w, l) {
+  const ck = `${w}×${l}`;
+  if ((M._fits ||= {})[ck]) return M._fits[ck];
+  const used = new Set(M.occ.keys()), spots = [];
+  const ys = [], xs = [];
+  for (let y = M.minY; y <= M.maxY; y++) ys.push(y);
+  for (let x = M.minX; x <= M.maxX; x++) xs.push(x);
+  const fits = (x0, y0, W, L) => { for (let x = 0; x < W; x++) for (let y = 0; y < L; y++) { const k = `${x0 + x},${y0 + y}`; if (!M.tiles.has(k) || used.has(k)) return false; } return true; };
+  for (const y of ys) for (const x of xs) for (const [W, L] of w === l ? [[w, l]] : [[w, l], [l, w]]) {
+    if (!fits(x, y, W, L)) continue;
+    spots.push({ x, y, w: W, l: L });
+    for (let a = 0; a < W; a++) for (let b = 0; b < L; b++) used.add(`${x + a},${y + b}`);
+    break;
+  }
+  return (M._fits[ck] = spots);
+}
+// Největší volný obdélník (plocha) – histogram po řádcích.
+function largestFree(M) {
+  const W = M.maxX - M.minX + 1, hgt = new Array(W).fill(0);
+  let best = { a: 0 };
+  for (let y = M.minY; y <= M.maxY; y++) {
+    for (let i = 0; i < W; i++) { const k = `${M.minX + i},${y}`; hgt[i] = M.tiles.has(k) && !M.occ.has(k) ? hgt[i] + 1 : 0; }
+    const st = [];
+    for (let i = 0; i <= W; i++) {
+      const h = i < W ? hgt[i] : 0;
+      while (st.length && hgt[st[st.length - 1]] >= h) {
+        const top = st.pop(), hh = hgt[top], left = st.length ? st[st.length - 1] + 1 : 0, ww = i - left;
+        if (hh * ww > best.a) best = { a: hh * ww, w: ww, l: hh, x: M.minX + left, y: y - hh + 1 };
+      }
+      st.push(i);
+    }
+  }
+  return best.a ? best : null;
+}
+let mapMode = 'type', mapFit = null; // obarvení mapy ('type' | 'rate'), zvýrazněná velikost volného místa ('w×l')
+// Velikosti pro hledání místa: půdorysy budov z inventáře + pár běžných.
+function fitSizes() {
+  const s = new Set(['1×1', '2×2', '3×3', '4×4']);
+  for (const it of S.inv?.values?.() || []) { const id = it.item?.__class__ === 'BuildingItemPayload' ? it.item.cityEntityId : null; const m = id && S.ent.get(id);
+    if (m && it.stock > 0 && m.type !== 'street') s.add(`${Math.min(m.w, m.l)}×${Math.max(m.w, m.l)}`); }
+  return [...s].sort((a, b) => { const [a1, a2] = a.split('×').map(Number), [b1, b2] = b.split('×').map(Number); return a1 * a2 - b1 * b2 || a1 - b1; });
+}
+// Skóre Ratingu podle budovy na mapě (stejné seskupení jako záložka Rating).
+function mapRateScores() {
+  const out = new Map();
+  try { for (const b of ratedBuildings()) out.set(`${b.id}|${b.era}`, b.score); } catch { /* bez dat */ }
+  return out;
 }
 const GRID_NAMES = { main: 'Město', cultural_outpost: 'Osada', era_outpost: 'Kolonie', guild_raids: 'Kvantové invaze' };
 function mapSvg(M, t) {
@@ -109,17 +202,26 @@ function mapSvg(M, t) {
   const X = (x) => (x - M.minX) * t, Y = (y) => (y - M.minY) * t;
   let svg = `<svg width="${W * t}" height="${Hh * t}" style="background:#3d3a33;display:block">`;
   for (const k of M.tiles) { const [x, y] = k.split(',').map(Number); svg += `<rect x="${X(x)}" y="${Y(y)}" width="${t}" height="${t}" fill="#efe6d2"/>`; }
-  const dead = new Set(M.deadRoads), bad = new Set(M.noRoadAtRoad), nc = new Set(M.notConnected);
+  const dead = new Set(M.deadRoads), bad = new Set(M.noRoadAtRoad), nc = new Set(M.notConnected), rem = new Set(M.removable || []);
   const sw = Math.max(1, t / 6);
+  // Rating: barva od červené (nejhorší) po zelenou (nejlepší) podle pořadí skóre budov na mapě
+  let rateCol = null, rateOf = null;
+  if (mapMode === 'rate') {
+    const sc = mapRateScores(), keyOf = (e) => { const m = S.entProd.get(e.cityentity_id) || S.entBoost.get(e.cityentity_id); return `${e.cityentity_id}|${m ? entEra(e, m, S.player?.era) : ''}`; };
+    rateOf = (it) => sc.get(keyOf(it.e));
+    const vals = [...new Set(M.items.map(rateOf).filter((v) => v != null))].sort((a, b) => a - b);
+    rateCol = (v) => { if (v == null) return '#bdb5a6'; const q = vals.length > 1 ? vals.indexOf(v) / (vals.length - 1) : 1; return `hsl(${Math.round(q * 120)},65%,45%)`; };
+  }
   for (const it of M.items) {
-    const col = it.isRoad ? '#8a8378' : it.isImp ? '#8b5a2b' : it.m.type === 'main_building' ? '#c0392b' : it.m.road > 1 ? '#2c5aa0' : it.m.road > 0 ? '#5b8fd6' : '#5aa05a';
+    const col = rateCol && !it.isRoad && !it.isImp && it.m.type !== 'main_building' ? rateCol(rateOf(it)) : it.isRoad ? '#8a8378' : it.isImp ? '#8b5a2b' : it.m.type === 'main_building' ? '#c0392b' : it.m.road > 1 ? '#2c5aa0' : it.m.road > 0 ? '#5b8fd6' : '#5aa05a';
     const stroke = nc.has(it) ? ` stroke="#e00" stroke-width="${sw * 1.5}"` : bad.has(it) ? ` stroke="#e8a317" stroke-width="${sw * 1.5}"` : ` stroke="#2b2116" stroke-width="${sw / 3}"`;
     if (it.isRoad) {
       for (let x = 0; x < it.m.w; x++) for (let y = 0; y < it.m.l; y++) { const k = `${it.x0 + x},${it.y0 + y}`;
-        svg += `<rect x="${X(it.x0 + x)}" y="${Y(it.y0 + y)}" width="${t}" height="${t}" fill="${dead.has(k) ? '#d9534f' : col}"/>`; }
+        svg += `<rect x="${X(it.x0 + x)}" y="${Y(it.y0 + y)}" width="${t}" height="${t}" fill="${dead.has(k) ? '#d9534f' : rem.has(k) ? '#e8a317' : col}"/>`; }
       continue;
     }
-    const tip = `${it.name} (${it.m.w}×${it.m.l}${it.m.road ? ', cesta ' + it.m.road : ', bez cesty'})`;
+    const rs = rateOf ? rateOf(it) : null;
+    const tip = `${it.name} (${it.m.w}×${it.m.l}${it.m.road ? ', cesta ' + it.m.road : ', bez cesty'})${rs != null ? ` · skóre ${(Math.round(rs * 100) / 100).toLocaleString(LOC())}` : ''}`;
     svg += `<rect x="${X(it.x0) + 0.5}" y="${Y(it.y0) + 0.5}" width="${it.m.w * t - 1}" height="${it.m.l * t - 1}" fill="${col}"${stroke}><title>${esc(tip)}</title></rect>`;
     // název do větších budov, když je dost místa
     if (t >= 14 && it.m.w * t >= 40) {
@@ -129,16 +231,25 @@ function mapSvg(M, t) {
       svg += `<text x="${X(it.x0) + it.m.w * t / 2}" y="${Y(it.y0) + it.m.l * t / 2 + fs / 3}" font-size="${fs}" text-anchor="middle" fill="#fff" pointer-events="none" style="font-family:system-ui,sans-serif">${esc(label)}</text>`;
     }
   }
+  // volné místo pro zvolenou velikost
+  if (mapFit) {
+    const [fw, fl] = mapFit.split('×').map(Number);
+    for (const s of freeFits(M, fw, fl)) svg += `<rect x="${X(s.x) + 1}" y="${Y(s.y) + 1}" width="${s.w * t - 2}" height="${s.l * t - 2}" fill="rgba(46,125,50,.25)" stroke="#2e7d32" stroke-width="${Math.max(1.5, t / 5)}" stroke-dasharray="${t / 2}"><title>${s.w}×${s.l}</title></rect>`;
+  }
   return svg + '</svg>';
 }
 function mapStats(M) {
   const roadTiles = M.road.size, unl = M.tiles.size;
   return `<span class="chip">plocha ${fmt(unl)} polí</span><span class="chip">cesty ${fmt(roadTiles)} (${Math.round(roadTiles / unl * 100)} %)</span><span class="chip">volno ${fmt(M.free)}</span>
-    ${M.deadRoads.length ? `<span class="chip hi">zbytečné cesty ${M.deadRoads.length}</span>` : ''}
+    ${M.removable?.length ? `<span class="chip hi" title="Tolik polí cesty jde odebrat, aniž by se odpojila některá budova (oranžově; červeně slepé konce)">odebratelné cesty ${M.removable.length}${M.deadRoads.length ? ` (slepé ${M.deadRoads.length})` : ''}</span>` : M.deadRoads.length ? `<span class="chip hi">zbytečné cesty ${M.deadRoads.length}</span>` : ''}
+    ${(() => { const nr = M.items.filter((it) => !it.isRoad && !it.isImp && it.m.road > 0).length; return nr ? `<span class="chip" title="Polí cesty na jednu budovu, která cestu potřebuje">${dec((Math.round((M.road.size / nr) * 100) / 100).toFixed(2))} cesty / budovu</span>` : ''; })()}
     ${M.noRoadAtRoad.length ? `<span class="chip">bez potřeby cesty u cesty: ${M.noRoadAtRoad.length}</span>` : ''}
-    ${M.notConnected.length ? `<span class="chip hi">nepřipojeno ${M.notConnected.length}</span>` : ''}`;
+    ${M.notConnected.length ? `<span class="chip hi">nepřipojeno ${M.notConnected.length}</span>` : ''}
+    <br><span class="muted">Obarvit:</span> ${[['type', 'podle druhu'], ['rate', 'podle Ratingu']].map(([k, l]) => `<button class="fbtn ${mapMode === k ? 'on' : ''}" data-mapmode="${k}">${l}</button>`).join('')}
+    ${(() => { const lf = largestFree(M); return `<br><span class="muted">Volné místo${lf ? ` (největší ${lf.w}×${lf.l})` : ''}:</span> ${fitSizes().map((z) => { const [a, b] = z.split('×').map(Number); const n = freeFits(M, a, b).length;
+      return `<button class="fbtn ${mapFit === z ? 'on' : ''}" data-mapfit="${z}" title="Kolik budov ${z} se vejde do volného místa (bez ohledu na cestu) – klik ukáže kam">${z}: ${n}×</button>`; }).join('')}`; })()}`;
 }
-const MAP_LEGEND = '🟦 potřebuje cestu (tmavší = dvouproudou) · 🟩 cestu nepotřebuje · ⬛ cesta, <span style="color:#d9534f">červená</span> = slepá cesta k ničemu · 🟫 překážka · oranžový okraj = cestu nepotřebuje, a stojí u ní · červený okraj = nepřipojeno';
+const MAP_LEGEND = '🟦 potřebuje cestu (tmavší = dvouproudou) · 🟩 cestu nepotřebuje · ⬛ cesta, <span style="color:#d9534f">červená</span> = slepá cesta k ničemu, <span style="color:#e8a317">oranžová</span> = cesta, kterou jde odebrat · zelený čárkovaný rámeček = kam se vejde zvolená velikost · v režimu Rating červená = nejhorší, zelená = nejlepší · 🟫 překážka · oranžový okraj = cestu nepotřebuje, a stojí u ní · červený okraj = nepřipojeno';
 function gridPicker() {
   const grids = Object.keys(S.grids);
   if (!grids.includes(mapGrid)) mapGrid = grids[0];
@@ -307,6 +418,8 @@ function openMapWin() {
     const b = ev.target.closest('button');
     if (!b) return;
     if (b.dataset.mapgrid) { mapGrid = b.dataset.mapgrid; renderMapWin(true); render(); }
+    else if (b.dataset.mapmode) { mapMode = b.dataset.mapmode; renderMapWin(); render(); }
+    else if (b.dataset.mapfit) { mapFit = mapFit === b.dataset.mapfit ? null : b.dataset.mapfit; renderMapWin(); render(); }
     else if (b.dataset.z === 'in') { mapWin.zoom = Math.min(40, Math.round(mapWin.zoom * 1.25)); renderMapWin(); saveMapWin(); }
     else if (b.dataset.z === 'out') { mapWin.zoom = Math.max(3, Math.round(mapWin.zoom / 1.25)); renderMapWin(); saveMapWin(); }
     else if (b.dataset.z === 'fit') { renderMapWin(true); saveMapWin(); }

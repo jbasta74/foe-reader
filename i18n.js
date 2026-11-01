@@ -466,6 +466,7 @@ globalThis.FOE_I18N = {
     ['další produkce', 'next production'],
     ['dní', 'days'],
     ['VB', 'GB'],
+    ['Lišta a zobrazené záložky se nastavují pro každý svět zvlášť.', 'The bar and visible tabs are set per world.'],
     ['Nához – koeficient', 'Bid – factor'], ['Kolik na místo vložit při náhozu podle zvoleného koeficientu', 'How much to invest per place when bidding with the chosen factor'], ['Při náhozu dostanete', 'When bidding you get'],
     ['Podle druhu', 'By type'], ['Pokladna', 'Treasury'], ['skupiny', 'groups'], ['s bonusy', 'with boosts'], ['bonus', 'boost'], ['Teď', 'Now'], ['Hotovo', 'Done'], ['hotovo', 'done'],
     ['Žádná budova tohoto druhu.', 'No building of this type.'], ['odhad – hra obsah výroby neposlala', 'estimate – the game did not send the production content'],

@@ -350,6 +350,17 @@ const tests = {
     if (/1 748/.test(t) || !/1 830/.test(t)) throw new Error('po přepnutí na Arc se nához nepřepočítal: ' + t.slice(0, 400));
     return errors;
   },
+  async 'Nastavení lišty platí jen pro daný svět (nesynchronizuje se)'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      cfg.uiBar = true; cfg.barVertical = false; cfg.hiddenTabs = []; cfg.sound = true;
+      const later = Date.now() + 10000;
+      applySyncedCfg({ uiBar: false, barVertical: true, hiddenTabs: ['log'], sound: false, _kt: { uiBar: later, barVertical: later, hiddenTabs: later, sound: later } });
+      return { uiBar: cfg.uiBar, barVertical: cfg.barVertical, hidden: cfg.hiddenTabs.length, sound: cfg.sound };
+    });
+    if (!r.uiBar || r.barVertical || r.hidden || r.sound !== false) throw new Error('synchronizace: ' + JSON.stringify(r));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

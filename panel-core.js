@@ -677,17 +677,20 @@ const saveCfg = () => {
   cfg._t = now; cfgLast = cfgSnap();
   saveCfgLocal(); globalThis.FOE_STATS?.saveSettings(cfg);
 };
-globalThis.FOE_STATS?.initSettings(cfg, (nc) => {
+// Nastavení lišty (zobrazení, svislá, které ikony) platí jen pro daný svět (kartu) – nesynchronizuje se.
+const CFG_LOCAL = ['uiBar', 'barVertical', 'hiddenTabs'];
+function applySyncedCfg(nc) {
   const kt = (cfg._kt ||= {});
   let changed = false;
   for (const [k, v] of Object.entries(nc || {})) {
-    if (k === '_t' || k === '_kt') continue;
+    if (k === '_t' || k === '_kt' || CFG_LOCAL.includes(k)) continue;
     const t = nc._kt?.[k] || 0;
     if (t > (kt[k] || 0)) { cfg[k] = v; kt[k] = t; changed = true; }
   }
   if (!changed) return;
   cfgLast = cfgSnap(); saveCfgLocal(); renderTabs(); scheduleRender();
-});
+}
+globalThis.FOE_STATS?.initSettings(cfg, applySyncedCfg);
 
 // Sledované provincie – platí pro jednu bitvu (mapa + konec sezóny).
 const watchKey = () => (S.gbg ? `${S.gbg.map?.id}|${S.gbg.endsAt}` : null);

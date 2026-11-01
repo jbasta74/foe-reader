@@ -277,7 +277,7 @@ function viewAbout() {
       <div class="muted">VB, Upozornění a ℹ️ zůstávají vždy. Vypnutá záložka jen zmizí z lišty – data se sbírají dál a upozornění fungují.</div>
       <div><label><input type="checkbox" data-cfg="fpBar" ${cfg.fpBar ? 'checked' : ''}> okénko „FP ve skladu“ u lišty FP ve hře</label></div>
       <div>${['uiBar', 'barVertical'].map((k) => `<label><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${k === 'uiBar' ? 'nástrojová lišta s ikonami' : 'lišta svisle'}</label>`).join(' ')}
-        <span class="muted">Ikona otevře / zavře okno záložky, ⠿ otevře panel se záložkami.</span></div>
+        <span class="muted">Ikona otevře / zavře okno záložky, ⠿ otevře panel se záložkami. Lišta a zobrazené záložky se nastavují pro každý svět zvlášť.</span></div>
       <div><button data-act="resetsize">Obnovit výchozí velikost panelu</button> <span class="muted">Panel se dá roztáhnout tažením za pravý dolní roh.</span></div></div>
     ${bonusOn() ? storageSettingsHtml() : ''}
     <h4>Bonusové funkce</h4>

@@ -566,6 +566,11 @@ function handleRequest(r) {
     const ty = r.requestData?.[0]?.type, i = cop.tilesets.findIndex((t) => t.type === ty && t.available);
     if (i >= 0) cop.tilesets.splice(i, 1);
   }
+  // Prodaná / uložená budova nebo cesta zmizí z mapy (jako FoE Helper) – postup přestavby z plánu se tak sám zkracuje.
+  if (r?.requestClass === 'CityMapService' && r.requestMethod === 'removeBuilding') {
+    const id = r.requestData?.[0];
+    if (id != null) { S.entities.delete(id); for (const g of Object.values(S.gridMap || {})) g?.entities?.delete?.(id); S.mapRev = (S.mapRev || 0) + 1; scheduleRender(); }
+  }
   if (r?.requestClass === 'ResearchService' && r.requestMethod === 'chooseBranch' && typeof r.requestData?.[0] === 'string') S.research.chosen.add(r.requestData[0]);
   if (r?.requestClass === 'GreatBuildingsService' && r.requestMethod === 'getConstruction' && Array.isArray(r.requestData)) {
     S.gbReq = { entityId: r.requestData[0], playerId: r.requestData[1], time: Date.now() };

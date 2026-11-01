@@ -238,13 +238,19 @@ function mapClick(b) {
     if (!mapWin) openMapWin(); else renderMapWin();
     render(); return true;
   }
-  if (b.dataset.pact === 'start') { if (planStart()) { if (!mapWin) openMapWin(); else renderMapWin(); render(); } return true; }
+  if (b.dataset.pact === 'start' || b.dataset.pload != null) { if (planStart(b.dataset.pload)) { if (!mapWin) openMapWin(); else renderMapWin(); render(); } return true; }
+  if (b.dataset.pdel != null) { const n = b.dataset.pdel; plansWrite(mapGrid, (o) => { delete o[n]; }); if (planOn() && mapPlan.name === n) mapPlan.name = PLAN_AUTO; renderMapWin(); render(); return true; }
   if (!planOn()) return false;
   if (b.dataset.ptool) { mapPlan.tool = b.dataset.ptool; mapPlan.pick = null; }
   else if (b.dataset.ppick != null) { const e = mapPlan.parked[+b.dataset.ppick]; mapPlan.pick = mapPlan.pick === e ? null : e; }
+  else if (b.dataset.pshow) mapPlan.show[b.dataset.pshow] = !mapPlan.show[b.dataset.pshow];
+  else if (b.dataset.pstep != null) mapPlan.step = mapPlan.step === +b.dataset.pstep ? null : +b.dataset.pstep;
+  else if (b.dataset.pinv != null) { const inv = S.inv.get(b.dataset.pinv) ? b.dataset.pinv : +b.dataset.pinv, it = S.inv.get(inv); const cid = it?.item?.cityEntityId;
+    if (cid) { const e = planInvEntity(cid, inv); planSnap(); mapPlan.parked.push(e); planChanged(); mapPlan.pick = e; mapPlan.tool = 'move'; } }
+  else if (b.dataset.pact === 'save') { const n = (b.getRootNode().querySelector('#planname')?.value || '').trim().slice(0, 40); if (!n || n === PLAN_AUTO) return true; planSave(n); mapPlan.name = n; }
   else if (b.dataset.pact === 'undo') planUndo();
   else if (b.dataset.pact === 'droprem') planDropRemovable(M);
-  else if (b.dataset.pact === 'reset') planStart();
+  else if (b.dataset.pact === 'reset') { const n = mapPlan.name; planStart(); mapPlan.name = n; planChanged(); }
   else if (b.dataset.pact === 'end') mapPlan = null;
   else return false;
   renderMapWin(); render(); return true;
@@ -253,19 +259,67 @@ function mapClick(b) {
 // ---------- Plánovač: kopie mapy, ve které jde tahat budovy, přidávat a mazat cesty; ve hře se nic nemění ----------
 let mapPlan = null;
 const planOn = () => !!mapPlan && mapPlan.grid === mapGrid;
-function planStart() {
+// Plán se dá uložit (localStorage tohoto světa) – rozpracovaný se ukládá sám po každé změně, další varianty pod jménem.
+const PLANS_KEY = 'foeReaderPlans', PLAN_AUTO = 'Rozpracovaný';
+function plansAll() { try { return JSON.parse(localStorage.getItem(PLANS_KEY) || '{}') || {}; } catch { return {}; } }
+function plansOf(grid) { return plansAll()[grid] || {}; }
+function plansWrite(grid, f) { const all = plansAll(); all[grid] = all[grid] || {}; f(all[grid]); if (!Object.keys(all[grid]).length) delete all[grid]; try { localStorage.setItem(PLANS_KEY, JSON.stringify(all)); } catch { /* plno */ } }
+const planPack = (e) => ({ id: e.id, cityentity_id: e.cityentity_id, x: e.x || 0, y: e.y || 0, _lvl: e._lvl, _inv: e._inv });
+// Budova z inventáře: postaví se ve věku hráče (jako v Ratingu).
+function planInvEntity(cid, invId) { const sz = S.ent.get(cid); return { cityentity_id: cid, x: 0, y: 0, connected: false, _inv: invId ?? true, type: sz?.type, level: ERAS.indexOf(S.player?.era), state: {} }; }
+// Nový plán ze stavu hry, nebo načtený uložený (sloučený s aktuálním stavem hry: prodané budovy vypadnou, nové přibudou na svém místě).
+function planStart(name) {
   const M0 = mapModel(mapGrid);
   if (!M0) return false;
   const adj = M0.removable.adj || new Map();
-  const list = M0.items.map((it) => ({ ...it.e, connected: false, _lvl: adj.has(it.e) ? adj.get(it.e) : undefined }));
+  const fromGame = (e, x, y) => ({ ...e, x, y, connected: false, _lvl: adj.has(e) ? adj.get(e) : undefined });
+  let list = M0.items.map((it) => fromGame(it.e, it.e.x || 0, it.e.y || 0)), parked = [];
+  const saved = name ? plansOf(mapGrid)[name] : null;
+  if (saved) {
+    const game = new Map(M0.items.filter((it) => it.e.id != null).map((it) => [it.e.id, it.e]));
+    const seen = new Set(), mk = (c) => { if (c.id != null) { const g = game.get(c.id); if (!g) return null; seen.add(c.id); return fromGame(g, c.x, c.y); } return c._inv ? { ...planInvEntity(c.cityentity_id, c._inv), x: c.x, y: c.y } : { cityentity_id: c.cityentity_id, x: c.x, y: c.y, connected: false }; };
+    list = saved.list.map(mk).filter(Boolean); parked = (saved.parked || []).map(mk).filter(Boolean);
+    const extra = M0.items.filter((it) => it.e.id != null && !seen.has(it.e.id)).map((it) => fromGame(it.e, it.e.x || 0, it.e.y || 0));
+    list.push(...extra); // nové budovy ze hry: na svém místě, a když tam v plánu něco stojí, do skladu
+  }
   // kusy cest, které se v městě už používají (1×1 jednoproudá, nejmenší dvouproudá)
   const rs = M0.items.filter((it) => it.isRoad);
   const pickRoad = (f) => rs.filter(f).sort((a, b) => a.m.w * a.m.l - b.m.w * b.m.l)[0]?.e.cityentity_id
     || [...S.ent].filter(([id, m]) => m.type === 'street' && f({ m, e: { cityentity_id: id } })).sort((a, b) => a[1].w * a[1].l - b[1].w * b[1].l)[0]?.[0];
-  mapPlan = { grid: mapGrid, g: S.grids[mapGrid], list, parked: [], hist: [], tool: 'move', pick: null, rev: 1,
+  mapPlan = { grid: mapGrid, g: S.grids[mapGrid], list, parked, hist: [], tool: 'move', pick: null, rev: 1, name: name || PLAN_AUTO, step: null, show: {},
     r1: pickRoad((it) => (it.m.road || 1) === 1 && it.m.w === 1 && it.m.l === 1), r2: pickRoad((it) => (it.m.road || 1) >= 2),
-    base: { roads: M0.road.size, free: M0.free, lf: largestFree(M0), unconn: M0.removable.unconn.length } };
+    base: { roads: M0.road.size, free: M0.free, lf: largestFree(M0), unconn: M0.removable.unconn.length, v: planValue(M0.items.map((it) => it.e)) } };
+  if (saved) planFixOverlaps();
   return true;
+}
+// Po sloučení s hrou se může něco překrývat – pozdější (nové ze hry) jde do skladu.
+function planFixOverlaps() {
+  const used = new Set(), keep = [];
+  for (const e of mapPlan.list) {
+    const m = S.ent.get(e.cityentity_id), ks = [];
+    if (m) for (let a = 0; a < m.w; a++) for (let b = 0; b < m.l; b++) ks.push(`${(e.x || 0) + a},${(e.y || 0) + b}`);
+    if (ks.some((k) => used.has(k))) { if (!/^S_/.test(e.cityentity_id) && m?.type !== 'street') mapPlan.parked.push(e); continue; }
+    ks.forEach((k) => used.add(k)); keep.push(e);
+  }
+  mapPlan.list = keep;
+}
+// Hodnota podle Ratingu (skóre × pole, stejné váhy jako záložka Rating) a denní produkce po druzích.
+function planValue(list) {
+  if (typeof rateOne !== 'function') return null;
+  const W = rateW().filter((t) => t.on && t.per > 0), bs = rateBs(), out = { val: 0, by: {}, n: 0 };
+  for (const e of list) {
+    const sz = S.ent.get(e.cityentity_id);
+    if (!sz || sz.type === 'street' || sz.type === 'impediment' || rateSkip(e.type || sz.type)) continue;
+    let r; try { r = rateOne(e, sz, W, bs); } catch { continue; }
+    out.val += r.score * r.tiles; out.n++;
+    for (const t of W) if (r.v[t.k]) out.by[t.k] = (out.by[t.k] || 0) + r.v[t.k];
+  }
+  return out;
+}
+function planVal() { if (mapPlan._V?.rev !== mapPlan.rev) mapPlan._V = { rev: mapPlan.rev, v: planValue(mapPlan.list) }; return mapPlan._V.v; }
+function planSave(name) {
+  const M = planModel(), v = planVal();
+  plansWrite(mapPlan.grid, (o) => { o[name] = { t: Date.now(), list: mapPlan.list.map(planPack), parked: mapPlan.parked.map(planPack), st: { roads: M.road.size, free: M.free, val: v ? Math.round(v.val) : null, nc: M.notConnected.length } }; });
 }
 function planModel() {
   if (mapPlan._M?.rev !== mapPlan.rev) mapPlan._M = { rev: mapPlan.rev, M: mapModelRaw(mapPlan.g, mapPlan.list, true) };
@@ -276,8 +330,8 @@ function planSnap() {
   mapPlan.hist.push({ list: mapPlan.list.map((e) => ({ ...e })), parked: mapPlan.parked.map((e) => ({ ...e })) });
   if (mapPlan.hist.length > 80) mapPlan.hist.shift();
 }
-function planChanged() { mapPlan.rev++; mapTip = null; }
-function planUndo() { const h = mapPlan.hist.pop(); if (!h) return; mapPlan.list = h.list; mapPlan.parked = h.parked; planChanged(); }
+function planChanged() { mapPlan.rev++; mapTip = null; mapPlan.step = null; try { planSave(PLAN_AUTO); } catch { /* bez uložení */ } }
+function planUndo() { const h = mapPlan.hist.pop(); if (!h) return; mapPlan.list = h.list; mapPlan.parked = h.parked; mapPlan.pick = null; planChanged(); }
 function planFits(M, e, x, y) {
   const m = S.ent.get(e.cityentity_id);
   if (!m) return false;
@@ -314,19 +368,125 @@ function planDropRemovable(M) {
   planSnap(); const ds = new Set(drop.map((it) => it.e)); mapPlan.list = mapPlan.list.filter((e) => !ds.has(e)); planChanged();
 }
 function planSwap(a, b) { planSnap(); const ax = a.x, ay = a.y; a.x = b.x; a.y = b.y; b.x = ax; b.y = ay; planChanged(); }
+// ---------- Postup přestavby: co udělat ve hře, aby město odpovídalo plánu ----------
+// Porovnává plán s živou mapou ze hry, takže co ve hře uděláte, z postupu samo zmizí. Pořadí je proveditelné: nejdřív
+// zbytečné cesty a odebrané budovy, pak přesuny na místa, která už jsou volná (když se dvě budovy blokují, jedna jde dočasně
+// jinam nebo do inventáře), nakonec nové cesty.
+function planSteps() {
+  const G = mapModel(mapPlan.grid), P = planModel();
+  if (!G || !P) return [];
+  const isB = (it) => !it.isRoad && !it.isImp;
+  const gById = new Map(G.items.filter((it) => it.e.id != null).map((it) => [it.e.id, it]));
+  const pIds = new Set(P.items.map((it) => it.e.id).filter((x) => x != null).concat(mapPlan.parked.map((e) => e.id).filter((x) => x != null)));
+  const at = (it) => `${it.e.cityentity_id}@${it.x0},${it.y0}`;
+  // nové věci v plánu (cesty, budovy z inventáře), které už ve hře stojí na svém místě
+  const gFree = new Map();
+  for (const it of G.items) if (!pIds.has(it.e.id)) { const k = at(it); (gFree.get(k) || gFree.set(k, []).get(k)).push(it); }
+  const matched = new Set(), adds = [];
+  for (const it of P.items) if (it.e.id == null) { const l = gFree.get(at(it)); if (l?.length) matched.add(l.pop()); else adds.push(it); }
+  const box = (it, x = it.x0, y = it.y0) => ({ x, y, w: it.m.w, l: it.m.l });
+  const steps = [];
+  // stav během provádění: pole -> klíč objektu
+  const occ = new Map(), fill = (key, b, on) => { for (let a = 0; a < b.w; a++) for (let c = 0; c < b.l; c++) { const k = `${b.x + a},${b.y + c}`; if (on) occ.set(k, key); else if (occ.get(k) === key) occ.delete(k); } };
+  for (const it of G.items) fill(it, box(it), true);
+  // 1) cesty, které v plánu nejsou nebo jsou jinde
+  const pById = new Map(P.items.filter((it) => it.e.id != null).map((it) => [it.e.id, it]));
+  const roadGone = G.items.filter((it) => it.isRoad && !matched.has(it) && (!pById.has(it.e.id) || pById.get(it.e.id).x0 !== it.x0 || pById.get(it.e.id).y0 !== it.y0));
+  if (roadGone.length) { steps.push({ k: 'rdel', text: `✂️ Smazat cesty: ${roadGone.reduce((a, it) => a + it.m.w * it.m.l, 0)} polí`, tiles: roadGone.flatMap(tilesOfItem) }); roadGone.forEach((it) => fill(it, box(it), false)); }
+  // 2) budovy, které v plánu nejsou (nebo jsou ve skladu plánu)
+  for (const it of G.items) if (isB(it) && !matched.has(it) && !pById.has(it.e.id)) { steps.push({ k: 'del', text: `📦 Odebrat: ${it.name} (uložit do inventáře nebo prodat)`, from: box(it) }); fill(it, box(it), false); }
+  // 3) přesuny a stavby z inventáře
+  const pend = [];
+  for (const it of P.items) if (isB(it) && it.e.id != null) { const g = gById.get(it.e.id); if (g && (g.x0 !== it.x0 || g.y0 !== it.y0)) pend.push({ it, g, to: box(it), from: box(g) }); }
+  for (const it of adds) if (isB(it)) pend.push({ it, g: null, to: box(it), from: null });
+  const freeFor = (o, b) => { for (let a = 0; a < b.w; a++) for (let c = 0; c < b.l; c++) { const k = `${b.x + a},${b.y + c}`; if (!G.tiles.has(k)) return false; const v = occ.get(k); if (v && v !== o) return false; } return true; };
+  const reserved = () => { const r = new Set(); for (const p of pend) for (let a = 0; a < p.to.w; a++) for (let c = 0; c < p.to.l; c++) r.add(`${p.to.x + a},${p.to.y + c}`); return r; };
+  let guard = 0;
+  while (pend.length && guard++ < 2000) {
+    const i = pend.findIndex((p) => freeFor(p.g || p, p.to));
+    if (i >= 0) {
+      const p = pend.splice(i, 1)[0];
+      if (p.g) { fill(p.g, p.from, false); steps.push({ k: 'move', text: `➜ Přesunout: ${p.it.name}`, from: p.from, to: p.to }); }
+      else steps.push({ k: 'add', text: `🏗️ ${p.stored ? 'Vrátit z inventáře na nové místo' : 'Postavit z inventáře'}: ${p.it.name}`, to: p.to });
+      fill(p.g || p, p.to, true);
+      continue;
+    }
+    // zablokováno: první přesouvanou budovu dočasně jinam (mimo cílová místa ostatních), jinak do inventáře
+    const p = pend.find((q) => q.g) || pend[0];
+    if (!p.g) { steps.push({ k: 'add', text: `🏗️ Postavit z inventáře: ${p.it.name} (místo zatím není volné)`, to: p.to }); pend.splice(pend.indexOf(p), 1); continue; }
+    const res = reserved(); let spot = null;
+    for (let y = G.minY; y <= G.maxY && !spot; y++) for (let x = G.minX; x <= G.maxX && !spot; x++) {
+      const b = { x, y, w: p.from.w, l: p.from.l };
+      if (!freeFor(null, b)) continue;
+      let ok = true; for (let a = 0; a < b.w && ok; a++) for (let c = 0; c < b.l && ok; c++) if (res.has(`${x + a},${y + c}`)) ok = false;
+      if (ok) spot = b;
+    }
+    fill(p.g, p.from, false);
+    if (spot) { steps.push({ k: 'tmp', text: `⇢ Dočasně přesunout jinam: ${p.it.name} (místo vyznačené na mapě)`, from: p.from, to: spot }); fill(p.g, spot, true); p.from = spot; }
+    else { steps.push({ k: 'tmp', text: `📦 Dočasně uložit do inventáře: ${p.it.name} (blokuje jiný přesun)`, from: p.from }); p.g = null; p.from = null; p.stored = true; }
+  }
+  // 4) nové cesty
+  const roadNew = P.items.filter((it) => it.isRoad && (it.e.id == null ? adds.includes(it) : (() => { const g = gById.get(it.e.id); return !g || g.x0 !== it.x0 || g.y0 !== it.y0; })()));
+  if (roadNew.length) steps.push({ k: 'radd', text: `➕ Postavit cesty: ${roadNew.reduce((a, it) => a + it.m.w * it.m.l, 0)} polí`, tiles: roadNew.flatMap(tilesOfItem) });
+  return steps;
+}
+function stepsHtml() {
+  const st = planSteps();
+  if (!mapPlan.show.steps) return `<br><button class="fbtn" data-pshow="steps">📋 Postup přestavby (${st.length} ${st.length === 1 ? 'krok' : st.length >= 2 && st.length <= 4 ? 'kroky' : 'kroků'})</button>`;
+  return `<br><button class="fbtn on" data-pshow="steps">📋 Postup přestavby</button> <span class="muted">klik na krok = ukázat na mapě (modře odkud, růžově kam); co uděláte ve hře, samo zmizí</span>
+    ${st.length ? `<ol class="steps">${st.map((x, i) => `<li><a href="#" class="${mapPlan.step === i ? 'on' : ''}" data-pstep="${i}">${esc(x.text)}</a></li>`).join('')}</ol>` : '<p class="muted">Město ve hře už odpovídá plánu ✓</p>'}`;
+}
 const tilesOfItem = (it) => { const o = []; for (let x = 0; x < it.m.w; x++) for (let y = 0; y < it.m.l; y++) o.push(`${it.x0 + x},${it.y0 + y}`); return o; };
 function planStats(M) {
   const b = mapPlan.base, lf = largestFree(M), d = (v, good) => v === 0 ? '±0' : `<b style="color:${(v < 0) === good ? '#2e7d32' : '#b0410f'}">${v > 0 ? '+' : ''}${fmt(v)}</b>`;
   const tool = (k, l, tt) => `<button class="fbtn ${mapPlan.tool === k ? 'on' : ''}" data-ptool="${k}" title="${tt}">${l}</button>`;
-  return `<b>✏️ Plán</b> <span class="muted">(jen kopie – ve hře se nic nemění)</span>
+  const v = planVal(), bv = b.v;
+  let rate = '';
+  if (v && bv && (v.val || bv.val)) {
+    const W = rateW().filter((t) => t.on && t.per > 0);
+    const diffs = W.map((t) => [t, Math.round((v.by[t.k] || 0) - (bv.by[t.k] || 0))]).filter(([, x]) => x !== 0);
+    rate = `<span class="chip" title="Součet skóre × pole všech budov podle vah ze záložky Rating – vyšší = výkonnější město">Rating ${fmt(Math.round(v.val))} (${d(Math.round(v.val - bv.val), false)})</span>
+      ${diffs.length ? `<br><span class="muted">Produkce za den oproti hře:</span> ${diffs.map(([t, x]) => `<span class="chip" title="${esc(t.l)}">${esc(rateShort(t.k))} ${d(x, false)}</span>`).join('')}` : ''}`;
+  }
+  const saved = Object.entries(plansOf(mapPlan.grid)).filter(([n]) => n !== PLAN_AUTO);
+  return `<b>✏️ Plán</b> <span class="muted">${esc(mapPlan.name === PLAN_AUTO ? '' : mapPlan.name + ' · ')}(jen kopie – ve hře se nic nemění)</span>
     ${tool('move', '✋ Přesun', 'Táhněte budovu nebo cestu na nové místo')}${tool('road', '➕ Cesta', 'Klik na volné pole přidá cestu, klik na cestu ji smaže')}${mapPlan.r2 ? tool('road2', '➕ Dvouproudá', 'Klik na volné místo přidá dvouproudou cestu (levý horní roh), klik na cestu ji smaže') : ''}${tool('park', '📦 Do skladu', 'Klik na budovu ji uloží stranou, klik na cestu ji smaže')}
+    <button class="fbtn ${mapPlan.show.inv ? 'on' : ''}" data-pshow="inv" title="Budovy z inventáře ve hře – klik je dá do skladu plánu a pak je položíte do mapy">🎁 Z inventáře</button>
     <button class="fbtn" data-pact="droprem" title="Smazat všechny oranžové cesty najednou">✂️ Odebrat odebratelné (${fmt(M.removable.length)})</button>
     <button class="fbtn" data-pact="undo" ${mapPlan.hist.length ? '' : 'disabled'}>↶ Zpět</button><button class="fbtn" data-pact="reset">⟲ Od začátku</button><button class="fbtn" data-pact="end">Konec plánu</button>
     <br><span class="muted">Oproti hře:</span> <span class="chip">cesty ${fmt(M.road.size)} (${d(M.road.size - b.roads, true)})</span><span class="chip">volno ${fmt(M.free)} (${d(M.free - b.free, false)})</span>
     <span class="chip">největší volné ${lf ? `${lf.w}×${lf.l}` : '–'} (bylo ${b.lf ? `${b.lf.w}×${b.lf.l}` : '–'})</span>
     ${M.notConnected.length ? `<span class="chip hi" title="Budovy, které v plánu nemají cestu k radnici (červený okraj)">nepřipojeno ${M.notConnected.length}</span>` : '<span class="chip" style="color:#2e7d32">vše připojeno ✓</span>'}
+    ${rate}
+    ${mapPlan.show.inv ? planInvHtml() : ''}
     ${mapPlan.parked.length ? `<br><span class="muted">Ve skladu (klik a pak klik do mapy = položit):</span> ${mapPlan.parked.map((e, i) => { const m = S.ent.get(e.cityentity_id);
-      return `<button class="fbtn ${mapPlan.pick === e ? 'on' : ''}" data-ppick="${i}">${esc(S.names.get(e.cityentity_id) || e.cityentity_id)} ${m ? `${m.w}×${m.l}` : ''}</button>`; }).join('')}` : ''}`;
+      return `<button class="fbtn ${mapPlan.pick === e ? 'on' : ''}" data-ppick="${i}">${e._inv ? '🎁 ' : ''}${esc(S.names.get(e.cityentity_id) || e.cityentity_id)} ${m ? `${m.w}×${m.l}` : ''}</button>`; }).join('')}` : ''}
+    <br><span class="muted">Uložit plán:</span> <input id="planname" class="pname" placeholder="název varianty" value="${esc(mapPlan.name === PLAN_AUTO ? '' : mapPlan.name)}"> <button class="fbtn" data-pact="save">💾 Uložit</button>
+    ${saved.length ? `<span class="muted">Varianty:</span> ${saved.map(([n, x]) => planVariantBtn(n, x)).join('')}` : ''}
+    ${stepsHtml()}`;
+}
+function planVariantBtn(n, x) {
+  const st = x.st || {};
+  return `<span class="pvar"><button class="fbtn ${planOn() && mapPlan.name === n ? 'on' : ''}" data-pload="${esc(n)}" title="${esc(`cesty ${st.roads ?? '?'} · volno ${st.free ?? '?'}${st.val != null ? ` · Rating ${st.val}` : ''}${st.nc ? ` · nepřipojeno ${st.nc}` : ''} · ${new Date(x.t).toLocaleString(LOC())}`)}">📂 ${esc(n)} <span class="muted">${st.roads ?? '?'} cest · ${st.free ?? '?'} volno${st.val != null ? ` · R ${fmt(st.val)}` : ''}</span></button><button class="fbtn" data-pdel="${esc(n)}" title="Smazat variantu">✕</button></span>`;
+}
+// Budovy z inventáře ve hře (kolik ještě zbývá po těch, které už v plánu jsou), seřazené podle skóre Ratingu.
+function planInvHtml() {
+  const used = new Map();
+  for (const e of [...mapPlan.list, ...mapPlan.parked]) if (e._inv) used.set(e._inv, (used.get(e._inv) || 0) + 1);
+  const W = typeof rateW === 'function' ? rateW().filter((t) => t.on && t.per > 0) : [], bs = typeof rateBs === 'function' ? rateBs() : null;
+  const rows = [];
+  for (const [invId, it] of S.inv?.entries?.() || []) {
+    const cid = it.item?.__class__ === 'BuildingItemPayload' ? it.item.cityEntityId : null, sz = cid && S.ent.get(cid);
+    if (!sz || sz.type === 'street' || !(it.stock > 0)) continue;
+    const left = it.stock - (used.get(invId) || 0);
+    if (left <= 0) continue;
+    let sc = null; try { if (W.length && !rateSkip(sz.type)) sc = rateOne(planInvEntity(cid), sz, W, bs).score; } catch { /* bez hodnocení */ }
+    rows.push({ invId, name: it.name || S.names.get(cid) || cid, sz, left, sc });
+  }
+  rows.sort((a, c) => (c.sc ?? -1) - (a.sc ?? -1) || a.name.localeCompare(c.name));
+  if (!rows.length) return '<br><span class="muted">V inventáři nejsou žádné budovy (nebo ještě nebyl načten – otevřete ve hře inventář).</span>';
+  return `<br><span class="muted">🎁 Inventář (klik = do skladu plánu, pak klik do mapy):</span> ${rows.slice(0, 40).map((r) =>
+    `<button class="fbtn" data-pinv="${esc(String(r.invId))}" title="${esc(`${r.name} ${r.sz.w}×${r.sz.l}${r.sz.road ? ', cesta' : ', bez cesty'} · zbývá ${r.left}`)}">${esc(r.name)} ${r.sz.w}×${r.sz.l}${r.sc != null ? ` <span class="muted">${dec((Math.round(r.sc * 100) / 100).toFixed(2))}</span>` : ''}${r.left > 1 ? ` ×${r.left}` : ''}</button>`).join('')}`;
 }
 function tipsHtml(M) {
   const T = swapTips(M);
@@ -383,6 +543,15 @@ function mapSvg(M, t) {
       svg += `<text x="${X(it.x0) + it.m.w * t / 2}" y="${Y(it.y0) + it.m.l * t / 2 + fs / 3}" font-size="${fs}" text-anchor="middle" fill="#fff" pointer-events="none" style="font-family:system-ui,sans-serif">${esc(label)}</text>`;
     }
   }
+  // zvolený krok postupu přestavby: odkud (modře čárkovaně), kam (růžově), cesty (obrys)
+  const step = planOn() && mapPlan.step != null ? planSteps()[mapPlan.step] : null;
+  if (step) {
+    const fr = (b, c, dash) => `<rect x="${X(b.x)}" y="${Y(b.y)}" width="${b.w * t}" height="${b.l * t}" fill="${c}33" stroke="${c}" stroke-width="${Math.max(2, t / 3)}"${dash ? ` stroke-dasharray="${t / 2}"` : ''} pointer-events="none"/>`;
+    if (step.from) svg += fr(step.from, '#1565c0', true);
+    if (step.to) svg += fr(step.to, '#c2185b', false);
+    if (step.from && step.to) svg += `<line x1="${X(step.from.x) + step.from.w * t / 2}" y1="${Y(step.from.y) + step.from.l * t / 2}" x2="${X(step.to.x) + step.to.w * t / 2}" y2="${Y(step.to.y) + step.to.l * t / 2}" stroke="#c2185b" stroke-width="${Math.max(1.5, t / 5)}" pointer-events="none"/>`;
+    for (const k of step.tiles || []) { const [x, y] = k.split(',').map(Number); svg += `<rect x="${X(x) + 1}" y="${Y(y) + 1}" width="${t - 2}" height="${t - 2}" fill="none" stroke="${step.k === 'rdel' ? '#d32f2f' : '#1565c0'}" stroke-width="${Math.max(1.5, t / 5)}" pointer-events="none"/>`; }
+  }
   // zvýrazněný tip na prohození
   const tip = mapTip != null ? swapTips(M)[mapTip] : null;
   if (tip) {
@@ -401,7 +570,8 @@ function mapSvg(M, t) {
 function mapStats(M, win) {
   if (win && planOn()) return planStats(M) + tipsHtml(M);
   const roadTiles = M.road.size, unl = M.tiles.size;
-  return `<button class="fbtn" data-pact="start" title="Kopie mapy, ve které můžete přesouvat budovy a cesty a hned vidíte úsporu – ve hře se nic nemění">✏️ Plánovat</button>${planOn() ? ' <span class="chip hi">plán je otevřený v okně mapy</span>' : ''}
+  const saved = Object.entries(plansOf(mapGrid));
+  return `<button class="fbtn" data-pact="start" title="Kopie mapy, ve které můžete přesouvat budovy a cesty a hned vidíte úsporu – ve hře se nic nemění">✏️ Plánovat</button>${saved.length ? ` <span class="muted">nebo pokračovat:</span> ${saved.map(([n, x]) => planVariantBtn(n, x)).join('')}` : ''}
     <span class="chip">plocha ${fmt(unl)} polí</span><span class="chip">cesty ${fmt(roadTiles)} (${Math.round(roadTiles / unl * 100)} %)</span><span class="chip">volno ${fmt(M.free)}</span>
     ${M.removable?.length ? `<span class="chip hi" title="Tolik polí cesty jde odebrat, aniž by se odpojila některá budova (oranžově; červeně slepé konce)">odebratelné cesty ${M.removable.length}${M.deadRoads.length ? ` (slepé ${M.deadRoads.length})` : ''}</span>` : M.deadRoads.length ? `<span class="chip hi">zbytečné cesty ${M.deadRoads.length}</span>` : ''}
     ${(() => { const nr = M.items.filter((it) => !it.isRoad && !it.isImp && it.m.road > 0).length; return nr ? `<span class="chip" title="Polí cesty na jednu budovu, která cestu potřebuje">${dec((Math.round((M.road.size / nr) * 100) / 100).toFixed(2))} cesty / budovu</span>` : ''; })()}
@@ -545,7 +715,12 @@ function openMapWin() {
     .fbtn.on{background:#2b2116;color:#f3d9a4;border-color:#2b2116;font-weight:700}
     .fbtn:disabled{opacity:.45;cursor:default}
     .muted{color:#7a6a50}
-    .stats{max-height:40%;overflow:auto}
+    .stats{max-height:45%;overflow:auto}
+    .pname{width:150px;padding:1px 4px;border:1px solid #c9b48c;border-radius:4px}
+    .pvar{white-space:nowrap;margin-right:4px}
+    ol.steps{margin:3px 0 3px 18px;padding:0}
+    ol.steps a{color:#2b2116;text-decoration:none}
+    ol.steps a.on{background:#c2185b;color:#fff;border-radius:3px;padding:0 3px}
   </style><div class="wrap"><div class="head" id="head"></div><div class="stats" id="stats"></div><div class="view" id="view"></div><div class="leg">${MAP_LEGEND} · kolečko = zoom, tažení = posun · ✏️ v plánu: tažení budovy = přesun, růžový rámeček = tip na prohození (2. klik na tip = vyzkoušet)</div></div>`;
   document.documentElement.appendChild(h);
   toFront(h); h.addEventListener('pointerdown', () => toFront(h), true);
@@ -582,9 +757,12 @@ function openMapWin() {
     view.scrollTop = py * k - (ev.clientY - rect.top);
     saveMapWin();
   }, { passive: false });
+  // psaní do pole (název plánu) nesmí jít do hry jako klávesové zkratky
+  for (const t of ['keydown', 'keyup', 'keypress']) h.addEventListener(t, (e) => e.stopPropagation());
   r.addEventListener('click', (ev) => {
-    const b = ev.target.closest('button');
+    const b = ev.target.closest('button,a[data-pstep]');
     if (!b) return;
+    if (b.tagName === 'A') ev.preventDefault();
     if (mapClick(b)) return;
     if (b.dataset.mapgrid) { mapGrid = b.dataset.mapgrid; renderMapWin(true); render(); }
     else if (b.dataset.mapmode) { mapMode = b.dataset.mapmode; renderMapWin(); render(); }
@@ -651,7 +829,7 @@ function renderMapWin(fit) {
     const W = M.maxX - M.minX + 1, Hh = M.maxY - M.minY + 1;
     mapWin.zoom = Math.max(3, Math.min(40, Math.floor(Math.min((view.clientWidth || 800) / W, (view.clientHeight || 500) / Hh))));
   }
-  r.getElementById('stats').innerHTML = L(mapStats(M, true) + (M.missing ? `<span class="chip">${M.missing} budov bez rozměrů</span>` : ''));
+  if (r.activeElement?.id !== 'planname') r.getElementById('stats').innerHTML = L(mapStats(M, true) + (M.missing ? `<span class="chip">${M.missing} budov bez rozměrů</span>` : ''));
   const sl = view.scrollLeft, stp = view.scrollTop;
   view.innerHTML = L(mapSvg(M, mapWin.zoom));
   view.scrollLeft = sl; view.scrollTop = stp;

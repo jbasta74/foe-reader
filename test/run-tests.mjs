@@ -418,6 +418,69 @@ const tests = {
     if (r.game !== 11 || !r.off) throw new Error('hra se nesmí změnit: ' + JSON.stringify(r));
     return errors;
   },
+  async 'Mapa: postup přestavby, inventář a uložené varianty plánu'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      // dvě stejné budovy, které si mají vyměnit místo (musí se jedna dočasně odsunout), cesta navíc a budova z inventáře
+      localStorage.removeItem('foeReaderPlans');
+      S.grids.main = { unlocked: [{ x: 0, y: 0, width: 10, length: 7 }], blocked: [] };
+      S.ent.set('H_T', { w: 2, l: 2, road: 1, type: 'main_building' }); S.ent.set('S_R', { w: 1, l: 1, road: 1, type: 'street' });
+      S.ent.set('R_A', { w: 2, l: 2, road: 1, type: 'residential' }); S.ent.set('D_X', { w: 2, l: 2, road: 0, type: 'decoration' });
+      S.names.set('R_A', 'Dům'); S.names.set('D_X', 'Keř');
+      const E = new Map(); let id = 1; const add = (c, x, y) => E.set(id, { id: id++, player_id: myId(), cityentity_id: c, x, y, connected: 1 });
+      add('H_T', 0, 0); for (let x = 0; x < 10; x++) add('S_R', x, 2); add('R_A', 3, 0); add('D_X', 5, 0); add('S_R', 9, 3);
+      S.entities = E; mapGrid = 'main'; mapPlan = null;
+      S.inv.set(501, { name: 'Keř', stock: 1, item: { __class__: 'BuildingItemPayload', cityEntityId: 'D_X' } });
+      const btn = (k, v) => { const b = document.createElement('button'); b.dataset[k] = v; return b; };
+      mapClick(btn('pact', 'start'));
+      const P = planModel(), dum = P.items.find((it) => it.name === 'Dům').e, ker = P.items.find((it) => it.name === 'Keř').e;
+      planSwap(dum, ker);
+      planRoad(planModel(), 9, 3, false); // smazat odbočku
+      mapClick(btn('pshow', 'inv')); const invHtml = planInvHtml();
+      mapClick(btn('pinv', '501')); planPlace(planModel(), mapPlan.pick, 0, 3);
+      const s1 = planSteps().map((x) => x.k);
+      // ve hře se odbočka smaže (removeBuilding) a dům přesune na dočasné místo → postup se zkrátí
+      window.postMessage({ source: 'foe-reader', channel: 'req', messages: [{ requestClass: 'CityMapService', requestMethod: 'removeBuilding', requestData: [14] }] }, '*');
+      return { s1, invHtml: /Keř 2×2/.test(invHtml), invLeft: /data-pinv/.test(planInvHtml()) };
+    });
+    await pg.waitForTimeout(200);
+    const r2 = await pg.evaluate(() => {
+      const s2 = planSteps().map((x) => x.k), gone = !S.entities.has(14);
+      const btn = (k, v) => { const b = document.createElement('button'); b.dataset[k] = v; return b; };
+      document.body.insertAdjacentHTML('beforeend', '<input id="planname" value="Varianta A">');
+      const sv = btn('pact', 'save'); document.body.appendChild(sv); mapClick(sv);
+      const saved = Object.keys(JSON.parse(localStorage.getItem('foeReaderPlans')).main);
+      mapClick(btn('pact', 'end'));
+      const stats = mapStats(mapModel('main'), true).replace(/<[^>]+>/g, ' ');
+      mapClick(btn('pload', 'Varianta A'));
+      const P = planModel(), dum = P.items.find((it) => it.name === 'Dům');
+      return { s2, gone, saved, stats: /Varianta A/.test(stats), loaded: mapPlan.name, dum: [dum.x0, dum.y0], inv: P.items.some((it) => it.e._inv), steps: planSteps().length };
+    });
+    if (JSON.stringify(r.s1) !== JSON.stringify(['rdel', 'add', 'tmp', 'move', 'move'])) throw new Error('postup: ' + JSON.stringify(r.s1));
+    if (!r.invHtml || r.invLeft) throw new Error('inventář: ' + JSON.stringify(r));
+    if (!r2.gone || JSON.stringify(r2.s2) !== JSON.stringify(['add', 'tmp', 'move', 'move'])) throw new Error('po smazání cesty ve hře: ' + JSON.stringify(r2));
+    if (!r2.saved.includes('Varianta A') || !r2.saved.includes('Rozpracovaný') || !r2.stats) throw new Error('uložení: ' + JSON.stringify(r2));
+    if (r2.loaded !== 'Varianta A' || r2.dum.join() !== '5,0' || !r2.inv || r2.steps !== 4) throw new Error('načtení: ' + JSON.stringify(r2));
+    return errors;
+  },
+  async 'Mapa: plán ukazuje změnu Ratingu a produkce'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      S.grids.main = { unlocked: [{ x: 0, y: 0, width: 10, length: 6 }], blocked: [] };
+      S.ent.set('H_T', { w: 2, l: 2, road: 1, type: 'main_building' }); S.ent.set('S_R', { w: 1, l: 1, road: 1, type: 'street' });
+      S.ent.set('P_FP', { w: 2, l: 2, road: 1, type: 'production' });
+      const E = new Map(); let id = 1; const add = (c, x, y, st) => E.set(id, { id: id++, player_id: myId(), cityentity_id: c, x, y, connected: 1, type: S.ent.get(c).type, state: st || {} });
+      const fp = { current_product: { production_time: 86400, product: { resources: { strategy_points: 5 } } } };
+      add('H_T', 0, 0); for (let x = 0; x < 10; x++) add('S_R', x, 2); add('P_FP', 3, 0, fp); add('P_FP', 5, 0, fp);
+      S.entities = E; mapGrid = 'main'; mapPlan = null;
+      planStart();
+      const it = planModel().items.find((x) => x.e.cityentity_id === 'P_FP'); planPark(it);
+      return { txt: planStats(planModel()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '), v: planVal(), b: mapPlan.base.v };
+    });
+    if (!(r.b?.by?.strategy_points > 9) || Math.round(r.b.by.strategy_points - r.v.by.strategy_points) !== 5) throw new Error('hodnota: ' + JSON.stringify(r));
+    if (!/Rating .*\(\s*-/.test(r.txt) || !/FP\s*-5/.test(r.txt)) throw new Error('text: ' + r.txt);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

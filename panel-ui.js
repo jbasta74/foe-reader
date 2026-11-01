@@ -53,6 +53,7 @@ function mount() {
     .cfg label{margin-right:10px;white-space:nowrap}
     input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
     input.pname{width:140px}
+    ol.steps{margin:3px 0 3px 18px;padding:0} ol.steps a{color:inherit;text-decoration:none} ol.steps a.on{background:#c2185b;color:#fff;border-radius:3px;padding:0 3px}
     .copyrow{display:flex;gap:6px}
     a{color:#8a4b12}
     .good{display:inline-block;margin:0 10px 1px 0;white-space:nowrap}
@@ -215,8 +216,8 @@ function onUiClick(ev) {
     if (fg) { fragFilter = fg.dataset.frag; render(); return; }
     if (ev.target.closest('[data-act="mapwin"]')) { openMapWin(); return; }
     if (ev.target.closest('[data-act="calcwin"]')) { openCalcWin(); return; }
-    const mpl = ev.target.closest('[data-mtip],[data-pact],[data-ptool],[data-ppick]');
-    if (mpl && mapClick(mpl)) return;
+    const mpl = ev.target.closest('[data-mtip],[data-pact],[data-ptool],[data-ppick],[data-pshow],[data-pstep],[data-pinv],[data-pload],[data-pdel]');
+    if (mpl) { if (mpl.tagName === 'A') ev.preventDefault(); if (mapClick(mpl)) return; }
     const mg = ev.target.closest('[data-mapgrid]');
     if (mg) { mapGrid = mg.dataset.mapgrid; render(); renderMapWin(); return; }
     const mmo = ev.target.closest('[data-mapmode]');

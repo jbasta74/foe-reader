@@ -215,6 +215,8 @@ function onUiClick(ev) {
     if (fg) { fragFilter = fg.dataset.frag; render(); return; }
     if (ev.target.closest('[data-act="mapwin"]')) { openMapWin(); return; }
     if (ev.target.closest('[data-act="calcwin"]')) { openCalcWin(); return; }
+    const mpl = ev.target.closest('[data-mtip],[data-pact],[data-ptool],[data-ppick]');
+    if (mpl && mapClick(mpl)) return;
     const mg = ev.target.closest('[data-mapgrid]');
     if (mg) { mapGrid = mg.dataset.mapgrid; render(); renderMapWin(); return; }
     const mmo = ev.target.closest('[data-mapmode]');

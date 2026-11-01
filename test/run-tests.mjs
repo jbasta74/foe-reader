@@ -380,6 +380,44 @@ const tests = {
     if (!(r.fit22 >= 2)) throw new Error('volné místo 2×2: ' + r.fit22);
     return errors;
   },
+  async 'Mapa: tip na prohození a plánovač'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      // radnice 2×2, hlavní cesta y=2; dekorace 1×1 u cesty (2,3); dílna 1×1 s cestou (5,4) na odbočce (5,3)
+      S.grids.main = { unlocked: [{ x: 0, y: 0, width: 10, length: 7 }], blocked: [] };
+      S.ent.set('H_T', { w: 2, l: 2, road: 1, type: 'main_building' }); S.ent.set('S_R', { w: 1, l: 1, road: 1, type: 'street' });
+      S.ent.set('P_1', { w: 1, l: 1, road: 1, type: 'production' }); S.ent.set('D_X', { w: 1, l: 1, road: 0, type: 'decoration' });
+      S.names.set('P_1', 'Dílna'); S.names.set('D_X', 'Keř');
+      const E = new Map(); let id = 1; const add = (c, x, y) => E.set(id, { id: id++, player_id: myId(), cityentity_id: c, x, y, connected: 1 });
+      add('H_T', 0, 0); for (let x = 0; x < 10; x++) add('S_R', x, 2); add('S_R', 5, 3); add('P_1', 5, 4); add('D_X', 2, 3);
+      S.entities = E; mapGrid = 'main'; mapPlan = null; mapTip = null;
+      const M = mapModel('main');
+      const tips = swapTips(M).map((t) => `${t.a.name}⇄${t.b.name}−${t.gain}`);
+      const btn = (k, v) => { const b = document.createElement('button'); b.dataset[k] = v; return b; };
+      mapClick(btn('mtip', '0')); mapClick(btn('mtip', '0')); // ukázat, pak vyzkoušet v plánu
+      if (!mapPlan) return { tips, rem: M.removable, nar: M.noRoadAtRoad.map((i) => i.name), reach: M.removable.reach.map((x) => x.size) };
+      let P = planModel();
+      const after = { on: planOn(), nc: P.notConnected.length, rem: [...P.removable].sort(), roads: P.road.size };
+      mapClick(btn('pact', 'droprem')); P = planModel();
+      const dropped = { roads: P.road.size, nc: P.notConnected.length, stats: planStats(P).replace(/<[^>]+>/g, '') };
+      const dil = P.items.find((it) => it.name === 'Dílna'); planMove(dil.e, 5, 5); P = planModel();
+      const moved = P.notConnected.length;
+      planUndo(); P = planModel();
+      const undone = P.notConnected.length;
+      const addRoad = planRoad(P, 4, 4, false); P = planModel(); const rAdd = P.road.size;
+      planRoad(P, 4, 4, false); P = planModel(); const rDel = P.road.size;
+      const game = mapModel('main').road.size;
+      mapClick(btn('pact', 'end'));
+      return { tips, after, dropped, moved, undone, addRoad, rAdd, rDel, game, off: !planOn() };
+    });
+    if (JSON.stringify(r.tips) !== JSON.stringify(['Keř⇄Dílna−4'])) throw new Error('tipy: ' + JSON.stringify(r));
+    if (!r.after.on || r.after.nc || !r.after.rem.includes('5,3')) throw new Error('plán po prohození: ' + JSON.stringify(r.after));
+    if (r.dropped.roads >= r.after.roads || r.dropped.nc || !/vše připojeno/.test(r.dropped.stats)) throw new Error('odebrání cest: ' + JSON.stringify(r.dropped));
+    if (r.moved !== 1 || r.undone !== 0) throw new Error('kontrola připojení / zpět: ' + JSON.stringify(r));
+    if (!r.addRoad || r.rAdd !== r.dropped.roads + 1 || r.rDel !== r.dropped.roads) throw new Error('nástroj cesta: ' + JSON.stringify(r));
+    if (r.game !== 11 || !r.off) throw new Error('hra se nesmí změnit: ' + JSON.stringify(r));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

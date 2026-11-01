@@ -1,5 +1,7 @@
 ## Novinky
 - **Mapa – rozbor města**: **odebratelné cesty** (oranžově – pole cesty, která jde odebrat všechna najednou, aniž by se odpojila některá budova; počítá se po kusech cest od konců a s dvouproudými cestami), **cesty na budovu**, **volné místo** – kolik budov dané velikosti se vejde (velikosti podle budov v inventáři), největší volný obdélník a po kliknutí na velikost zelené rámečky, kam se vejdou. Přepínač **Obarvit podle Ratingu** (od červené = nejhorší po zelenou = nejlepší) ukáže, kde stojí slabé budovy.
+- **Mapa – plánovač ✏️**: kopie mapy, ve které jde tahat budovy i cesty (zelený / červený obrys ukáže, jestli se vejdou), přidávat a mazat cesty, odložit budovu do skladu a položit ji jinam, smazat všechny odebratelné cesty jedním klikem, krok zpět a začít znovu. Průběžně ukazuje srovnání se hrou (cesty, volno, největší volný obdélník) a hlídá, jestli má každá budova cestu k radnici (červený okraj). Ve hře se nic nemění.
+- **Mapa – tipy na prohození 💡**: budova, která cestu nepotřebuje a stojí u cesty, ⇄ stejně velká budova s cestou jinde – s tím, o kolik polí cesty víc jde po prohození odebrat. První klik tip ukáže na mapě, druhý ho vyzkouší v plánovači.
 
 ## Opravy
 - Nastavení lišty s ikonami (zobrazení lišty, svislá lišta, které záložky / ikony jsou vidět) platí jen pro daný svět – už se nesynchronizuje přes účet prohlížeče do ostatních světů. Ostatní nastavení se synchronizují dál.

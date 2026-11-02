@@ -136,7 +136,7 @@ function viewOwnStats(D) {
   h += `<h4>Bonusy armády</h4>${armyChart(days, sn)}`;
   h += `<h4>Velké budovy</h4><table><thead><tr><th>Budova</th><th class="num">${esc(shortDate(days[0]))}</th><th class="num">${esc(shortDate(days[days.length - 1]))}</th><th class="num">Změna</th><th class="num">Max.</th></tr></thead><tbody>${
     (last.gb || []).slice().sort((a, b) => b.l - a.l).map((g) => { const o = (first.gb || []).find((x) => x.id === g.id);
-      return `<tr><td>${esc(g.n)}</td><td class="num">${o ? o.l : '–'}</td><td class="num"><b>${g.l}</b></td><td class="num">${o && g.l > o.l ? `<span class="up">+${g.l - o.l}</span>` : ''}</td><td class="num muted">${g.m ?? ''}</td></tr>`; }).join('')}</tbody></table>`;
+      return `<tr><td>${esc(gbNm(g))}</td><td class="num">${o ? o.l : '–'}</td><td class="num"><b>${g.l}</b></td><td class="num">${o && g.l > o.l ? `<span class="up">+${g.l - o.l}</span>` : ''}</td><td class="num muted">${g.m ?? ''}</td></tr>`; }).join('')}</tbody></table>`;
   h += `<details><summary class="muted">Tabulka po dnech</summary>
     <table><thead><tr><th>Den</th><th class="num">Skóre</th><th class="num">Všude útok / obr.</th><th class="num">GBG útok / obr.</th><th class="num">Exp. útok / obr.</th><th class="num">VB Σ</th></tr></thead><tbody>${
       days.slice().reverse().slice(0, 120).map((d, i, arr) => { const x = sn(d), pv = D.own[arr[i + 1]];
@@ -151,9 +151,11 @@ function armyTable(a) {
     [['all', 'Všude'], ['gbg', 'GBG'], ['ge', 'Expedice'], ['qi', 'Kvantové invaze']].map(([k, l]) =>
       `<tr><td>${l}</td>${(a?.[k] || []).map((v) => `<td class="num">${fmt(v)} %</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
+// Název VB podle aktuálních metadat – starší záznamy mohly uložit serverové ID (snímek vznikl dřív, než dorazily názvy).
+const gbNm = (g) => { const n = entName(g.id); return n && n !== g.id ? n : g.n || g.id; };
 function gbChips(sn, prev) {
   const pl = new Map((prev?.gb || []).map((g) => [g.id, g.l]));
-  return (sn.gb || []).map((g) => `<span class="chip">${esc(g.n)} <b>${g.l}</b>${pl.has(g.id) && pl.get(g.id) !== g.l ? `<span class="up"> +${g.l - pl.get(g.id)}</span>` : ''}</span>`).join('') || '<span class="muted">žádné</span>';
+  return (sn.gb || []).map((g) => `<span class="chip">${esc(gbNm(g))} <b>${g.l}</b>${pl.has(g.id) && pl.get(g.id) !== g.l ? `<span class="up"> +${g.l - pl.get(g.id)}</span>` : ''}</span>`).join('') || '<span class="muted">žádné</span>';
 }
 function visitCard(sn, prev) {
   const arc = sn.arc?.c ? ` · Archa ${fmt(sn.arc.c)} %${sn.arc.g ? ` (zlatá ${fmt(sn.arc.g)} %)` : ''}` : '';

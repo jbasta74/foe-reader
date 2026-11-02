@@ -481,6 +481,12 @@ const tests = {
     if (!/Rating .*\(\s*-/.test(r.txt) || !/FP\s*-5/.test(r.txt)) throw new Error('text: ' + r.txt);
     return errors;
   },
+  async 'Statistiky: názvy VB i u starších záznamů se serverovým ID'() {
+    const { pg, errors } = await page([startup()]);
+    const t = await pg.evaluate(() => { S.names.set('X_IronAge_Landmark1', 'Zeusova socha'); return gbChips({ gb: [{ id: 'X_IronAge_Landmark1', n: 'X_IronAge_Landmark1', l: 5 }] }, null); });
+    if (!/Zeusova socha/.test(t) || /X_IronAge/.test(t)) throw new Error(t);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

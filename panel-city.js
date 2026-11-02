@@ -238,6 +238,19 @@ function mapClick(b) {
     if (!mapWin) openMapWin(); else renderMapWin();
     render(); return true;
   }
+  if (b.dataset.mitip != null) {
+    const i = +b.dataset.mitip, t = M && invSwapTips(M)[i];
+    if (!t) return true;
+    if (mapInvTip !== i) { mapInvTip = i; mapTip = null; render(); renderMapWin(); return true; }
+    let e = t.it.e;
+    if (!planOn()) { const ix = M.items.indexOf(t.it); if (!planStart()) return true; e = mapPlan.list[ix]; mapPlan.hist = []; }
+    const invId = [...S.inv.entries()].find(([, v]) => v.item?.cityEntityId === t.b.id && v.stock > 0)?.[0];
+    const P = planModel(), it = P.items.find((x) => x.e === e);
+    if (it) { planPark(it); const ne = planInvEntity(t.b.id, invId); mapPlan.parked.push(ne); planPlace(planModel(), ne, it.x0, it.y0); }
+    mapInvTip = null;
+    if (!mapWin) openMapWin(); else renderMapWin();
+    render(); return true;
+  }
   if (b.dataset.pact === 'start' || b.dataset.pload != null) { if (planStart(b.dataset.pload)) { if (!mapWin) openMapWin(); else renderMapWin(); render(); } return true; }
   if (b.dataset.pdel != null) { const n = b.dataset.pdel; plansWrite(mapGrid, (o) => { delete o[n]; }); if (planOn() && mapPlan.name === n) mapPlan.name = PLAN_AUTO; renderMapWin(); render(); return true; }
   if (!planOn()) return false;
@@ -330,7 +343,7 @@ function planSnap() {
   mapPlan.hist.push({ list: mapPlan.list.map((e) => ({ ...e })), parked: mapPlan.parked.map((e) => ({ ...e })) });
   if (mapPlan.hist.length > 80) mapPlan.hist.shift();
 }
-function planChanged() { mapPlan.rev++; mapTip = null; mapPlan.step = null; try { planSave(PLAN_AUTO); } catch { /* bez uložení */ } }
+function planChanged() { mapPlan.rev++; mapTip = null; mapInvTip = null; mapPlan.step = null; try { planSave(PLAN_AUTO); } catch { /* bez uložení */ } }
 function planUndo() { const h = mapPlan.hist.pop(); if (!h) return; mapPlan.list = h.list; mapPlan.parked = h.parked; mapPlan.pick = null; planChanged(); }
 function planFits(M, e, x, y) {
   const m = S.ent.get(e.cityentity_id);
@@ -488,6 +501,38 @@ function planInvHtml() {
   return `<br><span class="muted">🎁 Inventář (klik = do skladu plánu, pak klik do mapy):</span> ${rows.slice(0, 40).map((r) =>
     `<button class="fbtn" data-pinv="${esc(String(r.invId))}" title="${esc(`${r.name} ${r.sz.w}×${r.sz.l}${r.sz.road ? ', cesta' : ', bez cesty'} · zbývá ${r.left}`)}">${esc(r.name)} ${r.sz.w}×${r.sz.l}${r.sc != null ? ` <span class="muted">${dec((Math.round(r.sc * 100) / 100).toFixed(2))}</span>` : ''}${r.left > 1 ? ` ×${r.left}` : ''}</button>`).join('')}`;
 }
+// Klíč budovy jako v Ratingu (ID + věk).
+const rateKey = (e) => { const m = S.entProd.get(e.cityentity_id) || S.entBoost.get(e.cityentity_id); return `${e.cityentity_id}|${m ? entEra(e, m, S.player?.era) : ''}`; };
+// ---------- Výměny za budovy z inventáře: slabá budova na mapě ⇄ lepší budova stejného půdorysu z inventáře ----------
+// Zisk = rozdíl celkové hodnoty podle Ratingu (skóre × pole), stejně jako „Nahradí“ v záložce Rating. Každý kus z inventáře
+// i každá budova na mapě jen jednou, přednost má největší zisk.
+let mapInvTip = null;
+function invSwapTips(M) {
+  if (M._inv) return M._inv;
+  let inv, city;
+  try { inv = ratedInventory().list; city = ratedBuildings(); } catch { return (M._inv = []); }
+  const byKey = new Map(city.map((c) => [`${c.id}|${c.era}`, c]));
+  const cand = [];
+  for (const b of inv) {
+    if (!(b.score > 0)) continue;
+    for (const it of M.items) {
+      if (it.isRoad || it.isImp || it.m.type === 'main_building' || it.e._inv || it.m.w !== b.w || it.m.l !== b.l) continue;
+      const c = byKey.get(rateKey(it.e));
+      if (!c || c.score >= b.score) continue;
+      cand.push({ b, it, c, gain: b.score * b.tiles - c.score * c.tiles });
+    }
+  }
+  cand.sort((x, y) => y.gain - x.gain);
+  const left = new Map(inv.map((b) => [b, b.n || 1])), used = new Set(), out = [];
+  for (const t of cand) { if (used.has(t.it) || !(left.get(t.b) > 0)) continue; used.add(t.it); left.set(t.b, left.get(t.b) - 1); out.push(t); }
+  return (M._inv = out);
+}
+function invTipsHtml(M) {
+  const T = invSwapTips(M);
+  if (!T.length) return '';
+  return `<br><span class="muted">🎁 Výměna za budovu z inventáře (zisk podle Ratingu = skóre × pole):</span> ${T.slice(0, 12).map((t, i) =>
+    `<button class="fbtn ${mapInvTip === i ? 'on' : ''}" data-mitip="${i}" title="${esc(`${t.c.name} (skóre ${(Math.round(t.c.score * 100) / 100).toLocaleString(LOC())}) → ${t.b.name} (skóre ${(Math.round(t.b.score * 100) / 100).toLocaleString(LOC())}) – klik = ukázat, druhý klik = vyzkoušet v plánu`)}">${esc(t.c.name)} → ${esc(t.b.name)} +${fmt(Math.round(t.gain))}</button>`).join('')}`;
+}
 function tipsHtml(M) {
   const T = swapTips(M);
   if (!T.length) return '';
@@ -519,8 +564,8 @@ function mapSvg(M, t) {
   // Rating: barva od červené (nejhorší) po zelenou (nejlepší) podle pořadí skóre budov na mapě
   let rateCol = null, rateOf = null;
   if (mapMode === 'rate') {
-    const sc = mapRateScores(), keyOf = (e) => { const m = S.entProd.get(e.cityentity_id) || S.entBoost.get(e.cityentity_id); return `${e.cityentity_id}|${m ? entEra(e, m, S.player?.era) : ''}`; };
-    rateOf = (it) => sc.get(keyOf(it.e));
+    const sc = mapRateScores();
+    rateOf = (it) => sc.get(rateKey(it.e));
     const vals = [...new Set(M.items.map(rateOf).filter((v) => v != null))].sort((a, b) => a - b);
     rateCol = (v) => { if (v == null) return '#bdb5a6'; const q = vals.length > 1 ? vals.indexOf(v) / (vals.length - 1) : 1; return `hsl(${Math.round(q * 120)},65%,45%)`; };
   }
@@ -552,6 +597,9 @@ function mapSvg(M, t) {
     if (step.from && step.to) svg += `<line x1="${X(step.from.x) + step.from.w * t / 2}" y1="${Y(step.from.y) + step.from.l * t / 2}" x2="${X(step.to.x) + step.to.w * t / 2}" y2="${Y(step.to.y) + step.to.l * t / 2}" stroke="#c2185b" stroke-width="${Math.max(1.5, t / 5)}" pointer-events="none"/>`;
     for (const k of step.tiles || []) { const [x, y] = k.split(',').map(Number); svg += `<rect x="${X(x) + 1}" y="${Y(y) + 1}" width="${t - 2}" height="${t - 2}" fill="none" stroke="${step.k === 'rdel' ? '#d32f2f' : '#1565c0'}" stroke-width="${Math.max(1.5, t / 5)}" pointer-events="none"/>`; }
   }
+  // zvýrazněná výměna za budovu z inventáře
+  const itip = mapInvTip != null ? invSwapTips(M)[mapInvTip] : null;
+  if (itip) { const it = itip.it; svg += `<rect x="${X(it.x0)}" y="${Y(it.y0)}" width="${it.m.w * t}" height="${it.m.l * t}" fill="rgba(255,193,7,.35)" stroke="#f9a825" stroke-width="${Math.max(2, t / 3)}" pointer-events="none"><title>${esc(itip.b.name)}</title></rect>`; }
   // zvýrazněný tip na prohození
   const tip = mapTip != null ? swapTips(M)[mapTip] : null;
   if (tip) {
@@ -568,7 +616,7 @@ function mapSvg(M, t) {
   return svg + '</svg>';
 }
 function mapStats(M, win) {
-  if (win && planOn()) return planStats(M) + tipsHtml(M);
+  if (win && planOn()) return planStats(M) + tipsHtml(M) + invTipsHtml(M);
   const roadTiles = M.road.size, unl = M.tiles.size;
   const saved = Object.entries(plansOf(mapGrid));
   return `<button class="fbtn" data-pact="start" title="Kopie mapy, ve které můžete přesouvat budovy a cesty a hned vidíte úsporu – ve hře se nic nemění">✏️ Plánovat</button>${saved.length ? ` <span class="muted">nebo pokračovat:</span> ${saved.map(([n, x]) => planVariantBtn(n, x)).join('')}` : ''}
@@ -579,7 +627,7 @@ function mapStats(M, win) {
     ${M.notConnected.length ? `<span class="chip hi">nepřipojeno ${M.notConnected.length}</span>` : ''}
     <br><span class="muted">Obarvit:</span> ${[['type', 'podle druhu'], ['rate', 'podle Ratingu']].map(([k, l]) => `<button class="fbtn ${mapMode === k ? 'on' : ''}" data-mapmode="${k}">${l}</button>`).join('')}
     ${(() => { const lf = largestFree(M); return `<br><span class="muted">Volné místo${lf ? ` (největší ${lf.w}×${lf.l})` : ''}:</span> ${fitSizes().map((z) => { const [a, b] = z.split('×').map(Number); const n = freeFits(M, a, b).length;
-      return `<button class="fbtn ${mapFit === z ? 'on' : ''}" data-mapfit="${z}" title="Kolik budov ${z} se vejde do volného místa (bez ohledu na cestu) – klik ukáže kam">${z}: ${n}×</button>`; }).join('')}`; })()}${tipsHtml(M)}`;
+      return `<button class="fbtn ${mapFit === z ? 'on' : ''}" data-mapfit="${z}" title="Kolik budov ${z} se vejde do volného místa (bez ohledu na cestu) – klik ukáže kam">${z}: ${n}×</button>`; }).join('')}`; })()}${tipsHtml(M)}${invTipsHtml(M)}`;
 }
 const MAP_LEGEND = '🟦 potřebuje cestu (tmavší = dvouproudou) · 🟩 cestu nepotřebuje · ⬛ cesta, <span style="color:#d9534f">červená</span> = slepá cesta k ničemu, <span style="color:#e8a317">oranžová</span> = cesta, kterou jde odebrat · zelený čárkovaný rámeček = kam se vejde zvolená velikost · v režimu Rating červená = nejhorší, zelená = nejlepší · 🟫 překážka · oranžový okraj = cestu nepotřebuje, a stojí u ní · červený okraj = nepřipojeno';
 function gridPicker() {

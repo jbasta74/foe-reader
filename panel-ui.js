@@ -216,7 +216,7 @@ function onUiClick(ev) {
     if (fg) { fragFilter = fg.dataset.frag; render(); return; }
     if (ev.target.closest('[data-act="mapwin"]')) { openMapWin(); return; }
     if (ev.target.closest('[data-act="calcwin"]')) { openCalcWin(); return; }
-    const mpl = ev.target.closest('[data-mtip],[data-pact],[data-ptool],[data-ppick],[data-pshow],[data-pstep],[data-pinv],[data-pload],[data-pdel]');
+    const mpl = ev.target.closest('[data-mtip],[data-mitip],[data-pact],[data-ptool],[data-ppick],[data-pshow],[data-pstep],[data-pinv],[data-pload],[data-pdel]');
     if (mpl) { if (mpl.tagName === 'A') ev.preventDefault(); if (mapClick(mpl)) return; }
     const mg = ev.target.closest('[data-mapgrid]');
     if (mg) { mapGrid = mg.dataset.mapgrid; render(); renderMapWin(); return; }
@@ -276,6 +276,8 @@ function onUiChange(ev) {
   if (bc) { bonusCode = bc.value; bonusUnlock(bonusCode).then((ok) => { if (ok) { bonusCode = ''; bonusMsg = ''; tab = 'stat'; render(); } }); }
   const ro = ev.target.closest('[data-rateopt]');
   if (ro) { rateSel[ro.dataset.rateopt] = ro.checked; render(); }
+  const mkg = ev.target.closest('[data-mkgood]');
+  if (mkg) { mkGood = mkg.value; render(); }
   const ptq = ev.target.closest('[data-input="ptQ"]');
   if (ptq) { ptSel.q = ptq.value; render(); }
   const rq = ev.target.closest('[data-input="rateQ"]');

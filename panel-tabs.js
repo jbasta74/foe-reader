@@ -173,17 +173,18 @@ function techList() {
   return out;
 }
 const techResearch = (t) => { const [id, amount] = Object.entries(t.researchCost?.resources || {})[0] || []; return { id, amount: amount || 0 }; };
-function viewResearch() {
+// Kolik surovin zbývá na výzkum do konce věku tEra (cum) a v něm samotném (sel). Sdílí Výzkum a Trh.
+function researchDemand(tEra) {
   const R = S.research;
-  if (!R.meta) return '<p class="muted">Strom výzkumu hra posílá při načtení – obnovte hru (F5).</p>';
+  if (!R.meta) return null;
   const list = techList().filter((t) => t.era && !t.isTeaser);
   const prog = R.progress || {};
   const done = new Set(prog.unlockedNodes?.length ? prog.unlockedNodes : prog.unlockedTechnologies || []);
   const paid = new Map((prog.inProgressTechnologies || []).map((x) => [x.tech_id, x.currentSP ?? Object.values(x.researchCostPaid?.resources || {})[0] ?? 0]));
   const eras = [...new Set(list.map((t) => t.era))];
   const cur = Math.max(0, eras.indexOf(S.player?.era));
-  if (techEra == null || !eras.includes(techEra)) techEra = eras[Math.min(cur + 1, eras.length - 1)];
-  const tgt = eras.indexOf(techEra);
+  if (tEra == null || !eras.includes(tEra)) tEra = eras[Math.min(cur + 1, eras.length - 1)];
+  const tgt = eras.indexOf(tEra);
   const sel = {}, cum = {};
   let nSel = 0, nCum = 0, nOpt = 0;
   for (const t of list) {
@@ -197,6 +198,22 @@ function viewResearch() {
     for (const [k, v] of Object.entries(dem)) { if (!v) continue; cum[k] = (cum[k] || 0) + v; if (ei === tgt) sel[k] = (sel[k] || 0) + v; }
     nCum++; if (ei === tgt) nSel++;
   }
+  return { tEra, eras, cur, tgt, sel, cum, nSel, nCum, nOpt };
+}
+// Chybějící zboží na výzkum do konce následujícího věku (zboží -> kolik chybí).
+function researchMissingGoods() {
+  const d = researchDemand(null);
+  const out = new Map();
+  if (!d) return out;
+  for (const [id, v] of Object.entries(d.cum)) if (S.goodsEra.has(id)) { const m = v - (S.resources[id] || 0); if (m > 0) out.set(id, m); }
+  return out;
+}
+function viewResearch() {
+  const R = S.research;
+  if (!R.meta) return '<p class="muted">Strom výzkumu hra posílá při načtení – obnovte hru (F5).</p>';
+  const D = researchDemand(techEra);
+  techEra = D.tEra;
+  const { eras, cur, tgt, sel, cum, nSel, nCum, nOpt } = D;
   const stock = (id) => (id === 'strategy_points' ? (S.resources.strategy_points || 0) + (S.packageFP || 0) : S.resources[id] || 0);
   const base = ['strategy_points', 'money', 'supplies'];
   const order = [...base, ...[...S.goodsEra.keys()].filter((id) => cum[id] || sel[id]), ...Object.keys(cum).filter((id) => !base.includes(id) && !S.goodsEra.has(id))];
@@ -404,4 +421,56 @@ function viewQI() {
         <td class="num">${fmt(x.actionPoints || 0)}</td><td class="num">${fmt(x.progressContribution || 0)}</td></tr>`).join('')}</tbody></table>`;
   } else h += '<p class="muted">Aktivita členů se ukáže po otevření přehledu aktivity v QI ve hře (ukládá se i do Statistiky → Cech).</p>';
   return h;
+}
+
+// ---------- Trh: nabídky z TradeService.getTradeOffers (jen čtení – obchod přijímáte ve hře) ----------
+// Poměr jako FoE Helper: nabízené / požadované × 2^(rozdíl věků); 1 = férový obchod, > 1 výhodný pro vás.
+S.market = null;
+Object.assign(H, {
+  'TradeService.getTradeOffers'(d) { if (Array.isArray(d)) S.market = { list: d, t: Date.now() }; },
+  'TradeService.acceptOfferById'(d) { if (Array.isArray(d)) S.market = { list: d, t: Date.now() }; },
+});
+let mkGood = ''; // filtr: zboží (nabízené nebo požadované)
+function marketRate(o) {
+  const ea = ERAS.indexOf(S.goodsEra.get(o.offer?.good_id)), eb = ERAS.indexOf(S.goodsEra.get(o.need?.good_id));
+  if (!(o.need?.value > 0)) return null;
+  return (o.offer.value / o.need.value) * Math.pow(2, ea >= 0 && eb >= 0 ? ea - eb : 0);
+}
+function viewMarket() {
+  const M = S.market;
+  if (!M?.list?.length) return '<p class="muted">Otevřete ve hře trh (nabídky se načtou s otevřením) – rozšíření nabídky jen čte, obchod přijímáte ve hře.</p>';
+  const need = researchMissingGoods();
+  const stock = (id) => S.resources[id] || 0;
+  const goods = [...new Set(M.list.flatMap((o) => [o.offer?.good_id, o.need?.good_id]).filter(Boolean))].sort((a, b) => ERAS.indexOf(S.goodsEra.get(a)) - ERAS.indexOf(S.goodsEra.get(b)) || resLabel(a).localeCompare(resLabel(b)));
+  const rows = [];
+  for (const o of M.list) {
+    const m = o.merchant || {}, self = !!m.is_self;
+    if (self ? !cfg.mkOwn : !((cfg.mkNb && m.is_neighbor) || (cfg.mkGuild && m.is_guild_member) || (cfg.mkFriend && m.is_friend))) continue;
+    if (mkGood && o.offer?.good_id !== mkGood && o.need?.good_id !== mkGood) continue;
+    const r = marketRate(o);
+    if (r == null) continue;
+    const fair = Math.abs(r - 1) < 1e-9;
+    if (!self && ((r > 1 && !cfg.mkAdv) || (fair && !cfg.mkFair) || (r < 1 && !fair && !cfg.mkDis))) continue;
+    const afford = stock(o.need.good_id) >= o.need.value;
+    if (!self && cfg.mkAfford && !afford) continue;
+    const res = need.get(o.offer.good_id) || 0;
+    if (!self && cfg.mkResearch && !res) continue;
+    rows.push({ o, m, self, r, fair, afford, res });
+  }
+  rows.sort((a, b) => (b.res > 0) - (a.res > 0) || b.r - a.r || b.o.offer.value - a.o.offer.value);
+  const g = (x) => { const e = S.goodsEra.get(x.good_id); return `${goodIcon(x.good_id, 18)} <b>${fmt(x.value)}</b> ${esc(resLabel(x.good_id))}${e ? ` <span class="muted">· ${esc(ERA[e] || e)}</span>` : ''}`; };
+  const who = (m) => m.is_self ? 'vy' : [m.is_guild_member && 'cech', m.is_friend && 'přítel', m.is_neighbor && 'soused'].filter(Boolean).join(', ');
+  const cb = (k, l, t) => `<label title="${t || ''}"><input type="checkbox" data-cfg="${k}" ${cfg[k] ? 'checked' : ''}> ${l}</label>`;
+  const ago = Math.round((Date.now() - M.t) / 60000);
+  return `<div class="cfg"><div>Partner: ${cb('mkGuild', 'cech')} ${cb('mkFriend', 'přátelé')} ${cb('mkNb', 'sousedé')} ${cb('mkOwn', 'moje nabídky')}</div>
+      <div>Poměr: ${cb('mkAdv', '<span class="ok">výhodné</span>', 'Dostanete víc, než dáte (po přepočtu věků)')} ${cb('mkFair', 'férové 1:1')} ${cb('mkDis', '<span class="hi">nevýhodné</span>')}</div>
+      <div>${cb('mkAfford', 'jen na co mám')} ${cb('mkResearch', 'jen zboží, které chybí do výzkumu 🔬', 'Nabízené zboží chybí na výzkum do konce dalšího věku (záložka Výzkum)')}</div>
+      <div>Zboží: <select data-mkgood><option value="">všechno</option>${goods.map((x) => `<option value="${esc(x)}" ${x === mkGood ? 'selected' : ''}>${esc(resLabel(x))}${need.has(x) ? ' 🔬' : ''}</option>`).join('')}</select></div></div>
+    <p class="muted">${fmt(rows.length)} z ${fmt(M.list.length)} nabídek · načteno před ${ago < 1 ? 'chvílí' : `${ago} min`} (aktualizuje se při otevření trhu ve hře)</p>
+    ${rows.length ? `<table class="pt"><thead><tr><th>Hráč</th><th>Dostanete</th><th>Dáte</th><th class="num">Poměr</th><th class="num" title="Kolik požadovaného zboží máte">Máte</th></tr></thead><tbody>${rows.slice(0, 200).map(({ o, m, self, r, fair, afford, res }) =>
+      `<tr class="${self ? 'me' : afford ? '' : 'muted'}"><td>${esc(m.name || '?')} <span class="muted">${esc(who(m))}</span></td>
+        <td>${g(o.offer)}${res ? ` <span title="Na výzkum chybí ${fmt(res)}">🔬</span>` : ''}</td><td>${g(o.need)}</td>
+        <td class="num ${fair ? '' : r > 1 ? 'ok' : 'hi'}">${dec((Math.round(r * 100) / 100).toFixed(2))}</td>
+        <td class="num ${afford ? '' : 'hi'}">${fmt(stock(o.need.good_id))}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Žádná nabídka neodpovídá filtru.</p>'}
+    <p class="muted">Poměr = dostanete / dáte × 2<sup>rozdíl věků</sup> (zboží o věk vyšší má dvojnásobnou hodnotu) – 1 = férový obchod, víc = výhodný pro vás. 🔬 = zboží chybí na výzkum do konce dalšího věku. Šedě = nemáte dost zboží.</p>`;
 }

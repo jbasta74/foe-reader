@@ -487,6 +487,47 @@ const tests = {
     if (!/Zeusova socha/.test(t) || /X_IronAge/.test(t)) throw new Error(t);
     return errors;
   },
+  async 'Trh: poměr nabídek a filtry'() {
+    const { pg, errors } = await page([startup(), msg('TradeService.getTradeOffers', [
+      { offer: { good_id: 'marble', value: 10 }, need: { good_id: 'cloth', value: 10 }, merchant: { name: 'A', is_guild_member: true } },
+      { offer: { good_id: 'marble', value: 20 }, need: { good_id: 'cloth', value: 10 }, merchant: { name: 'B', is_friend: true } },
+      { offer: { good_id: 'marble', value: 5 }, need: { good_id: 'cloth', value: 10 }, merchant: { name: 'C', is_neighbor: true } },
+      { offer: { good_id: 'cloth', value: 5 }, need: { good_id: 'marble', value: 10 }, merchant: { name: 'Já', is_self: true } },
+    ])]);
+    const r = await pg.evaluate(() => {
+      S.goodsEra.set('marble', 'BronzeAge'); S.goodsEra.set('cloth', 'BronzeAge'); S.goodsName.set('marble', 'Mramor'); S.goodsName.set('cloth', 'Látka');
+      S.resources.cloth = 15;
+      const txt = () => viewMarket().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      const a = txt(); cfg.mkDis = true; cfg.mkAfford = true; const b = txt(); cfg.mkDis = false; cfg.mkAfford = false;
+      return { a, b };
+    });
+    // výchozí: výhodné (B 2,00) první, férové (A 1,00), nevýhodné (C) skryté, vlastní skryté
+    if (!/2 z 4 nabídek/.test(r.a) || !(r.a.indexOf(' B ') < r.a.indexOf(' A ')) || / C /.test(r.a) || /Já/.test(r.a)) throw new Error('výchozí filtr: ' + r.a);
+    if (!/3 z 4 nabídek/.test(r.b) || !/0,50|0\.50/.test(r.b)) throw new Error('nevýhodné: ' + r.b);
+    return errors;
+  },
+  async 'Mapa: výměna slabé budovy za budovu z inventáře'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      S.grids.main = { unlocked: [{ x: 0, y: 0, width: 10, length: 6 }], blocked: [] };
+      S.ent.set('H_T', { w: 2, l: 2, road: 1, type: 'main_building' }); S.ent.set('S_R', { w: 1, l: 1, road: 1, type: 'street' });
+      S.ent.set('P_FP', { w: 2, l: 2, road: 1, type: 'production' }); S.ent.set('P_INV', { w: 2, l: 2, road: 1, type: 'production' });
+      S.names.set('P_FP', 'Slabá'); S.names.set('P_INV', 'Silná');
+      S.entProd.set('P_INV', { AllAge: [{ time: 86400, products: [{ playerResources: { resources: { strategy_points: 20 } } }] }] });
+      const E = new Map(); let id = 1; const add = (c, x, y, st) => E.set(id, { id: id++, player_id: myId(), cityentity_id: c, x, y, connected: 1, type: S.ent.get(c).type, state: st || {} });
+      add('H_T', 0, 0); for (let x = 0; x < 10; x++) add('S_R', x, 2); add('P_FP', 3, 0, { current_product: { production_time: 86400, product: { resources: { strategy_points: 2 } } } });
+      S.entities = E; mapGrid = 'main'; mapPlan = null; mapInvTip = null;
+      S.inv.set(900, { name: 'Silná', stock: 1, item: { __class__: 'BuildingItemPayload', cityEntityId: 'P_INV' } });
+      const tips = invSwapTips(mapModel('main')).map((t) => `${t.c.name}→${t.b.name}`);
+      const btn = (k, v) => { const b = document.createElement('button'); b.dataset[k] = v; return b; };
+      mapClick(btn('mitip', '0')); mapClick(btn('mitip', '0'));
+      const P = planModel(), at = P.occ.get('3,0');
+      return { tips, on: planOn(), at: at?.e.cityentity_id, inv: at?.e._inv, parked: mapPlan.parked.map((e) => e.cityentity_id), steps: planSteps().map((x) => x.k), nc: P.notConnected.length };
+    });
+    if (JSON.stringify(r.tips) !== JSON.stringify(['Slabá→Silná'])) throw new Error('tipy: ' + JSON.stringify(r));
+    if (!r.on || r.at !== 'P_INV' || r.inv !== 900 || r.parked.join() !== 'P_FP' || r.steps.join() !== 'del,add' || r.nc) throw new Error('plán: ' + JSON.stringify(r));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

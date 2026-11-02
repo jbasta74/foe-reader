@@ -655,6 +655,7 @@ const CFG_DEFAULT = {
   msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
   negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
   endOn: true, endLead: 3, sysEv: false, fullOn: true, fullLead: 1, // konec expedice / QI s nevyužitými pokusy / akcemi
+  mkGuild: true, mkFriend: true, mkNb: true, mkOwn: false, mkAdv: true, mkFair: true, mkDis: false, mkAfford: false, mkResearch: false, // filtry Trhu
   mgPopup: true, // okno Osada se otevře samo při zahájení minihry obchodníka
   rateFH: false, // Rating jako FoE Helper (bez bonusů k produkci, s VB)
   fpBar: true, // okénko FP ve skladu u lišty FP ve hře

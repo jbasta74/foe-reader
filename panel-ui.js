@@ -53,6 +53,7 @@ function mount() {
     .cfg label{margin-right:10px;white-space:nowrap}
     input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
     input.pname{width:140px}
+    table.day td{padding:3px 6px;vertical-align:top} table.day td:first-child{font-size:15px;width:22px} table.day tr.muted td{color:#9a8a70}
     ol.steps{margin:3px 0 3px 18px;padding:0} ol.steps a{color:inherit;text-decoration:none} ol.steps a.on{background:#c2185b;color:#fff;border-radius:3px;padding:0 3px}
     .copyrow{display:flex;gap:6px}
     a{color:#8a4b12}
@@ -153,6 +154,8 @@ function attachTips(r, hostEl) {
 // Společné ovládání pro panel i samostatná okna záložek.
 function onUiClick(ev) {
   {
+    const gt = ev.target.closest('[data-goto]');
+    if (gt) { const id = gt.dataset.goto; if (cfg.uiBar) openTabWin(id); else { tab = id; render(); } return; }
     const r = ev.target.closest('tr[data-key]');
     if (r) { selectedKey = r.dataset.key === selectedKey ? null : r.dataset.key; render(); return; }
     if (ev.target.closest('[data-act="download"]')) download();
@@ -397,6 +400,7 @@ function renderIcons() {
     const alertCls = id === 'alerts' && (S.unreadLoud || 0) > 0 ? ' alert' : '';
     return `<button class="ico${tabWins.has(id) ? ' on' : ''}${alertCls}" data-ico="${id}" title="${l === '🔔' ? 'Upozornění' : l === 'ℹ️' ? (updateAvail() ? `Nová verze ${update.tag} – O rozšíření a nastavení` : 'O rozšíření a nastavení') : l}">${ICONS[id] || '•'}${badge}</button>`;
   }).join(''));
+  if (tg && !tg.classList.contains('drag')) clampHost();
   if (tg && !tg.classList.contains('drag')) tg.title = L(`FoE Reader ${VERSION} · klik = panel se záložkami, táhnout = přesunout lištu`);
 }
 function renderTabWin(id) {
@@ -441,8 +445,9 @@ function savePos() {
   try { localStorage.setItem(POS_KEY, JSON.stringify({ x: parseInt(host.style.left), y: parseInt(host.style.top) })); } catch { /* ignore */ }
 }
 function clampHost() {
-  const btn = root.getElementById('toggle');
-  const w = btn.offsetWidth || 120, h = btn.offsetHeight || 28;
+  const btn = root.getElementById('toggle'), bar = root.getElementById('bar');
+  // celá lišta s ikonami musí zůstat na obrazovce (přibývající ikony ji jinak vysunuly za okraj)
+  const w = (cfg.uiBar && bar?.offsetWidth) || btn.offsetWidth || 120, h = (cfg.uiBar && bar?.offsetHeight) || btn.offsetHeight || 28;
   host.style.left = Math.min(Math.max(0, parseInt(host.style.left) || 0), window.innerWidth - w) + 'px';
   host.style.top = Math.min(Math.max(0, parseInt(host.style.top) || 0), window.innerHeight - h) + 'px';
 }

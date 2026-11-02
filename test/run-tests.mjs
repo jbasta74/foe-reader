@@ -20,7 +20,8 @@ const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePa
 const msg = (key, data, channel = 'http') => { const [c, m] = key.split('.'); return { channel, m: { requestClass: c, requestMethod: m, [channel === 'req' ? 'requestData' : 'responseData']: data } }; };
 async function page(messages, cfg) {
   const pg = await browser.newPage({ viewport: { width: 1300, height: 900 } });
-  if (cfg) await pg.addInitScript((c) => localStorage.setItem('foeReaderSettings', JSON.stringify(c)), cfg);
+  // přehled dne se v testech sám neotevírá (zakrýval by lištu), pokud ho test výslovně nezapne
+  await pg.addInitScript((c) => localStorage.setItem('foeReaderSettings', JSON.stringify(c)), { dayPopup: false, ...(cfg || {}) });
   const errors = [];
   pg.on('pageerror', (e) => errors.push(String(e)));
   pg.on('console', (c) => { if (c.type() === 'warning' && /NaN/.test(c.text())) errors.push(c.text()); });
@@ -526,6 +527,21 @@ const tests = {
     });
     if (JSON.stringify(r.tips) !== JSON.stringify(['Slabá→Silná'])) throw new Error('tipy: ' + JSON.stringify(r));
     if (!r.on || r.at !== 'P_INV' || r.inv !== 900 || r.parked.join() !== 'P_FP' || r.steps.join() !== 'del,add' || r.nc) throw new Error('plán: ' + JSON.stringify(r));
+    return errors;
+  },
+  async 'Přehled dne: produkce, hospody, pokusy a samo otevření'() {
+    const { pg, errors } = await page([startup([arc])], { dayPopup: true });
+    await pg.waitForTimeout(4500);
+    const r = await pg.evaluate(() => {
+      const now = nowServer();
+      S.entities.set(9001, { id: 9001, player_id: myId(), cityentity_id: 'X', state: { __class__: 'ProducingState', next_state_transition_at: now - 10 } });
+      S.entities.set(9002, { id: 9002, player_id: myId(), cityentity_id: 'Y', state: { __class__: 'ProducingState', next_state_transition_at: now + 3600 } });
+      S.taverns = [{ ownerId: 1 }, { ownerId: 2, state: 'alreadyVisited', nextVisitTime: now + 999 }];
+      S.resources.guild_expedition_attempt = 4;
+      return { win: !!document.querySelector('.foe-reader-win'), txt: viewDay().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') };
+    });
+    if (!r.win) throw new Error('přehled se po načtení neotevřel');
+    if (!/1 hotovo k vybrání/.test(r.txt) || !/další za 1 h/.test(r.txt) || !/1 k návštěvě/.test(r.txt) || !/pokusy 4/.test(r.txt)) throw new Error(r.txt);
     return errors;
   },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {

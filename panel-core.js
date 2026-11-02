@@ -57,6 +57,7 @@ const H = {
     for (const e of d.city_map?.entities || []) S.entities.set(e.id, e);
     if (d.city_map?.unlocked_areas) S.grids.main = { unlocked: d.city_map.unlocked_areas, blocked: d.city_map.blocked_areas || [] };
     for (const g of d.goodsList || []) { S.goodsEra.set(g.id, g.era); S.goodsName.set(g.id, g.name); }
+    setTimeout(() => { try { dayWatch(); } catch { /* ignore */ } }, 0);
   },
   // ---- Výzkum ----
   'ResearchService.getProgress'(d) { S.research.progress = d; for (const b of d?.chosenBranches || []) S.research.chosen.add(b); },
@@ -655,6 +656,7 @@ const CFG_DEFAULT = {
   msgSocial: true, msgGuild: false, msgSound: true, // upozornění na nové zprávy
   negoGbg: false, // pomocník vyjednávání i v GBG (na vlastní riziko)
   endOn: true, endLead: 3, sysEv: false, fullOn: true, fullLead: 1, // konec expedice / QI s nevyužitými pokusy / akcemi
+  dayPopup: true, // přehled dne se otevře sám po načtení hry
   mkGuild: true, mkFriend: true, mkNb: true, mkOwn: false, mkAdv: true, mkFair: true, mkDis: false, mkAfford: false, mkResearch: false, // filtry Trhu
   mgPopup: true, // okno Osada se otevře samo při zahájení minihry obchodníka
   rateFH: false, // Rating jako FoE Helper (bez bonusů k produkci, s VB)
@@ -958,6 +960,7 @@ function timeChecks() {
   syncWatchAlarms();
   endChecks(now);
   try { mgWatch(); } catch { /* ignore */ }
+  try { dayWatch(); } catch { /* ignore */ }
   // Sledované provincie: upozornit X minut před odemknutím.
   if (cfg.gbgWatch && S.gbg) {
     // Hlásí se jednou za každé zamčení – i když je provincie označena až v posledních minutách.

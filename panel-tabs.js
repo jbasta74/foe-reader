@@ -474,3 +474,71 @@ function viewMarket() {
         <td class="num ${afford ? '' : 'hi'}">${fmt(stock(o.need.good_id))}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Žádná nabídka neodpovídá filtru.</p>'}
     <p class="muted">Poměr = dostanete / dáte × 2<sup>rozdíl věků</sup> (zboží o věk vyšší má dvojnásobnou hodnotu) – 1 = férový obchod, víc = výhodný pro vás. 🔬 = zboží chybí na výzkum do konce dalšího věku. Šedě = nemáte dost zboží.</p>`;
 }
+
+// ---------- Přehled dne: co je hotové, co brzy vyprší a co zbývá – vše z dat, která už rozšíření má ----------
+let dayShown = false;
+// Odhad zásoby s doplňováním (QI akce, pokusy expedice) – stejný výpočet jako upozornění na plnou zásobu.
+function refillNow(id) {
+  const rf = S.resRefill?.get(id), v = S.resources[id];
+  if (v == null) return null;
+  if (!rf) return { v, max: null };
+  const st = fullSeen[id], boost = rf.boost ? (S.boosts || []).filter((b) => b.type === rf.boost).reduce((a, b) => a + (b.value || 0), 0) : 0;
+  const perSec = (rf.amount + boost) / rf.interval, t = st && st.v === v ? st.t : Date.now();
+  return { v: Math.min(rf.max, Math.floor(v + perSec * (Date.now() - t) / 1000)), max: rf.max };
+}
+function viewDay() {
+  if (!S.entities.size) return '<p class="muted">Načtěte hru (F5) – přehled se poskládá z dat, která hra pošle při načtení.</p>';
+  const now = nowServer(), rows = [];
+  const go = (t) => (tabVisible(t) ? ` <button class="fbtn" data-goto="${t}">→</button>` : '');
+  const row = (ico, label, val, cls, t, tip) => rows.push(`<tr class="${cls || ''}"><td>${ico}</td><td${tip ? ` title="${esc(tip)}"` : ''}>${label}</td><td>${val}${t ? go(t) : ''}</td></tr>`);
+  // Produkce ve městě
+  let ready = 0, next = null, nextN = 0;
+  for (const e of S.entities.values()) {
+    const at = e.state?.__class__ === 'ProducingState' ? e.state.next_state_transition_at : null;
+    if (e.state?.__class__ === 'ProductionFinishedState' || (at && at <= now)) ready++;
+    else if (at) { if (next == null || at < next - 60) { next = at; nextN = 1; } else if (Math.abs(at - next) <= 60) nextN++; }
+  }
+  row('🏭', 'Produkce ve městě', `${ready ? `<b class="ok">${fmt(ready)} hotovo k vybrání</b>` : 'nic hotového'}${next ? ` · další za ${dur(next - now)}${nextN > 1 ? ` (${fmt(nextN)} budov)` : ''}` : ''}`, ready ? '' : 'muted', 'prod');
+  // Osada / QI – časovače produkce
+  for (const t of S.timers || []) if (t.type === 'outpostProduction') row('🏝️', `${GRID[t.gridId] || t.gridId} – produkce`, t.at <= now ? '<b class="ok">hotovo</b>' : `za ${dur(t.at - now)}`, t.at <= now ? '' : 'muted', t.gridId === 'cultural_outpost' ? 'osada' : null);
+  // Hospody
+  if (S.taverns.length) {
+    const free = S.taverns.filter((t) => !['alreadyVisited', 'noChair', 'isSitting'].includes(t.state) || (t.state === 'alreadyVisited' && t.nextVisitTime && t.nextVisitTime <= now)).length;
+    const mine = S.myTavern ? ` · vaše ${S.myTavern.sitting}/${S.myTavern.unlocked}${S.myTavern.sitting >= S.myTavern.unlocked ? ' <b class="hi">plná – vyberte</b>' : ''}` : '';
+    row('🍺', 'Hospody přátel', `${free ? `<b class="ok">${fmt(free)} k návštěvě</b>` : 'nic volného'}${mine}`, free || /plná/.test(mine) ? '' : 'muted', 'tav');
+  }
+  // Příhody
+  const inc = typeof activeIncidents === 'function' ? activeIncidents() : 0;
+  if (S.incidents) row('🎁', 'Příhody ve městě', inc ? `<b class="ok">${fmt(inc)} aktivních</b>` : 'žádné', inc ? '' : 'muted', 'inc');
+  // Expedice a QI: zbývající pokusy / akce a konec
+  const E = loadEnds();
+  const ge = refillNow('guild_expedition_attempt');
+  if (ge) row('🧭', 'Expedice – pokusy', `<b>${fmt(ge.v)}</b>${ge.max ? ` / ${fmt(ge.max)}${ge.v >= ge.max ? ' <b class="hi">plné – přírůstek propadá</b>' : ''}` : ''}${E.ge?.end > now ? ` · konec za ${durLong(E.ge.end - now)}` : ''}`, ge.v ? '' : 'muted', 'ge');
+  const qi = refillNow('guild_raids_action_points');
+  if (qi && (S.qiState || E.qi?.end > now)) row('🌀', 'QI – akce', `<b>${fmt(qi.v)}</b>${qi.max ? ` / ${fmt(qi.max)}${qi.v >= qi.max ? ' <b class="hi">plné – přírůstek propadá</b>' : ''}` : ''}${E.qi?.end > now ? ` · konec za ${durLong(E.qi.end - now)}` : ''}`, qi.v ? '' : 'muted', 'qi');
+  // GBG
+  if (S.gbg) {
+    const end = S.gbg.endsAt || S.gbg.endTime;
+    row('⚔️', 'GBG', `${end && end > now ? `probíhá, konec za ${durLong(end - now)}` : 'probíhá'}${S.attrition?.level != null ? ` · opotřebení ${fmt(S.attrition.level)}` : ''}`, '', 'gbg');
+  }
+  // Limitované budovy
+  if (S.invLoaded) {
+    const lims = limitedList(), soon = lims.filter((l) => !l.decayed && l.at && l.at > now && l.at - now < 86400), can = lims.filter((l) => l.decayed && limCan(l));
+    if (soon.length || can.length) row('⏳', 'Limitované budovy', [soon.length && `<b class="hi">${fmt(soon.length)} vyprší do 24 h</b> (${esc(soon.slice(0, 3).map((l) => l.name).join(', '))}${soon.length > 3 ? '…' : ''})`, can.length && `${fmt(can.length)} vypršelých lze pozvednout`].filter(Boolean).join(' · '), '', 'prod');
+  }
+  // FP
+  const fp = (S.resources.strategy_points || 0), pk = S.packageFP || 0;
+  row('🔷', 'Forge body', `<b>${fmt(fp)}</b> v liště${pk ? ` + ${fmt(pk)} v balíčcích` : ''}`, '', 'res');
+  // Upozornění
+  if (S.unread) row('🔔', 'Nepřečtená upozornění', `<b>${fmt(S.unread)}</b>`, '', 'alerts');
+  return `<table class="day"><tbody>${rows.join('')}</tbody></table>
+    <p><label><input type="checkbox" data-cfg="dayPopup" ${cfg.dayPopup ? 'checked' : ''}> otevřít přehled samo po načtení hry</label></p>
+    <p class="muted">Vše z dat, která hra posílá při načtení a hraní – hospody, příhody nebo GBG se objeví, až je hra pošle (třeba po otevření). → otevře podrobnou záložku.</p>`;
+}
+// Po načtení hry jednou otevřít okno přehledu (když je zapnuté).
+function dayWatch() {
+  if (dayShown || !cfg.dayPopup || !S.entities.size) return;
+  dayShown = true;
+  // chvíli počkat, ať stihnou dorazit další data (hospody, příhody, časovače)
+  setTimeout(() => { if (cfg.uiBar) openTabWin('den'); else { tab = 'den'; open = true; render(); } }, 3000);
+}

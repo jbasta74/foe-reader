@@ -110,6 +110,7 @@ function viewGuild(D) {
   }
   return h;
 }
+let statProd = 'fp';
 function viewOwnStats(D) {
   const days = Object.keys(D.own).sort();
   if (!days.length) return '<p class="muted">První záznam se uloží chvíli po načtení hry.</p>';
@@ -133,6 +134,16 @@ function viewOwnStats(D) {
       h += `<h4>Přírůstek skóre mezi snímky</h4>${svgChart({ labels: gl.map(shortDate), type: 'bar', height: 140, series: [{ name: 'Přírůstek', color: '#b5651d', values: gv }] })}`;
     }
   }
+  // Produkce za den, FP ve skladu a úrovně VB (záznamy od verze, která je ukládá)
+  const pdays = days.filter((d) => sn(d).day);
+  if (pdays.length) {
+    const DS = [['fp', 'FP', '#2c5aa0'], ['goods', 'Zboží', '#8a4b12'], ['guild', 'Cechovní pokladna', '#5aa05a'], ['medals', 'Medaile', '#b0410f'], ['units', 'Jednotky', '#7a5aa0']];
+    h += `<h4>Produkce města za den</h4><div class="seg">${DS.map(([k, l]) => `<button class="fbtn ${statProd === k ? 'on' : ''}" data-statprod="${k}">${l}</button>`).join('')}</div>
+      ${svgChart({ labels: pdays.map(shortDate), series: DS.filter(([k]) => k === statProd).map(([k, l, c]) => ({ name: l, color: c, values: pdays.map((d) => sn(d).day[k] ?? null) })) })}`;
+  }
+  const fdays = days.filter((d) => sn(d).fpStock != null);
+  if (fdays.length) h += `<h4>FP ve skladu (lišta + balíčky)</h4>${svgChart({ labels: fdays.map(shortDate), series: [{ name: 'FP', color: '#2c5aa0', values: fdays.map((d) => sn(d).fpStock) }] })}`;
+  if (days.length > 1) h += `<h4>Součet úrovní Velkých budov</h4>${svgChart({ labels: days.map(shortDate), series: [{ name: 'Σ úrovní', color: '#8a6a3a', values: days.map((d) => gbLevels(sn(d))) }] })}`;
   h += `<h4>Bonusy armády</h4>${armyChart(days, sn)}`;
   h += `<h4>Velké budovy</h4><table><thead><tr><th>Budova</th><th class="num">${esc(shortDate(days[0]))}</th><th class="num">${esc(shortDate(days[days.length - 1]))}</th><th class="num">Změna</th><th class="num">Max.</th></tr></thead><tbody>${
     (last.gb || []).slice().sort((a, b) => b.l - a.l).map((g) => { const o = (first.gb || []).find((x) => x.id === g.id);

@@ -154,6 +154,8 @@ function attachTips(r, hostEl) {
 // Společné ovládání pro panel i samostatná okna záložek.
 function onUiClick(ev) {
   {
+    const spr = ev.target.closest('[data-statprod]');
+    if (spr) { statProd = spr.dataset.statprod; render(); return; }
     const gt = ev.target.closest('[data-goto]');
     if (gt) { const id = gt.dataset.goto; if (cfg.uiBar) openTabWin(id); else { tab = id; render(); } return; }
     const r = ev.target.closest('tr[data-key]');
@@ -279,6 +281,10 @@ function onUiChange(ev) {
   if (bc) { bonusCode = bc.value; bonusUnlock(bonusCode).then((ok) => { if (ok) { bonusCode = ''; bonusMsg = ''; tab = 'stat'; render(); } }); }
   const ro = ev.target.closest('[data-rateopt]');
   if (ro) { rateSel[ro.dataset.rateopt] = ro.checked; render(); }
+  const gp = ev.target.closest('[data-gbplan]');
+  if (gp) { gbPlan = { id: +gp.value, target: null }; render(); }
+  const gtg = ev.target.closest('[data-gbtarget]');
+  if (gtg) { gbPlan.target = +gtg.value; render(); }
   const mkg = ev.target.closest('[data-mkgood]');
   if (mkg) { mkGood = mkg.value; render(); }
   const ptq = ev.target.closest('[data-input="ptQ"]');

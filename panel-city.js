@@ -30,7 +30,44 @@ function viewGB() {
       <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''} ${gbTier(r.level, r.id)}</td>
       <td class="num">${r.atMax ? 'max' : `${fmt(r.inv)} / ${fmt(r.need)}`}</td>
       <td class="num ${!r.atMax && r.left != null && r.left <= 100 ? 'hi' : ''}">${r.atMax ? '' : fmt(r.left)}</td></tr>`).join('')
-  }</tbody></table>` + (S.otherGBs?.list?.length ? otherGBsHtml() : '');
+  }</tbody></table>` + gbPlanHtml(gbs) + (S.otherGBs?.list?.length ? otherGBsHtml() : '');
+}
+// ---------- Plán úrovní vlastní VB: kolik FP do cílové úrovně a za kolik dní ----------
+// Cena úrovně z metadat (strategy_points_for_upgrade, od 10. úrovně +2,5 % za úroveň jako FoE Helper), zkalibrovaná na skutečnou
+// cenu rozestavěné úrovně, kterou posílá hra. Odměny míst pro budoucí úrovně hra neposílá – počítá se celá cena.
+let gbPlan = { id: null, target: null };
+function gbLevelCost(cid, lvl) {
+  const a = S.gbCost?.get(cid);
+  if (!a?.length) return null;
+  return lvl < a.length ? a[lvl] : Math.ceil(a[a.length - 1] * Math.pow(1.025, lvl - a.length + 1));
+}
+function gbPlanHtml(gbs) {
+  const list = gbs.filter((e) => e.player_id == null || e.player_id === myId()).sort((a, b) => entName(a.cityentity_id).localeCompare(entName(b.cityentity_id)));
+  if (!list.length) return '';
+  let e = list.find((x) => x.id === gbPlan.id);
+  if (!e) { e = list.slice().sort((a, b) => (b.level || 0) - (a.level || 0))[0]; gbPlan = { id: e.id, target: null }; }
+  const lvl = e.level || 0, max = e.max_level ?? S.gbInfo.get(e.cityentity_id)?.max_level;
+  const target = Math.max(lvl + 1, Math.min(lvl + 100, gbPlan.target || lvl + 10));
+  const inv = e.state?.invested_forge_points || 0, need = e.state?.forge_points_for_level_up;
+  const base = gbLevelCost(e.cityentity_id, lvl), k = need && base ? need / base : 1;
+  const fpDay = (() => { try { return dailyOverview().tot.strategy_points || 0; } catch { return 0; } })();
+  const stock = (S.resources.strategy_points || 0) + (S.packageFP || 0);
+  const rows = [];
+  let cum = 0, unknown = false;
+  for (let L = lvl; L < target; L++) {
+    const c = L === lvl && need != null ? need - inv : (() => { const b = gbLevelCost(e.cityentity_id, L); return b == null ? null : Math.round(b * k); })();
+    if (c == null) { unknown = true; break; }
+    cum += c;
+    const miss = Math.max(0, cum - stock);
+    rows.push(`<tr class="${max != null && L >= max ? 'muted' : ''}"><td>${L} → ${L + 1}${max != null && L >= max ? ' 🔒' : ''}</td><td class="num">${fmt(c)}</td><td class="num"><b>${fmt(cum)}</b></td>
+      <td class="num">${miss ? (fpDay > 0 ? `~${fmt(Math.ceil(miss / fpDay))}` : '–') : '<span class="ok">✓</span>'}</td></tr>`);
+  }
+  return `<h4>Plán úrovní</h4><div class="cfg"><div><select data-gbplan>${list.map((x) => `<option value="${x.id}" ${x.id === e.id ? 'selected' : ''}>${esc(entName(x.cityentity_id))} (${x.level})</option>`).join('')}</select>
+      cílová úroveň <input type="number" min="${lvl + 1}" max="${lvl + 100}" value="${target}" data-gbtarget style="width:60px"></div>
+    <div class="muted">FP k dispozici ${fmt(stock)} (lišta + balíčky) · produkce ${fmt(Math.round(fpDay))} FP/den${max != null ? ` · odemčeno do úr. ${max}` : ''}</div></div>
+    ${rows.length ? `<table><thead><tr><th>Úroveň</th><th class="num">FP</th><th class="num">Celkem</th><th class="num" title="Kolik dní při denní produkci FP, když všechno zaplatíte sám (bez náhozů ostatních)">Dní</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : ''}
+    ${unknown ? '<p class="muted">Ceny dalších úrovní zatím nejsou – přijdou s metadaty hry (obnovte hru).</p>' : ''}
+    <p class="muted">Cena celé úrovně, kterou zaplatíte sám; když místa nabídnete ostatním, část vám vrátí jejich náhozy (kalkulačka výše). 🔒 = úroveň je potřeba nejdřív odemknout plánky. Od 10. úrovně odhad +2,5 % za úroveň (jako FoE Helper), zkalibrovaný na cenu rozestavěné úrovně.</p>`;
 }
 
 function viewTaverns() {

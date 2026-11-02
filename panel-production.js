@@ -143,7 +143,16 @@ function ownSnapshot() {
   const me = S.players.get(myId());
   return { t: Date.now(), name: S.player.user_name, guild: S.player.clan_name || null, era: S.player.era || null,
     score: me?.score ?? null, army: packArmy(per), fp: otherNum(other, 'forge_points_production'),
-    goods: otherNum(other, 'goods_production'), arc: arcOf(ents), gb: gbListOf(ents), buildings: ents.length };
+    goods: otherNum(other, 'goods_production'), arc: arcOf(ents), gb: gbListOf(ents), buildings: ents.length,
+    fpStock: (S.resources.strategy_points || 0) + (S.packageFP || 0), day: ownDaily() };
+}
+// Denní produkce města (jako Přehled výroby) pro graf vývoje; bez metadat null.
+function ownDaily() {
+  try {
+    const t = dailyOverview().tot, r = (x) => Math.round(x || 0);
+    const g = ['g_prev', 'g_cur', 'g_next', 'g_spec', 'g_other'].reduce((a, k) => a + (t[k] || 0), 0);
+    return { fp: r(t.strategy_points), goods: r(g), guild: r(t.guild), medals: r(t.medals), units: r(t.units) };
+  } catch { return null; }
 }
 function visitSnapshot(v) {
   const d = v.data, op = d.other_player || d.otherPlayer || {};

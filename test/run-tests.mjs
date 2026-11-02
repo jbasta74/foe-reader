@@ -544,6 +544,31 @@ const tests = {
     if (!/1 hotovo k vybrání/.test(r.txt) || !/další za 1 h/.test(r.txt) || !/1 k návštěvě/.test(r.txt) || !/pokusy 4/.test(r.txt)) throw new Error(r.txt);
     return errors;
   },
+  async 'VB: plán úrovní (cena z metadat, kalibrace, dny)'() {
+    const { pg, errors } = await page([startup([{ ...zeus, level: 12, max_level: 14, state: { invested_forge_points: 100, forge_points_for_level_up: 1000 } }])]);
+    const r = await pg.evaluate(() => {
+      (S.gbCost ||= new Map()).set('X_BronzeAge_Landmark2', [10, 20, 30, 40, 50, 60, 70, 80, 90, 400]);
+      S.resources.strategy_points = 500; S.packageFP = 0;
+      gbPlan = { id: 11, target: 15 };
+      return viewGB().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    });
+    // úr. 12 → 13: zbývá 900; formule 400 × 1,025^3 = 431 → kalibrace 1000/431; 13 → 14: ceil(400 × 1,025^4)=442 × k ≈ 1026
+    const m = r.match(/12 → 13 ([\d\s ]+) ([\d\s ]+)/);
+    if (!m || m[1].replace(/\D/g, '') !== '900') throw new Error('první úroveň: ' + r.slice(r.indexOf('Plán úrovní'), r.indexOf('Plán úrovní') + 300));
+    if (!/13 → 14 1\s?026/.test(r) || !/14 → 15 🔒/.test(r)) throw new Error('další úrovně: ' + r.slice(r.indexOf('Plán úrovní'), r.indexOf('Plán úrovní') + 400));
+    return errors;
+  },
+  async 'Statistiky: graf produkce za den, FP ve skladu a úrovní VB'() {
+    const { pg, errors } = await page([startup()]);
+    const t = await pg.evaluate(() => {
+      const D = { own: { '2026-10-01': { gb: [{ id: 'a', l: 5 }], day: { fp: 100, goods: 50 }, fpStock: 900 }, '2026-10-02': { gb: [{ id: 'a', l: 7 }], day: { fp: 120, goods: 60 }, fpStock: 1200 } } };
+      const snap = ownSnapshot();
+      return { html: viewOwnStats(D), snapDay: !!snap.day, snapStock: snap.fpStock != null };
+    });
+    if (!/Produkce města za den/.test(t.html) || !/FP ve skladu/.test(t.html) || !/Součet úrovní Velkých budov/.test(t.html) || !/data-statprod="goods"/.test(t.html)) throw new Error(t.html.slice(0, 500));
+    if (!t.snapDay || !t.snapStock) throw new Error('snímek: ' + JSON.stringify(t));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

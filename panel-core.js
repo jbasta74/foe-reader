@@ -603,6 +603,8 @@ function handleMetadata(m) {
   const take = (o) => {
     if (!o || typeof o !== 'object') return;
     if (o.id && o.name) S.names.set(o.id, o.name);
+    // Cena úrovní VB (prvních 10; dál +2,5 % za úroveň – jako FoE Helper)
+    if (o.id && Array.isArray(o.strategy_points_for_upgrade)) (S.gbCost ||= new Map()).set(o.id, o.strategy_points_for_upgrade);
     // Výrobny zboží: které zboží umí vyrábět (pro Výzkum – co si vyrobíte sám a co musíte sehnat).
     if (o.id && o.staticResources?.resources?.diplomacy) S.entDipl.set(o.id, o.staticResources.resources.diplomacy);
     if (o.id && Array.isArray(o.available_products)) S.entGoodsOpt.set(o.id, o.available_products.map((p) => ({ product: { ...(p.product?.resources || {}) }, cost: { ...(p.requirements?.cost?.resources || {}) } })));

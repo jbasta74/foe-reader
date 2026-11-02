@@ -399,7 +399,7 @@ function viewDaily() {
   if (list) {
     const lab = PROD_CATS.find(([k]) => k === prodCat)?.[1] || prodCat;
     h += `<h4>${esc(lab)} – podle budov</h4><table><thead><tr><th>Budova</th><th class="num">Počet</th><th class="num">1 budova</th><th class="num">Celkem</th></tr></thead><tbody>${
-      [...list.entries()].sort((a, b) => b[1].v - a[1].v).map(([n, x]) => `<tr><td>${esc(n)}</td><td class="num">${x.n}</td><td class="num">${r1(x.v / x.n)}</td><td class="num">${r1(x.v)}</td></tr>`).join('')}</tbody></table>`;
+      [...list.entries()].sort((a, b) => b[1].v - a[1].v).map(([n, x]) => `<tr><td>${findLink(esc(n), n)}</td><td class="num">${x.n}</td><td class="num">${r1(x.v / x.n)}</td><td class="num">${r1(x.v)}</td></tr>`).join('')}</tbody></table>`;
     if (prodCat === 'frags' && Object.keys(o.frags).length) h += `<p class="muted">${Object.entries(o.frags).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(fragName(k))}: ${r1(v)}`).join(' · ')}</p>`;
   }
   if (Object.keys(o.other).length) h += `<h4>Ostatní odměny (průměr za den)</h4><p>${Object.entries(o.other).map(([k, v]) => `${esc(k)}: ${r1(v)}`).join(' · ')}</p>`;
@@ -547,7 +547,7 @@ function viewRating() {
     return h + `<p class="muted">Budovy z inventáře ohodnocené ve vašem věku a návrhy, které horší budovy ve městě by mohly nahradit (stejný půdorys, jedna budova nebo dvě vedle sebe; přínos = rozdíl skóre × počet polí).</p>
       <table><thead><tr><th>Budova v inventáři</th><th class="num">Polí</th><th class="num">Skóre</th><th>Místo čeho</th></tr></thead><tbody>${
       inv.sort((a, b) => b.score - a.score).map((b) => { const sw = swapSuggestions(b, city);
-        return `<tr><td>${esc(b.name)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td><td class="num">${b.w}×${b.l}${b.road ? `+${r2i(b.road)}` : ''}</td>
+        return `<tr><td>${findLink(esc(b.name), b.id)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td><td class="num">${b.w}×${b.l}${b.road ? `+${r2i(b.road)}` : ''}</td>
           <td class="num"><b>${r2i(b.score)}</b></td><td style="font-size:11px">${sw.length ? sw.map((r) => `${r.parts.map((x) => esc(x.name)).join(' + ')} <span class="up">+${r2i(r.gain)}</span>`).join('<br>') : '<span class="muted">–</span>'}</td></tr>`; }).join('')}</tbody></table>
       ${noMeta ? `<p class="muted">U ${noMeta} budov z inventáře hra ještě nenačetla popis (rozměry, produkci) – načte ho třeba při otevření inventáře nebo při stavbě.</p>` : ''}`;
   }
@@ -575,7 +575,7 @@ function viewRating() {
       <label><input type="checkbox" data-rateopt="tile" ${rateSel.tile ? 'checked' : ''}> na pole</label>
       <label><input type="checkbox" data-rateopt="withInv" ${rateSel.withInv ? 'checked' : ''}> 📦 z inventáře</label></div>
     <div style="overflow-x:auto"><table class="pt rt"><thead><tr>${th('name', 'Budova')}${th('tiles', 'Polí')}${th('score', 'Skóre')}${cols.map((t) => th(t.k, rateShort(t.k), t.l)).join('')}${rateSel.withInv ? '<th>Nahradí</th>' : ''}</tr></thead><tbody>${
-    rows.map((b) => `<tr class="${b.inv ? 'inv' : ''}" title="${esc(b.id)}"><td>${b.inv ? '📦 ' : ''}${esc(b.name)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td>
+    rows.map((b) => `<tr class="${b.inv ? 'inv' : ''}" title="${esc(b.id)}"><td>${b.inv ? '📦 ' + esc(b.name) : findLink(esc(b.name), b.id)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td>
       <td class="num">${b.w}×${b.l}${b.road ? `+${r2(b.road)}` : ''}</td><td class="num"><b>${r2(b.score)}</b></td>${cols.map((t) => cell(b, t.k)).join('')}
       ${rateSel.withInv ? `<td style="font-size:11px">${b.swap ? `${b.swap.parts.map((x) => esc(x.name)).join(' + ')} <span class="up">+${r2(b.swap.gain)}</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>
     ${rateSel.withInv && !S.invLoaded ? '<p class="muted">Inventář ještě nebyl načten – otevřete ho ve hře.</p>' : ''}
@@ -611,7 +611,7 @@ function ptRows() {
     if (['street', 'off_grid', 'hub_part', 'hub_main', 'decoration'].includes(e.type)) continue;
     const st = e.state || {};
     const m = S.entProd.get(e.cityentity_id) || S.entBoost.get(e.cityentity_id);
-    const r = { name: S.names.get(e.cityentity_id) || entName(e.cityentity_id), era: m ? entEra(e, m, era) : '', n: 1,
+    const r = { id: e.cityentity_id, name: S.names.get(e.cityentity_id) || entName(e.cityentity_id), era: m ? entEra(e, m, era) : '', n: 1,
       done: /Finished/.test(st.__class__ || '') ? 0 : st.__class__ === 'ProducingState' ? st.next_state_transition_at || null : null };
     if (ptSel.type === 'army') {
       const v = rateValues(e, bs).v;
@@ -659,13 +659,13 @@ function viewProdTypes() {
   let head, body;
   if (ptSel.type === 'army') {
     head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${PT_FEAT.map(([f, l]) => th(f, `${l}<br><small>${fmt(sum(f))} %</small>`)).join('')}</tr>`;
-    body = rows.map((r) => `<tr><td>${esc(r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_FEAT.map(([f]) => `<td class="num">${r[f] ? fmt(r[f]) + ' %' : '<span class="muted">–</span>'}</td>`).join('')}</tr>`).join('');
+    body = rows.map((r) => `<tr><td>${findLink(esc(r.name), r.id || r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_FEAT.map(([f]) => `<td class="num">${r[f] ? fmt(r[f]) + ' %' : '<span class="muted">–</span>'}</td>`).join('')}</tr>`).join('');
   } else if (ptSel.type === 'goods') {
     head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${PT_GOODS.map(([g, l]) => th(g, `${l}<br><small>${fmt(Math.round(sum(g)))}</small>`)).join('')}${th('done', 'Hotovo')}</tr>`;
-    body = rows.map((r) => `<tr><td>${esc(r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_GOODS.map(([g]) => `<td class="num">${n1(r[g])}</td>`).join('')}<td class="num">${when(r.done)}</td></tr>`).join('');
+    body = rows.map((r) => `<tr><td>${findLink(esc(r.name), r.id || r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_GOODS.map(([g]) => `<td class="num">${n1(r[g])}</td>`).join('')}<td class="num">${when(r.done)}</td></tr>`).join('');
   } else {
     head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${th('cur', `Teď<br><small>${fmt(Math.round(sum('cur')))}</small>`)}${th('day', `Za den<br><small>${fmt(Math.round(sum('day')))}</small>`)}${th('era', 'Věk', '')}${th('done', 'Hotovo')}</tr>`;
-    body = rows.map((r) => `<tr><td>${esc(r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}<td class="num${r.est ? ' muted' : ''}"${r.est ? ' title="odhad – hra obsah výroby neposlala"' : ''}>${r.est ? '≈' : ''}${n1(r.cur)}</td><td class="num"><b>${n1(r.day)}</b></td><td class="muted" style="font-size:11px">${esc(ERA[r.era] || r.era || '')}</td><td class="num">${when(r.done)}</td></tr>`).join('');
+    body = rows.map((r) => `<tr><td>${findLink(esc(r.name), r.id || r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}<td class="num${r.est ? ' muted' : ''}"${r.est ? ' title="odhad – hra obsah výroby neposlala"' : ''}>${r.est ? '≈' : ''}${n1(r.cur)}</td><td class="num"><b>${n1(r.day)}</b></td><td class="muted" style="font-size:11px">${esc(ERA[r.era] || r.era || '')}</td><td class="num">${when(r.done)}</td></tr>`).join('');
   }
   return `<p style="display:flex;flex-wrap:wrap;gap:2px">${tabs}</p>
     <div class="copyrow" style="margin-bottom:4px;flex-wrap:wrap;align-items:center;gap:6px">

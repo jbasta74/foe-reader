@@ -581,6 +581,30 @@ const tests = {
     if (!/8 \/ 30/.test(t) || !/~16 bodů/.test(t) || !/3× nůž nejvýhodnější/.test(t) || !/FP běžné 3 42,9 %/.test(t) || !/Budova vzácné 0 Soused/.test(t) || !/vzácné už na kole nejsou/.test(t)) throw new Error(t);
     return errors;
   },
+  async 'Najít budovu ve městě: klik na název a hledání v okně mapy'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      S.grids.main = { unlocked: [{ x: 0, y: 0, width: 10, length: 6 }], blocked: [] };
+      S.ent.set('H_T', { w: 2, l: 2, road: 1, type: 'main_building' }); S.ent.set('P_A', { w: 2, l: 2, road: 1, type: 'production' }); S.ent.set('P_B', { w: 1, l: 1, road: 0, type: 'decoration' });
+      S.names.set('P_A', 'Čarodějná věž'); S.names.set('P_B', 'Keř');
+      const E = new Map(); let id = 1; const add = (c, x, y) => E.set(id, { id: id++, player_id: myId(), cityentity_id: c, x, y, connected: 1, type: S.ent.get(c).type });
+      add('H_T', 0, 0); add('P_A', 3, 0); add('P_A', 6, 3); add('P_B', 9, 5);
+      S.entities = E; mapGrid = 'main';
+      document.body.insertAdjacentHTML('beforeend', findLink('Čarodějná věž', 'P_A'));
+      return true;
+    });
+    // klik na odkaz v panelu (delegovaný handler je v shadow root panelu – zavoláme přímo jako klik z panelu)
+    await pg.evaluate(() => findInCity('P_A'));
+    await pg.waitForTimeout(300);
+    const a = await pg.evaluate(() => ({ win: !!document.querySelector('#foe-reader-map'), n: mapFindSet(curModel()).size, svg: /animate/.test(document.querySelector('#foe-reader-map').shadowRoot.querySelector('svg').outerHTML) }));
+    // hledání podle části názvu bez diakritiky
+    await pg.evaluate(() => { const q = document.querySelector('#foe-reader-map').shadowRoot.getElementById('mapq'); q.focus(); q.value = 'carod'; q.dispatchEvent(new Event('input', { bubbles: true })); });
+    await pg.waitForTimeout(200);
+    const b = await pg.evaluate(() => ({ n: mapFindSet(curModel()).size, chip: document.querySelector('#foe-reader-map').shadowRoot.querySelector('.findbar').textContent }));
+    if (!a.win || a.n !== 2 || !a.svg) throw new Error('najít: ' + JSON.stringify(a));
+    if (b.n !== 2 || !/nalezeno 2/.test(b.chip)) throw new Error('hledání: ' + JSON.stringify(b));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

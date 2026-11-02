@@ -53,6 +53,7 @@ function mount() {
     .cfg label{margin-right:10px;white-space:nowrap}
     input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
     input.pname{width:140px}
+    .findb{cursor:pointer;border-bottom:1px dotted #8a6a3a} .findb:hover{color:#b0410f;border-bottom-style:solid}
     table.day td{padding:3px 6px;vertical-align:top} table.day td:first-child{font-size:15px;width:22px} table.day tr.muted td{color:#9a8a70}
     ol.steps{margin:3px 0 3px 18px;padding:0} ol.steps a{color:inherit;text-decoration:none} ol.steps a.on{background:#c2185b;color:#fff;border-radius:3px;padding:0 3px}
     .copyrow{display:flex;gap:6px}
@@ -156,6 +157,8 @@ function onUiClick(ev) {
   {
     const spr = ev.target.closest('[data-statprod]');
     if (spr) { statProd = spr.dataset.statprod; render(); return; }
+    const fnd = ev.target.closest('[data-find]');
+    if (fnd) { findInCity(fnd.dataset.find); return; }
     const gt = ev.target.closest('[data-goto]');
     if (gt) { const id = gt.dataset.goto; if (cfg.uiBar) openTabWin(id); else { tab = id; render(); } return; }
     const r = ev.target.closest('tr[data-key]');

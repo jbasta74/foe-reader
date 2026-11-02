@@ -590,6 +590,24 @@ function mapRateScores() {
   try { for (const b of ratedBuildings()) out.set(`${b.id}|${b.era}`, b.score); } catch { /* bez dat */ }
   return out;
 }
+// ---------- Hledání budovy ve městě: klik na název budovy (Produkce, Rating…) nebo hledání v okně mapy ----------
+// Ve hře samotné zvýraznit nejde (rozšíření do hry nezasahuje) – budova se zvýrazní v okně mapy a mapa na ni najede.
+let mapFind = null; // { q, exact, scroll }
+const normTxt = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+function mapFindSet(M) {
+  if (!mapFind?.q || !M) return null;
+  const q = normTxt(mapFind.q);
+  return new Set(M.items.filter((it) => !it.isRoad && !it.isImp && (it.e.cityentity_id === mapFind.q || (mapFind.exact ? normTxt(it.name) === q : normTxt(it.name).includes(q)))));
+}
+// Odkaz „najít ve městě“ kolem názvu budovy (id = cityentity_id, jinak se hledá podle názvu).
+const findLink = (html, key) => `<span class="findb" data-find="${esc(key)}" title="Najít ve městě (okno mapy)">${html}</span>`;
+function findInCity(q) {
+  mapFind = { q, exact: true, scroll: true };
+  mapGrid = 'main';
+  if (!mapWin) openMapWin(); else renderMapWin();
+  if (mapWin && winCollapsed('map')) winSetCollapsed(mapWin.host, 'map', mapWin.root.getElementById('head'), false, 240);
+  render();
+}
 const GRID_NAMES = { main: 'Město', cultural_outpost: 'Osada', era_outpost: 'Kolonie', guild_raids: 'Kvantové invaze' };
 function mapSvg(M, t) {
   const W = M.maxX - M.minX + 1, Hh = M.maxY - M.minY + 1;
@@ -624,6 +642,13 @@ function mapSvg(M, t) {
       const label = it.name.length > maxCh ? it.name.slice(0, Math.max(1, maxCh - 1)) + '…' : it.name;
       svg += `<text x="${X(it.x0) + it.m.w * t / 2}" y="${Y(it.y0) + it.m.l * t / 2 + fs / 3}" font-size="${fs}" text-anchor="middle" fill="#fff" pointer-events="none" style="font-family:system-ui,sans-serif">${esc(label)}</text>`;
     }
+  }
+  // nalezené budovy: zbytek mapy ztmavit, nalezené zvýraznit (pulzující rámeček)
+  const found = mapFindSet(M);
+  if (found) {
+    svg += `<rect x="0" y="0" width="${W * t}" height="${Hh * t}" fill="rgba(20,16,10,.55)" pointer-events="none"/>`;
+    for (const it of found) svg += `<rect x="${X(it.x0)}" y="${Y(it.y0)}" width="${it.m.w * t}" height="${it.m.l * t}" fill="#ffeb3b" fill-opacity=".85" stroke="#d50000" stroke-width="${Math.max(2, t / 8)}" pointer-events="none"><animate attributeName="stroke-width" values="${Math.max(2, t / 8)};${Math.max(3, t / 3.5)};${Math.max(2, t / 8)}" dur="1.2s" repeatCount="indefinite"/></rect>`
+      + (t >= 10 ? `<text x="${X(it.x0) + it.m.w * t / 2}" y="${Y(it.y0) + it.m.l * t / 2 + 4}" font-size="${Math.min(11, t * 0.7)}" text-anchor="middle" fill="#2b2116" pointer-events="none" style="font-family:system-ui,sans-serif;font-weight:700">${esc(it.name.length > Math.floor(it.m.w * t / 6) ? it.name.slice(0, Math.max(1, Math.floor(it.m.w * t / 6) - 1)) + '…' : it.name)}</text>` : '');
   }
   // zvolený krok postupu přestavby: odkud (modře čárkovaně), kam (růžově), cesty (obrys)
   const step = planOn() && mapPlan.step != null ? planSteps()[mapPlan.step] : null;
@@ -801,6 +826,8 @@ function openMapWin() {
     .fbtn:disabled{opacity:.45;cursor:default}
     .muted{color:#7a6a50}
     .stats{max-height:45%;overflow:auto}
+    .findbar{margin-bottom:3px} .findbar input{width:220px;padding:2px 6px;border:1px solid #c9b48c;border-radius:4px}
+    .findbar button{background:#fff;border:1px solid #c9b48c;border-radius:4px;cursor:pointer;padding:0 6px}
     .pname{width:150px;padding:1px 4px;border:1px solid #c9b48c;border-radius:4px}
     .pvar{white-space:nowrap;margin-right:4px}
     ol.steps{margin:3px 0 3px 18px;padding:0}
@@ -842,6 +869,16 @@ function openMapWin() {
     view.scrollTop = py * k - (ev.clientY - rect.top);
     saveMapWin();
   }, { passive: false });
+  r.addEventListener('input', (ev) => {
+    if (ev.target.id !== 'mapq') return;
+    const q = ev.target.value;
+    mapFind = q.trim() ? { q, exact: false, scroll: true } : null;
+    renderMapWin();
+    // počet nalezených se v řádku s polem obnoví bez překreslení pole (aby se nepřerušilo psaní)
+    const n = mapFindSet(curModel()), bar = r.querySelector('.findbar');
+    bar.querySelectorAll('.chip,button').forEach((x) => x.remove());
+    if (mapFind) bar.insertAdjacentHTML('beforeend', L(` <span class="chip ${n?.size ? '' : 'hi'}">nalezeno ${n ? n.size : 0}</span><button data-mfind="clear" title="Zrušit hledání">✕</button>`));
+  });
   // psaní do pole (název plánu) nesmí jít do hry jako klávesové zkratky
   for (const t of ['keydown', 'keyup', 'keypress']) h.addEventListener(t, (e) => e.stopPropagation());
   r.addEventListener('click', (ev) => {
@@ -849,6 +886,7 @@ function openMapWin() {
     if (!b) return;
     if (b.tagName === 'A') ev.preventDefault();
     if (mapClick(b)) return;
+    if (b.dataset.mfind === 'clear') { mapFind = null; const q = r.getElementById('mapq'); if (q) q.value = ''; q?.blur(); renderMapWin(); render(); return; }
     if (b.dataset.mapgrid) { mapGrid = b.dataset.mapgrid; renderMapWin(true); render(); }
     else if (b.dataset.mapmode) { mapMode = b.dataset.mapmode; renderMapWin(); render(); }
     else if (b.dataset.mapfit) { mapFit = mapFit === b.dataset.mapfit ? null : b.dataset.mapfit; renderMapWin(); render(); }
@@ -914,10 +952,18 @@ function renderMapWin(fit) {
     const W = M.maxX - M.minX + 1, Hh = M.maxY - M.minY + 1;
     mapWin.zoom = Math.max(3, Math.min(40, Math.floor(Math.min((view.clientWidth || 800) / W, (view.clientHeight || 500) / Hh))));
   }
-  if (r.activeElement?.id !== 'planname') r.getElementById('stats').innerHTML = L(mapStats(M, true) + (M.missing ? `<span class="chip">${M.missing} budov bez rozměrů</span>` : ''));
+  const fs = mapFindSet(M);
+  const findBar = `<div class="findbar"><input id="mapq" placeholder="🔍 hledat budovu ve městě" value="${esc(mapFind && !mapFind.exact ? mapFind.q : '')}">${mapFind?.q ? ` <span class="chip ${fs?.size ? '' : 'hi'}">${mapFind.exact ? esc(entName(mapFind.q) === mapFind.q ? mapFind.q : entName(mapFind.q)) + ': ' : ''}nalezeno ${fs ? fs.size : 0}</span><button data-mfind="clear" title="Zrušit hledání">✕</button>` : ''}</div>`;
+  if (!['planname', 'mapq'].includes(r.activeElement?.id)) r.getElementById('stats').innerHTML = L(findBar + mapStats(M, true) + (M.missing ? `<span class="chip">${M.missing} budov bez rozměrů</span>` : ''));
   const sl = view.scrollLeft, stp = view.scrollTop;
   view.innerHTML = L(mapSvg(M, mapWin.zoom));
   view.scrollLeft = sl; view.scrollTop = stp;
+  if (mapFind?.scroll && fs?.size) {
+    mapFind.scroll = false;
+    const it = [...fs][0], t = mapWin.zoom;
+    view.scrollLeft = (it.x0 - M.minX + it.m.w / 2) * t - view.clientWidth / 2;
+    view.scrollTop = (it.y0 - M.minY + it.m.l / 2) * t - view.clientHeight / 2;
+  }
 }
 
 function viewResources() {

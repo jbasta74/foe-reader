@@ -301,3 +301,93 @@ function mgHtml() {
     ${turns === 0 ? '<p class="hi">Došly tahy – po dokoupení se okno otevře znovu.</p>' : turns != null && R > turns ? `<p class="muted">Zbývá ${fmt(R)} pokladů a ${fmt(turns)} tahů – na všechny tahy nestačí.</p>` : ''}
     <p class="muted">Čísla = šance v % na poklad v poli, ★ = jistý poklad, · = jistě prázdné, rámeček = nejlepší tah. Počítá se přesně ze všech možných rozmístění zbývajících pokladů. Tah dělejte ve hře – pomocník jen radí.</p>`;
 }
+
+// ===================== Události (sezónní): kolo štěstí (Halloween), dárky (Vánoce), hlavní cena =====================
+// Jen čte to, co hra posílá – nic neodesílá. Kolo je společné pro celé sousedství: ostatní z něj berou odměny (updateItem přes WebSocket).
+S.wheel = null; S.presents = null;
+const wheelUpd = (arr) => {
+  if (!S.wheel || !Array.isArray(arr)) return;
+  for (const x of arr) {
+    if (x?.__class__ !== 'FortuneWheelItem') continue;
+    const i = S.wheel.items.findIndex((y) => y.id === x.id);
+    const v = { ...x, itemsLeft: x.itemsLeft ?? 0 }; // poslední kus: itemsLeft chybí
+    if (i >= 0) S.wheel.items[i] = v; else S.wheel.items.push(v);
+  }
+  S.wheel.t = Date.now();
+};
+const wheelSet = (d) => { if (d && Array.isArray(d.items)) S.wheel = { ...d, items: d.items.map((x) => ({ ...x, itemsLeft: x.itemsLeft ?? 0 })), stale: false, t: Date.now() }; else if (Array.isArray(d)) wheelUpd(d); };
+const presentUpd = (list) => { if (!S.presents || !Array.isArray(list)) return; for (const p of list) S.presents.list[p.presentId || 0] = p; S.presents.t = Date.now(); };
+Object.assign(H, {
+  'FortuneWheelService.getFortuneWheel': wheelSet,
+  'FortuneWheelService.spin': wheelSet,
+  'FortuneWheelService.refresh': wheelSet,
+  'FortuneWheelService.updateItem': wheelUpd,
+  'FortuneWheelService.refreshWheel'(d) { if (S.wheel) { S.wheel.stale = true; S.wheel.staleBy = d; } },
+  'FortuneWheelService.neighborhoodEventLogUpdate'(d) { if (S.wheel && Array.isArray(d)) S.wheel.eventLog = [...d, ...(S.wheel.eventLog || [])].slice(0, 30); },
+  'PresentGameService.getOverview'(d) { if (Array.isArray(d?.presentList)) { const list = []; for (const p of d.presentList) list[p.presentId || 0] = p; S.presents = { ...d, presentList: undefined, list, t: Date.now() }; } },
+  'PresentGameService.openPresent'(d) { presentUpd(d?.updatedPresentList); },
+  'PresentGameService.useBooster'(d) { presentUpd(d?.updatedPresentList); },
+});
+const RAR = { rare: ['vzácné', '#8e24aa'], uncommon: ['neobvyklé', '#1e88e5'], common: ['běžné', '#6d6d6d'] };
+const rarOf = (r) => (r?.flags || []).find((f) => RAR[f]);
+// Hlavní cena z náhledu pasu události (body, kolik chybí).
+function evPassHtml(ctx) {
+  const p = S.evPrev?.[ctx], gp = p?.teaserPrizes?.grandPrizes?.[0];
+  if (!gp) return '';
+  const need = Math.max(0, (gp.totalNeedPoints || 0) - (gp.currentPoints || 0));
+  const names = (p.teaserPrizes.grandPrizes || []).map((g) => g.reward?.name).filter(Boolean);
+  return `<p><span class="chip">Hlavní cena: <b>${fmt(gp.currentPoints || 0)} / ${fmt(gp.totalNeedPoints || 0)}</b> bodů${need ? ` · chybí ${fmt(need)}` : ' ✓'}</span>
+    ${names.length ? `<span class="muted">${esc(names.join(' · '))}</span>` : ''}</p>`;
+}
+function wheelHtml() {
+  const W = S.wheel;
+  if (!W) return '';
+  const items = W.items || [], total = items.reduce((a, x) => a + (x.itemsLeft || 0), 0);
+  const p = S.evPrev?.halloween_event?.teaserPrizes?.grandPrizes?.[0];
+  const spins = (W.spins || []).map((s) => { const [res, c] = Object.entries(s.cost?.resources || {}).filter(([k]) => k !== '__class__')[0] || []; return { n: s.amount, res, c, gp: s.gpGain || 0, per: c ? (s.gpGain || 0) / c : 0 }; });
+  const best = spins.reduce((a, s) => (s.per > (a?.per || 0) ? s : a), null);
+  const ticket = spins[0]?.res, have = ticket ? S.resources[ticket] || 0 : 0;
+  // kolik bodů hlavní ceny dají lístky, které máte (nejvýhodnější hody, zbytek menšími)
+  let left = have, pts = 0;
+  for (const s of spins.slice().sort((a, b) => b.per - a.per)) { if (!s.c) continue; const k = Math.floor(left / s.c); pts += k * s.gp; left -= k * s.c; }
+  const need = p ? Math.max(0, p.totalNeedPoints - p.currentPoints) : null;
+  const rows = items.slice().sort((a, b) => (rarOf(b.reward) === 'rare') - (rarOf(a.reward) === 'rare') || (b.itemsLeft || 0) - (a.itemsLeft || 0)).map((x) => {
+    const r = rarOf(x.reward), ch = total ? (x.itemsLeft || 0) / total : 0, [rl, rc] = RAR[r] || ['', '#6d6d6d'];
+    return `<tr class="${x.itemsLeft ? '' : 'muted'}"><td><span style="color:${rc};font-weight:${r === 'rare' ? 700 : 400}">${esc(x.reward?.name || '?')}</span>${x.extraReward ? ` <span class="muted">+ ${esc(x.extraReward.name)}</span>` : ''}</td>
+      <td class="muted">${esc(rl)}</td><td class="num">${fmt(x.itemsLeft || 0)}</td><td class="num">${x.itemsLeft ? `${dec((Math.round(ch * 1000) / 10).toFixed(1))} %` : `<span class="muted">${x.rewardedPlayer ? esc(x.rewardedPlayer.name || '') : '—'}</span>`}</td></tr>`;
+  }).join('');
+  const rare = items.filter((x) => rarOf(x.reward) === 'rare' && x.itemsLeft);
+  return `<h4>🎯 Kolo štěstí</h4>
+    ${W.stale ? '<p class="hi">Kolo někdo ze sousedství obnovil – otevřete ho ve hře znovu, ať je obsah aktuální.</p>' : ''}
+    <p>${ticket ? `<span class="chip">${esc(resLabel(ticket))}: <b>${fmt(have)}</b></span>` : ''}${pts ? `<span class="chip" title="Při nejvýhodnějších hodech">= ~${fmt(pts)} bodů hlavní ceny${need != null ? ` (chybí ${fmt(need)})` : ''}</span>` : ''}
+      ${rare.length ? `<span class="chip ok">vzácné na kole: ${esc(rare.map((x) => x.reward.name).join(', '))}</span>` : '<span class="chip">vzácné už na kole nejsou – zvažte obnovení</span>'}</p>
+    ${spins.length ? `<table><thead><tr><th>Hod</th><th class="num">Cena</th><th class="num">Body</th><th class="num">Bodů na lístek</th></tr></thead><tbody>${spins.map((s) =>
+      `<tr class="${s === best ? 'me' : ''}"><td>${s.n}× nůž${s === best ? ' <b class="ok">nejvýhodnější</b>' : ''}</td><td class="num">${fmt(s.c)}</td><td class="num">${fmt(s.gp)}</td><td class="num">${dec(s.per.toFixed(2))}</td></tr>`).join('')}</tbody></table>` : ''}
+    <table><thead><tr><th>Odměna na kole</th><th></th><th class="num">Zbývá</th><th class="num" title="Odhad: zbývající kusy / všechny zbývající kusy na kole (hra skutečné šance neposílá)">Šance ~</th></tr></thead><tbody>${rows}</tbody></table>
+    ${(W.eventLog || []).length ? `<details><summary class="muted">Co padlo v sousedství (${(W.eventLog || []).length})</summary><table><tbody>${W.eventLog.slice(0, 15).map((l) =>
+      `<tr><td class="muted">${esc(l.time || '')}</td><td>${esc(l.player?.name || '')}</td><td>${l.type === 'refresh' ? '<i>obnovil kolo</i>' : esc(l.rewardName || '')}</td></tr>`).join('')}</tbody></table></details>` : ''}
+    <p class="muted">Kolo je společné pro celé sousedství – co vezme soused, z kola zmizí (aktualizuje se samo). Šance je odhad podle počtu zbývajících kusů. „Bodů na lístek“ říká, který hod nejrychleji vede k hlavní ceně.</p>`;
+}
+function presentsHtml() {
+  const P = S.presents;
+  if (!P) return '';
+  const all = P.list.filter(Boolean), left = all.filter((p) => p.status?.value !== 'used');
+  const ACT = { shuffle: 'zamíchat', show: 'ukázat dva', multiplyReward: 'dvojnásobná výhra' };
+  const grp = new Map();
+  for (const p of left) { const a = p.action?.value; const k = p.reward?.name || (ACT[a] ? `⚡ ${ACT[a]}` : '?'); const g = grp.get(k) || { n: 0, vis: 0, r: p.reward }; g.n++; if (p.status?.value === 'visible') g.vis++; grp.set(k, g); }
+  const res = P.presentOpenResource, cost = P.presentOpenCost || 0, have = res ? S.resources[res] || 0 : 0, opens = cost ? Math.floor(have / cost) : 0;
+  const now = nowServer();
+  return `<h4>🎁 Dárky</h4>
+    <p>${res ? `<span class="chip">${esc(resLabel(res))}: <b>${fmt(have)}</b> = ${fmt(opens)}× otevřít (po ${fmt(cost)})</span>` : ''}
+      ${P.gpGainMin != null ? `<span class="chip" title="Každé otevření dá ${P.gpGainMin}–${P.gpGainMax} bodů hlavní ceny">~${fmt(Math.round(opens * (P.gpGainMin + P.gpGainMax) / 2))} bodů hlavní ceny</span>` : ''}
+      ${P.resetsAt > now ? `<span class="chip">deska se obnoví za ${durLong(P.resetsAt - now)}</span>` : ''}</p>
+    <p class="muted">Zbývá ${fmt(left.length)} z ${fmt(all.length)} dárků – šance na konkrétní dárek při dalším otevření je ${left.length ? `1 : ${fmt(left.length)}` : '–'}.</p>
+    <table><thead><tr><th>Co je ještě v dárcích</th><th class="num">Kusů</th></tr></thead><tbody>${[...grp].map(([k, g]) =>
+      `<tr><td>${g.r?.isHighlighted ? '<b>' : ''}${esc(k)}${g.r?.isHighlighted ? '</b>' : ''}${g.vis ? ' <span class="muted" title="Odkryté (viditelné)">👁</span>' : ''}</td><td class="num">${fmt(g.n)}</td></tr>`).join('')}</tbody></table>`;
+}
+function viewEvent() {
+  const ctxs = Object.keys(S.evPrev || {});
+  const html = (S.wheel ? evPassHtml('halloween_event') + wheelHtml() : '') + (S.presents ? evPassHtml(S.presents.context) + presentsHtml() : '')
+    + (!S.wheel && !S.presents ? ctxs.map(evPassHtml).join('') : '');
+  return html || '<p class="muted">Otevřete ve hře událost a její hru (kolo štěstí, dárky…) – pomocník ukáže, co v ní zbývá a co se vyplatí.</p>';
+}

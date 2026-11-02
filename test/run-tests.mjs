@@ -569,6 +569,18 @@ const tests = {
     if (!t.snapDay || !t.snapStock) throw new Error('snímek: ' + JSON.stringify(t));
     return errors;
   },
+  async 'Událost: kolo štěstí – šance, nejvýhodnější hod a odměny, které vzal soused'() {
+    const item = (id, name, left, flags = ['common']) => ({ id, reward: { name, flags }, ...(left ? { itemsLeft: left } : {}), __class__: 'FortuneWheelItem' });
+    const { pg, errors } = await page([startup(),
+      msg('EventPassService.getPreview', { context: 'halloween_event', teaserPrizes: { grandPrizes: [{ totalNeedPoints: 30, currentPoints: 8, reward: { name: 'Sada' } }] } }),
+      msg('FortuneWheelService.getFortuneWheel', { items: [item(1, 'Budova', 1, ['rare']), item(2, 'FP', 3), item(3, 'Mince', 4)],
+        spins: [{ amount: 1, cost: { resources: { halloween_ticket: 2 } }, gpGain: 2 }, { amount: 3, cost: { resources: { halloween_ticket: 6 } }, gpGain: 7 }], eventLog: [] }),
+      msg('FortuneWheelService.updateItem', [{ ...item(1, 'Budova', 0, ['rare']), rewardedPlayer: { name: 'Soused' } }], 'ws')]);
+    const t = await pg.evaluate(() => { S.resources.halloween_ticket = 14; return viewEvent().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '); });
+    // 14 lístků: 2× trojitý hod (14 b.) + 1× jednoduchý (2 b.) = 16 bodů; budovu vzal soused → šance FP 3/7
+    if (!/8 \/ 30/.test(t) || !/~16 bodů/.test(t) || !/3× nůž nejvýhodnější/.test(t) || !/FP běžné 3 42,9 %/.test(t) || !/Budova vzácné 0 Soused/.test(t) || !/vzácné už na kole nejsou/.test(t)) throw new Error(t);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

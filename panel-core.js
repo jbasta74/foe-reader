@@ -215,7 +215,7 @@ const H = {
     guildPut(d.map((r) => ({ pid: r.player?.player_id, name: r.player?.name, geP: r.expeditionPoints || 0, geE: r.solvedEncounters || 0, geT: r.currentTrial || 0, geW: S.geWeek || null })));
   },
   // ---- Quantum Pass (pass QI): náhled = další odměna a body v aktuálním stupni (chodí s každou akcí v QI), přehled = všechny stupně ----
-  'EventPassService.getPreview'(d) { qiPassPreview(d); },
+  'EventPassService.getPreview'(d) { qiPassPreview(d); if (d?.context && !/guild_raids/.test(d.context)) (S.evPrev ||= {})[d.context] = { ...d, t: Date.now() }; },
   'EventPassService.getOverview'(d) {
     if (!/guild_raids/.test(d?.context || '')) return;
     S.qiPass = { ...(S.qiPass || {}), ov: d, types: d.types || S.qiPass?.types, total: d.totalProgress, totalT: Date.now() };

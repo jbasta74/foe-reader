@@ -317,11 +317,11 @@ function viewLog() {
 }
 
 // Ikony nástrojové lišty
-const ICONS = { den: '☀️', gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', ge: '🧭', qi: '🌀', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', tech: '🔬', trh: '🏪', osada: '🏝️', mg: '🧩', log: '📜', alerts: '🔔', about: 'ℹ️' };
+const ICONS = { den: '☀️', gb: '🏛️', prod: '🏭', rate: '⭐', boost: '💪', gbg: '⚔️', ge: '🧭', qi: '🌀', tav: '🍺', inc: '🎁', neg: '🤝', map: '🗺️', stat: '📊', res: '💰', stock: '📦', tech: '🔬', trh: '🏪', osada: '🏝️', ev: '🎪', mg: '🧩', log: '📜', alerts: '🔔', about: 'ℹ️' };
 const TABS = [
   ['den', 'Přehled', viewDay], ['gb', 'VB', viewGB], ['prod', 'Produkce', viewProduction], ['rate', 'Rating', viewRating],
   ['boost', 'Bonusy', viewBoosts], ['gbg', 'GBG', viewGBG], ['ge', 'Expedice', viewGE], ['qi', 'QI', viewQI], ['tav', 'Hospody', viewTaverns],
-  ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['stat', 'Statistiky', viewStats], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['tech', 'Výzkum', viewResearch], ['trh', 'Trh', viewMarket], ['osada', 'Osada', viewSettlement], ['mg', 'Minihra', viewMinigame], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
+  ['inc', 'Příhody', viewIncidents], ['neg', 'Vyjednávání', viewNego], ['map', 'Mapa', viewMap], ['stat', 'Statistiky', viewStats], ['res', 'Suroviny', viewResources], ['stock', 'Sklad', viewStock], ['tech', 'Výzkum', viewResearch], ['trh', 'Trh', viewMarket], ['osada', 'Osada', viewSettlement], ['ev', 'Událost', viewEvent], ['mg', 'Minihra', viewMinigame], ['log', 'Log', viewLog], ['alerts', '🔔', viewAlerts], ['about', 'ℹ️', viewAbout],
 ];
 let tab = 'gb';
 let open = false;

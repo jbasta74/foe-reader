@@ -1,4 +1,8 @@
 ## Novinky
+- **🎪 Událost** (nová záložka): pomocník pro sezónní události.
+  - **Kolo štěstí (Halloween)**: co na kole zbývá a s jakou šancí (odhad podle zbývajících kusů), vzácné odměny, co vzali sousedé (kolo je společné a aktualizuje se samo), který hod je nejvýhodnější (bodů hlavní ceny na lístek) a kolik bodů dají vaše lístky.
+  - **Dárky (Vánoce)**: co je ještě v dárcích, kolikrát můžete otevírat (zvonky), odhad bodů hlavní ceny a kdy se deska obnoví.
+  - **Hlavní cena**: body a kolik chybí; souhrn i v Přehledu dne.
 - **VB – plán úrovní**: pro vybranou vlastní VB a cílovou úroveň tabulka ceny každé úrovně, součet a za kolik dní to při denní produkci FP zaplatíte sám (s FP ve skladu). Cena z metadat hry, od 10. úrovně +2,5 % za úroveň (jako FoE Helper), zkalibrovaná na cenu rozestavěné úrovně; 🔒 u úrovní, které je potřeba odemknout plánky.
 - **Statistiky – Můj vývoj**: nové grafy produkce města za den (FP, zboží, cechovní pokladna, medaile, jednotky), FP ve skladu a součtu úrovní VB. Ukládá se od této verze, graf se naplní s dalšími dny.
 - **☀️ Přehled dne** (nová záložka, otevře se sama po načtení hry – jde vypnout): hotová produkce ve městě a kdy bude další, produkce osady a QI, hospody přátel k návštěvě a vaše hospoda, aktivní příhody, pokusy expedice a akce QI (s doplňováním, upozorní na plnou zásobu) a kdy končí, GBG, limitované budovy, které vyprší do 24 h, FP a nepřečtená upozornění. U každého řádku tlačítko → na podrobnou záložku.

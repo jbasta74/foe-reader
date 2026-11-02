@@ -526,6 +526,13 @@ function viewDay() {
     const lims = limitedList(), soon = lims.filter((l) => !l.decayed && l.at && l.at > now && l.at - now < 86400), can = lims.filter((l) => l.decayed && limCan(l));
     if (soon.length || can.length) row('⏳', 'Limitované budovy', [soon.length && `<b class="hi">${fmt(soon.length)} vyprší do 24 h</b> (${esc(soon.slice(0, 3).map((l) => l.name).join(', '))}${soon.length > 3 ? '…' : ''})`, can.length && `${fmt(can.length)} vypršelých lze pozvednout`].filter(Boolean).join(' · '), '', 'prod');
   }
+  // Událost: hlavní cena a lístky / zvonky
+  for (const [ctx, pv] of Object.entries(S.evPrev || {})) {
+    const gp = pv.teaserPrizes?.grandPrizes?.[0];
+    if (!gp) continue;
+    const res = ctx === 'halloween_event' ? 'halloween_ticket' : S.presents?.context === ctx ? S.presents.presentOpenResource : null;
+    row('🎪', 'Událost – hlavní cena', `<b>${fmt(gp.currentPoints || 0)} / ${fmt(gp.totalNeedPoints || 0)}</b>${res && S.resources[res] != null ? ` · ${esc(resLabel(res))} ${fmt(S.resources[res])}` : ''}`, '', 'ev');
+  }
   // FP
   const fp = (S.resources.strategy_points || 0), pk = S.packageFP || 0;
   row('🔷', 'Forge body', `<b>${fmt(fp)}</b> v liště${pk ? ` + ${fmt(pk)} v balíčcích` : ''}`, '', 'res');

@@ -605,6 +605,25 @@ const tests = {
     if (b.n !== 2 || !/nalezeno 2/.test(b.chip)) throw new Error('hledání: ' + JSON.stringify(b));
     return errors;
   },
+  async 'Statistiky cechu: řazení podle hodnoty a podle přírůstku, pořadí'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      const me = String(myId());
+      // já: nejvíc bodů, ale bez staršího snímku (žádný přírůstek); A a B mají přírůstek
+      const D = { guild: { names: { [me]: 'Já', 901: 'A', 902: 'B' }, days: {
+        '2026-10-20': { 901: { score: 1000 }, 902: { score: 2000 } },
+        '2026-10-27': { [me]: { score: 9000 }, 901: { score: 1500 }, 902: { score: 2100 } } } } };
+      S.clan = { members: [me, '901', '902'] };
+      const order = () => [...viewGuild(D).matchAll(/data-guildpid="([^"]+)"/g)].map((m) => m[1]).join(',');
+      guildSort = 'score'; guildSortD = false; const byVal = order();
+      guildSortD = true; const byGain = order();
+      guildSortD = false;
+      return { byVal, byGain, me };
+    });
+    if (r.byVal !== `${r.me},902,901`) throw new Error('podle hodnoty: ' + r.byVal);
+    if (r.byGain !== `901,902,${r.me}`) throw new Error('podle přírůstku: ' + r.byGain);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

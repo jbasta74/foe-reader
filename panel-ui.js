@@ -171,7 +171,8 @@ function onUiClick(ev) {
     const gp = ev.target.closest('[data-guildper]');
     if (gp) { guildPer = +gp.dataset.guildper; render(); return; }
     const gs = ev.target.closest('[data-guildsort]');
-    if (gs) { guildSort = gs.dataset.guildsort; render(); return; }
+    if (gs) { const k = gs.dataset.guildsort, canD = GUILD_COLS.find((c) => c[0] === k)?.[2];
+      if (guildSort === k && canD && !guildSortD) guildSortD = true; else { guildSort = k; guildSortD = false; } render(); return; }
     const gm = ev.target.closest('tr[data-guildpid]');
     if (gm) { guildSel = guildSel === gm.dataset.guildpid ? null : gm.dataset.guildpid; render(); return; }
     const sv = ev.target.closest('[data-statview]');

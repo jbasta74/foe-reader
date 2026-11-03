@@ -66,7 +66,7 @@ function tile(label, big, sub, cls = '') {
 }
 const signed = (n) => (n > 0 ? '+' : '') + (Math.abs(n) >= 1e5 ? kfmt(n) : fmt(Math.round(n)));
 // ---------- Přehled cechu ----------
-let guildPer = 7, guildSort = 'score', guildSel = null;
+let guildPer = 7, guildSort = 'score', guildSortD = false, guildSel = null; // guildSortD: řadit podle přírůstku za období místo hodnoty
 const GUILD_COLS = [
   ['score', 'Body', true], ['gbgF', 'GBG boje*', true], ['gbgA', 'Opotř.', false], ['geP', 'Exp. body', true], ['geE', 'Exp. setkání', true], ['qiA', 'QI akce', true], ['qiP', 'QI postup', true],
 ];
@@ -91,14 +91,17 @@ function viewGuild(D) {
       r['d' + k] = v == null || o == null || base === last ? null : v - o < 0 ? v : v - o;
     }
     return r;
-  }).sort((a, b) => (b['d' + guildSort] ?? b[guildSort] ?? -1) - (a['d' + guildSort] ?? a[guildSort] ?? -1));
+  });
+  // Řadí se podle zobrazené hodnoty, nebo (druhý klik na hlavičku) podle přírůstku; kdo údaj nemá, je na konci.
+  const sk = (guildSortD ? 'd' : '') + guildSort;
+  rows.sort((a, b) => (a[sk] == null) - (b[sk] == null) || (b[sk] ?? 0) - (a[sk] ?? 0) || String(a.name).localeCompare(String(b.name)));
   const per = [[1, 'od včera'], [7, '7 dní'], [30, '30 dní']];
   let h = `<p>Přírůstek za: ${per.map(([n, l]) => `<button class="fbtn ${guildPer === n ? 'on' : ''}" data-guildper="${n}">${l}</button>`).join('')}
     <span class="muted">(srovnání s ${esc(shortDate(base))}, poslední údaje ${esc(shortDate(last))})</span></p>
-    <table class="log"><thead><tr><th>Člen</th>${GUILD_COLS.map(([k, l]) => `<th class="num" style="cursor:pointer" data-guildsort="${k}">${l}${guildSort === k ? ' ▼' : ''}</th>`).join('')}</tr></thead><tbody>${
-    rows.map((r) => `<tr data-guildpid="${esc(r.pid)}" class="${String(guildSel) === r.pid ? 'sel' : String(r.pid) === String(myId()) ? 'me' : ''}"><td>${String(r.pid) === String(myId()) ? '👤 ' : ''}${esc(r.name)}${r.active === false ? ' <span class="muted">(neaktivní)</span>' : ''}${r.era ? `<br><span class="muted" style="font-size:10px">${esc(ERA[r.era] || r.era)}</span>` : ''}</td>${
+    <table class="log"><thead><tr><th class="num">#</th><th>Člen</th>${GUILD_COLS.map(([k, l, showD]) => `<th class="num" style="cursor:pointer" data-guildsort="${k}" title="Klik = seřadit podle hodnoty${showD ? ', další klik = podle přírůstku za období' : ''}">${l}${guildSort === k ? (guildSortD ? ' ▼ přír.' : ' ▼') : ''}</th>`).join('')}</tr></thead><tbody>${
+    rows.map((r, i) => `<tr data-guildpid="${esc(r.pid)}" class="${String(guildSel) === r.pid ? 'sel' : String(r.pid) === String(myId()) ? 'me' : ''}"><td class="num muted">${r[sk] == null ? '' : i + 1}</td><td>${String(r.pid) === String(myId()) ? '👤 ' : ''}${esc(r.name)}${r.active === false ? ' <span class="muted">(neaktivní)</span>' : ''}${r.era ? `<br><span class="muted" style="font-size:10px">${esc(ERA[r.era] || r.era)}</span>` : ''}</td>${
       GUILD_COLS.map(([k, , showD]) => `<td class="num">${r[k] == null ? '<span class="muted">–</span>' : k === 'score' ? kfmt(r[k]) : fmt(r[k])}${showD && r['d' + k] ? `<br><span class="${r['d' + k] > 0 ? 'up' : 'down'}" style="font-size:10px">${signed(r['d' + k])}</span>` : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>
-    <p class="muted">* GBG boje = bitvy + 2 × vyjednávání (za sezónu). Údaje se doplňují, když ve hře otevřete přehled cechu, žebříček GBG, žebříček expedice nebo aktivitu QI. Zeleně přírůstek za zvolené období; klik na člena ukáže vývoj, klik na hlavičku seřadí.</p>`;
+    <p class="muted">* GBG boje = bitvy + 2 × vyjednávání (za sezónu). Údaje se doplňují, když ve hře otevřete přehled cechu, žebříček GBG, žebříček expedice nebo aktivitu QI. Zeleně přírůstek za zvolené období; klik na člena ukáže vývoj. Klik na hlavičku seřadí podle hodnoty, další klik podle přírůstku za období (# = pořadí).</p>`;
   const sel = guildSel != null && members.includes(String(guildSel)) ? String(guildSel) : null;
   if (sel) {
     const ds = days.filter((d) => g.days[d][sel]);

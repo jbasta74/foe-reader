@@ -11,5 +11,6 @@
 - **Mapa – výměna za budovu z inventáře 🎁**: slabá budova na mapě ⇄ lepší budova stejného půdorysu z inventáře se ziskem podle Ratingu. První klik ji ukáže na mapě, druhý ji vyzkouší v plánovači (stará jde do skladu plánu, nová na její místo).
 
 ## Opravy
+- Statistiky – Cech: řazení podle sloupce bylo pomíchané (část členů se řadila podle přírůstku, část podle hodnoty – kdo neměl starší snímek, zůstával pořád nahoře). Teď klik na hlavičku řadí podle zobrazené hodnoty, další klik podle přírůstku za období; přibyl sloupec # s pořadím.
 - Lišta s ikonami zůstane celá na obrazovce, i když v ní přibudou ikony (dřív mohla přetéct za pravý okraj).
 - Statistiky: u Velkých budov se místo serverových názvů (např. `X_IronAge_Landmark1`) zobrazují skutečné názvy – i u starších uložených záznamů.

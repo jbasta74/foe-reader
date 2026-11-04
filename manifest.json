@@ -40,7 +40,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "img/incidents/*.png"
+        "img/incidents/*.png",
+        "img/rating/*.png"
       ],
       "matches": [
         "https://*.forgeofempires.com/*"

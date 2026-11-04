@@ -428,6 +428,24 @@ const RATE_TYPES = [
   ['guild_raids_supplies_start', 'QI zásoby – start', 5000, true],
   ['aa-guild_raids', 'Útok útočníka – QI', 0, false], ['ad-guild_raids', 'Obrana útočníka – QI', 0, false],
 ];
+// Ikony druhů v hlavičce Ratingu (sprite z FoE Helperu, AGPL – img/rating). Klíč → pozice v spritu (px při výšce 26 px).
+const imgUrl = (p) => (globalThis.chrome?.runtime?.getURL ? chrome.runtime.getURL(p) : p);
+const RATE_ICON = { strategy_points: 0, money: 26, supplies: 51, medals: 78, g_cur: 104, guild: 262, units: 287, aa: 312, da: 339, ad: 366, dd: 390,
+  g_prev: 524, g_next: 550, guild_raids_action_points_collection: 498, guild_raids_coins_start: 630, guild_raids_supplies_start: 680 };
+const RATE_CTX = { battleground: 'gbg', guild_expedition: 'ge', guild_raids: 'guild_raids' };
+function rateIcon(k, size = 20) {
+  const z = size / 26, sp = (x) => `<span class="ri" style="width:${Math.round(25 * z)}px;height:${size}px;background-image:url('${imgUrl('img/rating/icons.png')}');background-size:${Math.round(866 * z)}px ${size}px;background-position:-${Math.round(x * z)}px 0"></span>`;
+  const [a, f] = k.split('-');
+  let base = null;
+  if (k === 'forge_points_production') base = sp(0) + `<span class="ri ov" style="width:${Math.round(25 * z)}px;height:${size}px;background-image:url('${imgUrl('img/rating/icons.png')}');background-size:${Math.round(866 * z)}px ${size}px;background-position:-${Math.round(812 * z)}px 0"></span>`;
+  else if (k === 'goods_production') base = sp(104) + `<span class="ri ov" style="width:${Math.round(25 * z)}px;height:${size}px;background-image:url('${imgUrl('img/rating/icons.png')}');background-size:${Math.round(866 * z)}px ${size}px;background-position:-${Math.round(812 * z)}px 0"></span>`;
+  else if (k === 'fsp' || k === 'frags') base = `<img class="ri" src="${imgUrl('img/rating/fragment.png')}" style="height:${size}px" alt="">${k === 'fsp' ? '<b class="ritx">FSP</b>' : ''}`;
+  else if (RATE_ICON[k] != null) base = sp(RATE_ICON[k]);
+  else if (f && RATE_ICON[a] != null) base = sp(RATE_ICON[a]);
+  if (!base) return null;
+  const ctx = f && RATE_CTX[f] ? `<img class="rictx" src="${imgUrl('img/rating/' + RATE_CTX[f] + '.png')}" alt="">` : '';
+  return `<span class="riw">${base}${ctx}</span>`;
+}
 const rateW = () => { const w = cfg.ratingW || {}; return RATE_TYPES.map(([k, l, d, on]) => ({ k, l, per: w[k]?.per ?? d, on: w[k]?.on ?? on })); };
 const RATE_SKIP = ['street', 'off_grid', 'hub_part', 'hub_main', 'main_building', 'greatbuilding', 'military', 'friends_tavern', 'outpost_ship'];
 let rateSel = { size: 0, q: '', asc: true, settings: false, inv: false, sort: 'score', desc: true, tile: false, withInv: false };
@@ -535,7 +553,7 @@ function viewRating() {
   if (rateSel.settings) {
     return h + `<p class="muted">Kolik dané věci má budova vyrobit na jedno pole (včetně podílu cesty), aby za ni dostala 1 bod. Skóre = součet bodů.</p>
       <table><thead><tr><th>Započítat</th><th>Druh</th><th class="num">Na pole</th></tr></thead><tbody>${rateW().map((t) =>
-        `<tr><td><input type="checkbox" data-ratew="${t.k}" data-f="on" ${t.on ? 'checked' : ''}></td><td>${esc(t.l)}</td>
+        `<tr><td><input type="checkbox" data-ratew="${t.k}" data-f="on" ${t.on ? 'checked' : ''}></td><td>${rateIcon(t.k, 18) || ''} ${esc(t.l)}</td>
          <td class="num"><input type="number" step="0.05" min="0" style="width:80px" data-ratew="${t.k}" data-f="per" value="${Number.isFinite(+t.per) ? +t.per : 0}"></td></tr>`).join('')}</tbody></table>
       <p><button data-act="ratereset">Obnovit výchozí hodnoty</button></p>`;
   }
@@ -574,7 +592,7 @@ function viewRating() {
       <span><button class="fbtn ${!rateSel.size ? 'on' : ''}" data-ratesize="0">vše</button>${sizes.map((z) => `<button class="fbtn ${rateSel.size === z ? 'on' : ''}" data-ratesize="${z}">${z}</button>`).join('')}</span>
       <label><input type="checkbox" data-rateopt="tile" ${rateSel.tile ? 'checked' : ''}> na pole</label>
       <label><input type="checkbox" data-rateopt="withInv" ${rateSel.withInv ? 'checked' : ''}> 📦 z inventáře</label></div>
-    <div style="overflow-x:auto"><table class="pt rt"><thead><tr>${th('name', 'Budova')}${th('tiles', 'Polí')}${th('score', 'Skóre')}${cols.map((t) => th(t.k, rateShort(t.k), t.l)).join('')}${rateSel.withInv ? '<th>Nahradí</th>' : ''}</tr></thead><tbody>${
+    <div style="overflow-x:auto"><table class="pt rt"><thead><tr>${th('name', 'Budova')}${th('tiles', 'Polí')}${th('score', 'Skóre')}${cols.map((t) => th(t.k, rateIcon(t.k) || rateShort(t.k), t.l)).join('')}${rateSel.withInv ? '<th>Nahradí</th>' : ''}</tr></thead><tbody>${
     rows.map((b) => `<tr class="${b.inv ? 'inv' : ''}" title="${esc(b.id)}"><td>${b.inv ? '📦 ' + esc(b.name) : findLink(esc(b.name), b.id)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td>
       <td class="num">${b.w}×${b.l}${b.road ? `+${r2(b.road)}` : ''}</td><td class="num"><b>${r2(b.score)}</b></td>${cols.map((t) => cell(b, t.k)).join('')}
       ${rateSel.withInv ? `<td style="font-size:11px">${b.swap ? `${b.swap.parts.map((x) => esc(x.name)).join(' + ')} <span class="up">+${r2(b.swap.gain)}</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>

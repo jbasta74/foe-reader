@@ -53,6 +53,8 @@ function mount() {
     .cfg label{margin-right:10px;white-space:nowrap}
     input[type=number],input.pname{border:1px solid #c9b48c;border-radius:4px;padding:1px 4px;background:#fff}
     input.pname{width:140px}
+    .riw{position:relative;display:inline-block;vertical-align:middle;line-height:0;white-space:nowrap} .ri{display:inline-block;background-repeat:no-repeat;vertical-align:middle}
+    .ri.ov{position:absolute;left:0;top:0} .rictx{position:absolute;right:-6px;bottom:-4px;height:13px} .ritx{font-size:9px;line-height:1;position:absolute;left:0;bottom:-2px;background:#fff8;border-radius:2px;padding:0 1px}
     .findb{cursor:pointer;border-bottom:1px dotted #8a6a3a} .findb:hover{color:#b0410f;border-bottom-style:solid}
     table.day td{padding:3px 6px;vertical-align:top} table.day td:first-child{font-size:15px;width:22px} table.day tr.muted td{color:#9a8a70}
     ol.steps{margin:3px 0 3px 18px;padding:0} ol.steps a{color:inherit;text-decoration:none} ol.steps a.on{background:#c2185b;color:#fff;border-radius:3px;padding:0 3px}

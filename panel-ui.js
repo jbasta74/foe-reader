@@ -128,7 +128,7 @@ function mount() {
     if (ev.target.closest('[data-act="popout"]')) { openTabWin(tab); return; }
     onUiClick(ev);
   });
-  root.addEventListener('input', () => { lastInputAt = Date.now(); });
+  root.addEventListener('input', onUiInput);
   root.addEventListener('change', onUiChange);
   attachTips(root, host);
   attach();
@@ -362,6 +362,7 @@ function openTabWin(id, restore) {
   document.documentElement.appendChild(h);
   toFront(h);
   h.addEventListener('pointerdown', () => toFront(h), true);
+  for (const t of ['keydown', 'keyup', 'keypress']) h.addEventListener(t, (e) => e.stopPropagation());
   const w = { host: h, root: r, body: r.querySelector('.wbody') };
   tabWins.set(id, w);
   if (id === 'alerts' && S.unread) { S.unread = 0; S.unreadLoud = 0; updateBadge(); }
@@ -388,7 +389,7 @@ function openTabWin(id, restore) {
     if (ev.target.closest('[data-w="close"]')) { closeTabWin(id); return; }
     onUiClick(ev);
   });
-  r.addEventListener('input', () => { lastInputAt = Date.now(); });
+  r.addEventListener('input', onUiInput);
   r.addEventListener('change', onUiChange);
   attachTips(r, h);
   new ResizeObserver(() => { if (tabWins.has(id)) save(); }).observe(h);
@@ -420,10 +421,11 @@ function renderTabWin(id) {
   const def = TABS.find((t) => t[0] === id);
   if (!w || !def) return;
   const act = w.root.activeElement;
-  if (act && act.tagName === 'INPUT' && !act.readOnly && act.type !== 'checkbox' && Date.now() - lastInputAt < 2500) return;
+  if (act && act.tagName === 'INPUT' && !act.readOnly && act.type !== 'checkbox' && Date.now() - lastInputAt < 2500) { if (!w.retry) w.retry = setTimeout(() => { w.retry = null; renderTabWin(id); }, 2600); return; }
   const keep = w.body.scrollTop;
   w.body.innerHTML = L(def[2]());
   w.body.scrollTop = keep;
+  if (act && w.body.contains(act) === false) refocus(w.body, act);
 }
 // Upozornění na novou verzi (číslo posledního vydání zjišťuje background.js na GitHubu).
 const verNum = (v) => String(v || '').split('.').map((x) => parseInt(x) || 0);
@@ -517,6 +519,8 @@ function setupDrag(btn, onClick) {
   });
   // Ať hra pod tlačítkem nereaguje na kliky a tahy.
   for (const t of ['mousedown', 'mouseup', 'click', 'wheel']) host.addEventListener(t, (e) => e.stopPropagation());
+  // psaní do polí panelu nesmí jít do hry jako klávesové zkratky
+  for (const t of ['keydown', 'keyup', 'keypress']) host.addEventListener(t, (e) => e.stopPropagation());
 }
 
 function attach() {
@@ -577,10 +581,26 @@ function render() {
   const keepScroll = body.scrollTop;
   body.innerHTML = L(TABS.find((t) => t[0] === tab)[2]());
   body.scrollTop = keepScroll;
-  if (focusSel) body.querySelector(focusSel)?.focus({ preventScroll: true });
+  if (focusSel) { const el = body.querySelector(focusSel); el?.focus({ preventScroll: true }); try { if (act.selectionStart != null && el?.setSelectionRange) el.setSelectionRange(act.selectionStart, act.selectionEnd); } catch { /* ignore */ } }
 }
 
 let lastInputAt = 0;
+// Vyhledávací pole filtrují hned při psaní (dřív se čekalo na Enter a okno záložky se pak vůbec nepřekreslilo).
+const LIVE_INPUTS = ['rateQ', 'ptQ', 'statFilter'];
+function onUiInput(ev) {
+  const el = ev.target.closest?.('[data-input]');
+  if (el && LIVE_INPUTS.includes(el.dataset.input)) { lastInputAt = 0; onUiChange(ev); return; }
+  lastInputAt = Date.now();
+}
+// Po překreslení vrátit kurzor do vyhledávacího pole na stejné místo.
+function refocus(container, act) {
+  if (!act?.dataset?.input) return;
+  const el = container.querySelector(`[data-input="${act.dataset.input}"]`);
+  if (!el) return;
+  const a = act.selectionStart, b = act.selectionEnd;
+  el.focus({ preventScroll: true });
+  try { if (a != null) el.setSelectionRange(a, b); } catch { /* ignore */ }
+}
 let pending = false;
 // ---------- Okénko „FP ve skladu“ u lišty FP ve hře (jako FoE Helper; vypnutelné v ℹ️, přesunutelné tažením) ----------
 const FPBAR_KEY = 'foeReaderFpBar';

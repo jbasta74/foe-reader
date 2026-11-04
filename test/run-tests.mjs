@@ -644,6 +644,25 @@ const tests = {
     if (!/QI – akce 40/.test(r.run) || !/běží, konec za/.test(r.run)) throw new Error('běží: ' + r.run);
     return errors;
   },
+  async 'Rating v okně: vyhledávání filtruje hned při psaní, kurzor zůstane v poli'() {
+    const { pg, errors } = await page([startup()]);
+    await pg.evaluate(() => {
+      S.ent.set('P_A', { w: 2, l: 2, road: 1, type: 'production' }); S.ent.set('P_B', { w: 2, l: 2, road: 1, type: 'production' });
+      S.names.set('P_A', 'Čarodějná věž'); S.names.set('P_B', 'Kovárna');
+      const fp = { current_product: { production_time: 86400, product: { resources: { strategy_points: 5 } } } };
+      S.entities.set(801, { id: 801, player_id: myId(), cityentity_id: 'P_A', type: 'production', state: fp });
+      S.entities.set(802, { id: 802, player_id: myId(), cityentity_id: 'P_B', type: 'production', state: fp });
+      openTabWin('rate');
+    });
+    await pg.waitForTimeout(300);
+    const win = () => pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].pop().shadowRoot);
+    await pg.evaluate(() => { const q = [...document.querySelectorAll('.foe-reader-win')].pop().shadowRoot.querySelector('[data-input="rateQ"]'); q.focus(); });
+    await pg.keyboard.type('kov');
+    await pg.waitForTimeout(300);
+    const r = await pg.evaluate(() => { const w = [...document.querySelectorAll('.foe-reader-win')].pop().shadowRoot; return { txt: w.querySelector('.wbody').textContent, focus: w.activeElement?.dataset?.input, val: w.activeElement?.value }; });
+    if (!/Kovárna/.test(r.txt) || /Čarodějná/.test(r.txt) || r.focus !== 'rateQ' || r.val !== 'kov') throw new Error(JSON.stringify({ ...r, txt: r.txt.slice(0, 200) }));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

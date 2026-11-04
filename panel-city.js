@@ -741,6 +741,7 @@ function openCalcWin() {
     ${minBtn('id="min"', 'calc')}<button id="close" title="Zavřít">✕</button></div><div class="wbody" id="wbody"></div>`);
   document.documentElement.appendChild(h);
   toFront(h); h.addEventListener('pointerdown', () => toFront(h), true);
+  for (const t of ['keydown', 'keyup', 'keypress']) h.addEventListener(t, (e) => e.stopPropagation());
   calcWin = { host: h, root: r };
   // Po zavření okna hlásí ResizeObserver nulovou velikost – to neukládat (jinak se okno příště otevřelo vlevo nahoře).
   const save = () => { if (!h.isConnected) return; const b = h.getBoundingClientRect(); if (!b.width || !b.height) return; try { localStorage.setItem(CALCWIN_KEY, JSON.stringify({ x: b.left, y: b.top, w: b.width, h: winFullH(h, 'calc') })); } catch { /* ignore */ } };

@@ -543,8 +543,8 @@ function viewRating() {
   if (!S.entities.size) return '<p class="muted">Zatím žádná data – načtěte hru (F5).</p>';
   const all = ratedBuildings();
   const sizes = [...new Set(all.map((b) => b.w * b.l))].sort((a, b) => a - b);
-  const q = rateSel.q.trim().toLowerCase();
-  const list = all.filter((b) => (!rateSel.size || b.w * b.l === rateSel.size) && (!q || b.name.toLowerCase().includes(q)))
+  const q = normTxt(rateSel.q); // bez ohledu na velikost písmen a diakritiku
+  const list = all.filter((b) => (!rateSel.size || b.w * b.l === rateSel.size) && (!q || normTxt(b.name).includes(q)))
     ;
   const r2 = (x) => (Math.round(x * 100) / 100).toLocaleString(LOC());
   const goods = (v) => (v.g_prev || 0) + (v.g_cur || 0) + (v.g_next || 0);
@@ -662,8 +662,8 @@ function viewProdTypes() {
     }
     rows = [...g.values()];
   }
-  const q = ptSel.q.trim().toLowerCase();
-  if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q));
+  const q = normTxt(ptSel.q);
+  if (q) rows = rows.filter((r) => normTxt(r.name).includes(q));
   const k = ptSel.sort, dir = ptSel.desc ? -1 : 1;
   rows.sort((a, b) => (k === 'name' || k === 'era' ? String(a[k]).localeCompare(String(b[k])) : (a[k] ?? 9e15) - (b[k] ?? 9e15)) * dir || a.name.localeCompare(b.name));
   const th = (key, label, cls = 'num') => `<th class="${cls} sortable" data-psort="${key}">${label}${ptSel.sort === key ? (ptSel.desc ? ' ▼' : ' ▲') : ''}</th>`;

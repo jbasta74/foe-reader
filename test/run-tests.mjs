@@ -624,6 +624,26 @@ const tests = {
     if (r.byGain !== `901,902,${r.me}`) throw new Error('podle přírůstku: ' + r.byGain);
     return errors;
   },
+  async 'QI: stav (běží / skončily / nezačaly) v Přehledu dne i v okně QI, pamatuje se'() {
+    const { pg, errors } = await page([startup([arc])]);
+    const r = await pg.evaluate(() => {
+      const now = nowServer(), txt = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      localStorage.removeItem('foeReaderQi'); S.qiState = null; S.resources.guild_raids_action_points = 40;
+      const unknown = txt(viewDay());
+      H['GuildRaidsService.getState']({ __class__: 'GuildRaidsFinishedState', nextStartsAt: now + 2 * 86400 });
+      const fin = { day: txt(viewDay()), qi: txt(viewQI()) };
+      S.qiState = null; // po obnovení hry: stav z uloženého
+      const stored = txt(viewDay());
+      H['GuildRaidsService.getState']({ __class__: 'GuildRaidsRunningState', endsAt: now + 3600 });
+      const run = txt(viewDay());
+      return { unknown, fin, stored, run };
+    });
+    if (!/QI stav neznámý/.test(r.unknown) || /QI – akce/.test(r.unknown)) throw new Error('neznámý: ' + r.unknown);
+    if (!/QI skončily – další začnou za 1 d 23 h/.test(r.fin.day) || /QI – akce/.test(r.fin.day) || !/platí až pro další QI/.test(r.fin.qi)) throw new Error('skončily: ' + JSON.stringify(r.fin));
+    if (!/QI skončily – další začnou za/.test(r.stored)) throw new Error('uložený stav: ' + r.stored);
+    if (!/QI – akce 40/.test(r.run) || !/běží, konec za/.test(r.run)) throw new Error('běží: ' + r.run);
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

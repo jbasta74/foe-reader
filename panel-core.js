@@ -223,7 +223,7 @@ const H = {
   'GuildRaidsService.getState'(d) {
     const ch = d?.championship;
     if (ch) { S.qiPass = { ...(S.qiPass || {}), endsAt: ch.endsAtTimestamp || S.qiPass?.endsAt, startsAt: ch.startsAt || S.qiPass?.startsAt }; if (ch.eventPassPreviewVO) qiPassPreview(ch.eventPassPreviewVO); }
-    if (d?.__class__) S.qiState = d; if (/Running/.test(d?.__class__ || '') && d.endsAt) saveEnd('qi', d.endsAt); },
+    if (d?.__class__) { S.qiState = d; qiStateSave(d); } if (/Running/.test(d?.__class__ || '') && d.endsAt) saveEnd('qi', d.endsAt); },
   'GuildRaidsService.getMemberActivityOverview'(d) {
     const rows = d?.rows || (Array.isArray(d) ? d : null);
     if (!rows) return;
@@ -911,6 +911,28 @@ function syncWatchAlarms() {
 let limInvDone = false;
 // Konec expedice / QI: čas konce se pamatuje (hra ho pošle jen při otevření), upozorní se jednou před koncem,
 // pokud zbývají nevyužité pokusy expedice / akce QI.
+// Stav QI: hra ho posílá jen při otevření QI (GuildRaidsService.getState) – poslední stav si pamatujeme (pro každý svět zvlášť),
+// aby po načtení hry bylo jasné, jestli QI běží, kdy skončí nebo kdy začnou další.
+const QI_KEY = 'foeReaderQi';
+function qiStateSave(d) {
+  const x = { cls: d.__class__, endsAt: d.endsAt || null, startsAt: d.startsAt || null, nextStartsAt: d.nextStartsAt || null, t: Math.round(nowServer()) };
+  try { localStorage.setItem(QI_KEY, JSON.stringify(x)); } catch { /* ignore */ }
+}
+// { run: true | false | null (nevíme), end, next, txt }
+function qiStatus(now = nowServer()) {
+  let x = null;
+  if (S.qiState) x = { cls: S.qiState.__class__, endsAt: S.qiState.endsAt, startsAt: S.qiState.startsAt, nextStartsAt: S.qiState.nextStartsAt };
+  else { try { x = JSON.parse(localStorage.getItem(QI_KEY) || 'null'); } catch { x = null; } }
+  if (!x?.cls) return { run: null, txt: 'stav neznámý – otevřete ve hře QI' };
+  if (/Running/.test(x.cls)) {
+    if (!x.endsAt || x.endsAt > now) return { run: true, end: x.endsAt, txt: x.endsAt ? `běží, konec za ${durLong(x.endsAt - now)}` : 'běží' };
+    return { run: false, txt: 'skončily – začátek dalších se ukáže po otevření QI ve hře' };
+  }
+  const next = /Pending/.test(x.cls) ? x.startsAt : x.nextStartsAt;
+  if (next && next > now) return { run: false, next, txt: `${/Pending/.test(x.cls) ? 'ještě nezačaly' : 'skončily'} – další začnou za ${durLong(next - now)}` };
+  if (next) return { run: null, txt: 'už by měly běžet – otevřete ve hře QI' };
+  return { run: false, txt: 'neprobíhají' };
+}
 const ENDS_KEY = 'foeReaderEnds';
 const loadEnds = () => { try { return JSON.parse(localStorage.getItem(ENDS_KEY) || '{}'); } catch { return {}; } };
 function saveEnd(k, end) {
@@ -939,7 +961,7 @@ function fullChecks() {
     st.alerted = true;
     alert('ev', toFull <= 0 ? `${label} jsou plné (${fmt(rf.max)}) – další přírůstek propadá.` : `${label} budou plné za ~${durLong(toFull)} (teď asi ${fmt(Math.floor(now))} / ${fmt(rf.max)}).`);
   };
-  const qiRun = S.qiState ? /Running/.test(S.qiState.__class__ || '') : undefined;
+  const qiRun = qiStatus().run ?? undefined;
   chk('guild_raids_action_points', 'QI akce', qiRun);
   chk('guild_expedition_attempt', 'Pokusy expedice', S.ge?.ov?.state ? S.ge.ov.state === 'active' : undefined);
 }

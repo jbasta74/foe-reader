@@ -393,11 +393,8 @@ function qiProdHtml(now) {
 function viewQI() {
   const r = S.resources, now = nowServer();
   let h = '';
-  const st = S.qiState;
-  if (st) {
-    const c = st.__class__ || '';
-    h += `<p>${/Running/.test(c) && st.endsAt ? `QI běží · konec za <b>${dur(st.endsAt - now)}</b>` : /Pending/.test(c) && st.startsAt ? `QI začne za <b>${dur(st.startsAt - now)}</b>` : /Finished/.test(c) && st.nextStartsAt ? `QI skončily · další začnou za ${dur(st.nextStartsAt - now)}` : esc(c)}</p>`;
-  }
+  const qs = qiStatus(now);
+  h += `<p class="${qs.run ? '' : 'hi'}">QI: <b>${esc(qs.txt)}</b>${qs.run === false ? ' <span class="muted">– akce a produkce níže platí až pro další QI</span>' : ''}</p>`;
   const next = S.timers.find((t) => t.type === 'outpostProduction' && t.gridId === 'guild_raids');
   const { per, other } = armyFrom(S.boosts, S.entities.values());
   const qa = areaValues(per, 'guild_raids');
@@ -514,8 +511,9 @@ function viewDay() {
   const E = loadEnds();
   const ge = refillNow('guild_expedition_attempt');
   if (ge) row('🧭', 'Expedice – pokusy', `<b>${fmt(ge.v)}</b>${ge.max ? ` / ${fmt(ge.max)}${ge.v >= ge.max ? ' <b class="hi">plné – přírůstek propadá</b>' : ''}` : ''}${E.ge?.end > now ? ` · konec za ${durLong(E.ge.end - now)}` : ''}`, ge.v ? '' : 'muted', 'ge');
-  const qi = refillNow('guild_raids_action_points');
-  if (qi && (S.qiState || E.qi?.end > now)) row('🌀', 'QI – akce', `<b>${fmt(qi.v)}</b>${qi.max ? ` / ${fmt(qi.max)}${qi.v >= qi.max ? ' <b class="hi">plné – přírůstek propadá</b>' : ''}` : ''}${E.qi?.end > now ? ` · konec za ${durLong(E.qi.end - now)}` : ''}`, qi.v ? '' : 'muted', 'qi');
+  const qi = refillNow('guild_raids_action_points'), qs = qiStatus(now);
+  if (qs.run) row('🌀', 'QI – akce', qi ? `<b>${fmt(qi.v)}</b>${qi.max ? ` / ${fmt(qi.max)}${qi.v >= qi.max ? ' <b class="hi">plné – přírůstek propadá</b>' : ''}` : ''} · ${esc(qs.txt)}` : esc(qs.txt), qi?.v ? '' : 'muted', 'qi');
+  else row('🌀', 'QI', esc(qs.txt), 'muted', 'qi');
   // GBG
   if (S.gbg) {
     const end = S.gbg.endsAt || S.gbg.endTime;

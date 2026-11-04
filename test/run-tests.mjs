@@ -535,7 +535,7 @@ const tests = {
     const r = await pg.evaluate(() => {
       const now = nowServer();
       S.entities.set(9001, { id: 9001, player_id: myId(), cityentity_id: 'X', state: { __class__: 'ProducingState', next_state_transition_at: now - 10 } });
-      S.entities.set(9002, { id: 9002, player_id: myId(), cityentity_id: 'Y', state: { __class__: 'ProducingState', next_state_transition_at: now + 3600 } });
+      S.entities.set(9002, { id: 9002, player_id: myId(), cityentity_id: 'Y', state: { __class__: 'ProducingState', next_state_transition_at: now + 3900 } }); // rezerva na pomalejší běh (CI)
       S.taverns = [{ ownerId: 1 }, { ownerId: 2, state: 'alreadyVisited', nextVisitTime: now + 999 }];
       S.resources.guild_expedition_attempt = 4;
       return { win: !!document.querySelector('.foe-reader-win'), txt: viewDay().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') };

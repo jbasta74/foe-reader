@@ -498,6 +498,7 @@ globalThis.FOE_I18N = {
     ['(zboží o věk vyšší má dvojnásobnou hodnotu) – 1 = férový obchod, víc = výhodný pro vás. 🔬 = zboží chybí na výzkum do konce dalšího věku. Šedě = nemáte dost zboží.', '(goods one era higher are worth double) – 1 = fair trade, more = good for you. 🔬 = goods missing for research until the end of the next era. Grey = you do not have enough goods.'],
     ['🎁 Výměna za budovu z inventáře (zisk podle Ratingu = skóre × pole):', '🎁 Replace with an inventory building (gain by Rating = score × tiles):'], ['– klik = ukázat, druhý klik = vyzkoušet v plánu', '– click = show, second click = try in the plan'],
     ['Trh', 'Market'], ['Přehled', 'Overview'],
+    ['(váš věk)', '(your era)'],
     ['stav neznámý – otevřete ve hře QI', 'status unknown – open QI in the game'], ['skončily – začátek dalších se ukáže po otevření QI ve hře', 'ended – the next start shows once you open QI in the game'],
     ['ještě nezačaly', 'not started yet'], ['– další začnou za', '– next ones start in'], ['už by měly běžet – otevřete ve hře QI', 'should be running by now – open QI in the game'], ['neprobíhají', 'not running'],
     ['– akce a produkce níže platí až pro další QI', '– actions and production below apply to the next QI'], ['běží, konec za', 'running, ends in'], ['skončily', 'ended'],

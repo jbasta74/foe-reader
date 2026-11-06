@@ -296,12 +296,25 @@ function goodKey(id) {
   const d = ERAS.indexOf(ge) - ERAS.indexOf(S.player?.era);
   return d === 0 ? 'g_cur' : d === -1 ? 'g_prev' : d === 1 ? 'g_next' : 'g_other';
 }
+// Věk zboží: konkrétní zboží podle metadat, „zboží věku / předchozího / dalšího“ podle věku hráče.
+function goodEra(id, key) {
+  const e = S.goodsEra.get(id);
+  if (e) return e;
+  const pe = ERAS.indexOf(S.player?.era), d = { g_prev: -1, g_cur: 0, g_next: 1 }[key];
+  return d == null || pe < 0 ? null : ERAS[pe + d] || null;
+}
+// Přičte zboží do bag.res (relativní věk) i do bag.ge (zboží podle skutečného věku).
+function addGood(bag, id, v) {
+  const key = goodKey(id);
+  bag.res[key] = (bag.res[key] || 0) + v;
+  if (/^g_(prev|cur|next|other)$/.test(key)) { const e = goodEra(id, key); if (e) (bag.ge ||= {})[e] = (bag.ge[e] || 0) + v; }
+}
 // Přičte jeden produkt (formát metadat i živého stavu) do denního souhrnu bag s násobkem k.
 function addProduct(bag, p, k) {
   if (!p) return;
   if (p.type === 'random' && Array.isArray(p.products)) { for (const x of p.products) addProduct(bag, x.product, k * (x.dropChance || 0)); return; }
   const pr = p.playerResources?.resources;
-  if (pr) for (const [id, v] of Object.entries(pr)) { const key = goodKey(id); bag.res[key] = (bag.res[key] || 0) + v * k; }
+  if (pr) for (const [id, v] of Object.entries(pr)) addGood(bag, id, v * k);
   const gr = p.guildResources?.resources;
   if (gr) for (const v of Object.values(gr)) bag.res.guild = (bag.res.guild || 0) + v * k;
   if (p.type === 'unit') bag.res.units = (bag.res.units || 0) + (p.amount || 0) * k;
@@ -331,22 +344,23 @@ function applyProdBoosts(bag, e, bs) {
   const r = bag.res, mul = (k, pct) => { if (r[k] && pct) r[k] = Math.round(r[k] * (1 + pct / 100)); };
   mul('strategy_points', bs.forge_points_production); mul('money', bs.coin_production); mul('supplies', bs.supply_production);
   for (const k of ['g_prev', 'g_cur', 'g_next', 'g_other']) mul(k, bs.goods_production);
+  if (bag.ge && bs.goods_production) for (const k of Object.keys(bag.ge)) bag.ge[k] = Math.round(bag.ge[k] * (1 + bs.goods_production / 100));
   mul('guild', bs.guild_goods_production);
 }
 // Denní produkce budovy (vše za 24 h, s motivací – jako FoE Helper). Metadata podle věku budovy se slučují se živým stavem
 // (vyšší hodnota vyhrává): živý stav obsahuje bonusy sad a řetězů a u motivovaných budov dvojnásobné mince.
 // Velké budovy a budovy s volbou výroby (zboží, zásoby) podle toho, co právě vyrábějí. bs = bonusy k produkci (null = bez).
 function buildingDaily(e, era = S.player?.era, bs = null) {
-  const bag = { res: {}, frags: {}, other: {}, src: '' };
+  const bag = { res: {}, frags: {}, other: {}, ge: {}, src: '' };
   const st = e.state || {};
   const m = S.entProd.get(e.cityentity_id);
   const opts = m ? m[entEra(e, m, era)] || m.AllAge : null;
-  const live = { res: {}, frags: {}, other: {} };
+  const live = { res: {}, frags: {}, other: {}, ge: {} };
   if (st.productionOption?.products) for (const p of st.productionOption.products) addProduct(live, p, 86400 / (st.productionOption.time || 86400));
   if (e.type !== 'greatbuilding' && opts?.length === 1) {
     for (const p of opts[0].products) addProduct(bag, p, 86400 / (opts[0].time || 86400));
     bag.src = 'meta';
-    for (const part of ['res', 'frags', 'other']) for (const [k, v] of Object.entries(live[part])) if (v > (bag[part][k] || 0)) bag[part][k] = v;
+    for (const part of ['res', 'frags', 'other', 'ge']) for (const [k, v] of Object.entries(live[part])) if (v > (bag[part][k] || 0)) bag[part][k] = v;
   } else if (st.productionOption?.products) {
     Object.assign(bag, live); bag.src = 'live';
   } else if (st.current_product) {
@@ -354,7 +368,7 @@ function buildingDaily(e, era = S.player?.era, bs = null) {
     for (const p of cp.products || [cp]) {
       if (p.goods) bag.res.guild = (bag.res.guild || 0) + p.goods.reduce((a, g) => a + (g.value || 0), 0) * k;
       const r = p.product?.resources || p.resources?.resources;
-      if (r) for (const [id, v] of Object.entries(r)) { const key = goodKey(id); bag.res[key] = (bag.res[key] || 0) + v * k; }
+      if (r) for (const [id, v] of Object.entries(r)) addGood(bag, id, v * k);
     }
     bag.src = 'live';
   }
@@ -383,6 +397,13 @@ function dailyOverview() {
       const mp = (per[k] ||= new Map()), x = mp.get(name) || { n: 0, v: 0 };
       x.n++; x.v += v; mp.set(name, x);
     }
+    for (const [era, v] of Object.entries(b.ge || {})) {
+      if (!v) continue;
+      const k = 'ge:' + era;
+      tot[k] = (tot[k] || 0) + v;
+      const mp = (per[k] ||= new Map()), x = mp.get(name) || { n: 0, v: 0 };
+      x.n++; x.v += v; mp.set(name, x);
+    }
     for (const [k, v] of Object.entries(b.frags)) frags[k] = (frags[k] || 0) + v;
     for (const [k, v] of Object.entries(b.other)) other[k] = (other[k] || 0) + v;
   }
@@ -392,12 +413,16 @@ const fragName = (id) => [...(S.frags?.values() || [])].find((f) => f.rid && (f.
 function viewDaily() {
   const o = dailyOverview();
   const r1 = (v) => fmt(Math.round(v * 10) / 10);
+  // zboží podle skutečného věku (od nejnovějšího) místo předchozí / aktuální / další / jiné věky
+  const geCats = Object.keys(o.tot).filter((k) => k.startsWith('ge:')).sort((a, b) => ERAS.indexOf(b.slice(3)) - ERAS.indexOf(a.slice(3)))
+    .map((k) => [k, `Zboží – ${esc(ERA[k.slice(3)] || k.slice(3))}${k.slice(3) === S.player?.era ? ' <span class="muted">(váš věk)</span>' : ''}`]);
+  const cats = PROD_CATS.flatMap((c) => (c[0] === 'g_prev' ? geCats : /^g_(cur|next|other)$/.test(c[0]) ? [] : [c]));
   let h = `<table class="log"><thead><tr><th>Druh</th><th class="num">Za den</th><th class="num">Budov</th></tr></thead><tbody>${
-    PROD_CATS.filter(([k]) => o.tot[k]).map(([k, l]) => `<tr data-prodcat="${k}" class="${k === prodCat ? 'sel' : ''}"><td>${l}</td><td class="num"><b>${r1(o.tot[k])}</b></td>
+    cats.filter(([k]) => o.tot[k]).map(([k, l]) => `<tr data-prodcat="${k}" class="${k === prodCat ? 'sel' : ''}"><td>${l}</td><td class="num"><b>${r1(o.tot[k])}</b></td>
       <td class="num">${[...o.per[k].values()].reduce((a, x) => a + x.n, 0)}</td></tr>`).join('')}</tbody></table>`;
   const list = o.per[prodCat];
   if (list) {
-    const lab = PROD_CATS.find(([k]) => k === prodCat)?.[1] || prodCat;
+    const lab = (prodCat.startsWith('ge:') ? `Zboží – ${ERA[prodCat.slice(3)] || prodCat.slice(3)}` : PROD_CATS.find(([k]) => k === prodCat)?.[1]) || prodCat;
     h += `<h4>${esc(lab)} – podle budov</h4><table><thead><tr><th>Budova</th><th class="num">Počet</th><th class="num">1 budova</th><th class="num">Celkem</th></tr></thead><tbody>${
       [...list.entries()].sort((a, b) => b[1].v - a[1].v).map(([n, x]) => `<tr><td>${findLink(esc(n), n)}</td><td class="num">${x.n}</td><td class="num">${r1(x.v / x.n)}</td><td class="num">${r1(x.v)}</td></tr>`).join('')}</tbody></table>`;
     if (prodCat === 'frags' && Object.keys(o.frags).length) h += `<p class="muted">${Object.entries(o.frags).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(fragName(k))}: ${r1(v)}`).join(' · ')}</p>`;
@@ -610,13 +635,13 @@ const PT_ARMY = [['aa', 'Útok útočníka'], ['ad', 'Obrana útočníka'], ['da
 let ptSel = { type: 'strategy_points', group: true, q: '', sort: 'day', desc: true, army: 'aa' };
 // Výnos právě běžící výroby (jeden cyklus, s bonusy k produkci).
 function buildingCurrent(e, bs) {
-  const st = e.state || {}, bag = { res: {}, frags: {}, other: {} };
+  const st = e.state || {}, bag = { res: {}, frags: {}, other: {}, ge: {} };
   if (st.productionOption?.products) for (const p of st.productionOption.products) addProduct(bag, p, 1);
   else if (st.current_product) {
     for (const p of st.current_product.products || [st.current_product]) {
       if (p.goods) bag.res.guild = (bag.res.guild || 0) + p.goods.reduce((a, g) => a + (g.value || 0), 0);
       const r = p.product?.resources || p.resources?.resources;
-      if (r) for (const [id, v] of Object.entries(r)) { const key = goodKey(id); bag.res[key] = (bag.res[key] || 0) + v; }
+      if (r) for (const [id, v] of Object.entries(r)) addGood(bag, id, v);
     }
   }
   applyProdBoosts(bag, e, bs);
@@ -636,8 +661,8 @@ function ptRows() {
       for (const [f] of PT_FEAT) r[f] = v[`${ptSel.army}-${f}`] || 0;
       if (!PT_FEAT.some(([f]) => r[f])) continue;
     } else {
-      const d = buildingDaily(e, era, bs).res, c = buildingCurrent(e, bs);
-      if (ptSel.type === 'goods') { for (const [k] of PT_GOODS) r[k] = d[k] || 0; r.day = goodsSum(d); r.cur = goodsSum(c); }
+      const dd = buildingDaily(e, era, bs), d = dd.res, c = buildingCurrent(e, bs);
+      if (ptSel.type === 'goods') { for (const [g, v] of Object.entries(dd.ge || {})) if (v) r['ge:' + g] = v; r.day = goodsSum(d); r.cur = goodsSum(c); }
       else { r.day = d[ptSel.type] || 0; r.cur = c[ptSel.type] || 0; }
       if (!r.day && !r.cur) continue;
       // Server u řady budov obsah běžící výroby neposílá (prázdný seznam) – odhad podle denní produkce a délky cyklu.
@@ -657,7 +682,7 @@ function viewProdTypes() {
       const k = `${r.name}|${r.era}`, x = g.get(k);
       if (!x) { g.set(k, { ...r }); continue; }
       x.n++; x.est = x.est || r.est;
-      for (const f of ['day', 'cur', ...PT_GOODS.map(([k]) => k), ...PT_FEAT.map(([k]) => k)]) if (r[f] != null) x[f] = (x[f] || 0) + r[f];
+      for (const f of ['day', 'cur', ...Object.keys(r).filter((f) => f.startsWith('ge:')), ...PT_FEAT.map(([k]) => k)]) if (r[f] != null) x[f] = (x[f] || 0) + r[f];
       if (r.done != null && (x.done == null || r.done < x.done)) x.done = r.done;
     }
     rows = [...g.values()];
@@ -679,8 +704,11 @@ function viewProdTypes() {
     head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${PT_FEAT.map(([f, l]) => th(f, `${l}<br><small>${fmt(sum(f))} %</small>`)).join('')}</tr>`;
     body = rows.map((r) => `<tr><td>${findLink(esc(r.name), r.id || r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_FEAT.map(([f]) => `<td class="num">${r[f] ? fmt(r[f]) + ' %' : '<span class="muted">–</span>'}</td>`).join('')}</tr>`).join('');
   } else if (ptSel.type === 'goods') {
-    head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${PT_GOODS.map(([g, l]) => th(g, `${l}<br><small>${fmt(Math.round(sum(g)))}</small>`)).join('')}${th('done', 'Hotovo')}</tr>`;
-    body = rows.map((r) => `<tr><td>${findLink(esc(r.name), r.id || r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_GOODS.map(([g]) => `<td class="num">${n1(r[g])}</td>`).join('')}<td class="num">${when(r.done)}</td></tr>`).join('');
+    // sloupec pro každý věk, ve kterém město zboží vyrábí (od nejnovějšího); váš věk zvýrazněný
+    const eras = [...new Set(all.flatMap((r) => Object.keys(r).filter((f) => f.startsWith('ge:'))))].sort((a, b) => ERAS.indexOf(b.slice(3)) - ERAS.indexOf(a.slice(3)));
+    const eraLab = (g) => { const e = g.slice(3), n = ERA[e] || e; return `<span title="${esc(n)}"${e === S.player?.era ? ' style="color:#2e7d32"' : ''}>${esc(n.length > 18 ? n.replace(/^Doba |^Era /, '').slice(0, 16) + '…' : n)}</span>`; };
+    head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${eras.map((g) => th(g, `${eraLab(g)}<br><small>${fmt(Math.round(sum(g)))}</small>`)).join('')}${th('day', `Celkem<br><small>${fmt(Math.round(sum('day')))}</small>`)}${th('done', 'Hotovo')}</tr>`;
+    body = rows.map((r) => `<tr><td>${findLink(esc(r.name), r.id || r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${eras.map((g) => `<td class="num">${n1(r[g])}</td>`).join('')}<td class="num"><b>${n1(r.day)}</b></td><td class="num">${when(r.done)}</td></tr>`).join('');
   } else {
     head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${th('cur', `Teď<br><small>${fmt(Math.round(sum('cur')))}</small>`)}${th('day', `Za den<br><small>${fmt(Math.round(sum('day')))}</small>`)}${th('era', 'Věk', '')}${th('done', 'Hotovo')}</tr>`;
     body = rows.map((r) => `<tr><td>${findLink(esc(r.name), r.id || r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}<td class="num${r.est ? ' muted' : ''}"${r.est ? ' title="odhad – hra obsah výroby neposlala"' : ''}>${r.est ? '≈' : ''}${n1(r.cur)}</td><td class="num"><b>${n1(r.day)}</b></td><td class="muted" style="font-size:11px">${esc(ERA[r.era] || r.era || '')}</td><td class="num">${when(r.done)}</td></tr>`).join('');

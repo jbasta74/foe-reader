@@ -663,6 +663,22 @@ const tests = {
     if (!/Kovárna/.test(r.txt) || /Čarodějná/.test(r.txt) || r.focus !== 'rateQ' || r.val !== 'kov') throw new Error(JSON.stringify({ ...r, txt: r.txt.slice(0, 200) }));
     return errors;
   },
+  async 'Produkce: zboží rozdělené podle skutečného věku'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      S.player.era = 'IronAge'; S.goodsEra.set('marble', 'BronzeAge'); S.goodsEra.set('cloth', 'IronAge'); S.goodsEra.set('dye', 'BronzeAge');
+      const st = (res) => ({ __class__: 'ProducingState', current_product: { production_time: 86400, product: { resources: res } } });
+      S.entities.set(701, { id: 701, player_id: myId(), cityentity_id: 'G_A', type: 'goods', state: st({ marble: 10, cloth: 5 }) });
+      S.entities.set(702, { id: 702, player_id: myId(), cityentity_id: 'G_B', type: 'goods', state: st({ dye: 7 }) });
+      S.names.set('G_A', 'Dílna A'); S.names.set('G_B', 'Dílna B'); cfg.prodBoosted = false;
+      const t = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      ptSel.type = 'goods'; ptSel.sort = 'day';
+      return { daily: t(viewDaily()), types: t(viewProdTypes()) };
+    });
+    if (!/Zboží – Doba železná \(váš věk\) 5 1/.test(r.daily) || !/Zboží – Doba bronzová 17 2/.test(r.daily)) throw new Error('denní přehled: ' + r.daily.slice(0, 400));
+    if (!/Doba železná 5 Doba bronzová 17 Celkem 22/.test(r.types) || !/Dílna A 1 5 10 15/.test(r.types)) throw new Error('podle druhu: ' + r.types.slice(0, 500));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

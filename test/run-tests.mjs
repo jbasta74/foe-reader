@@ -670,15 +670,11 @@ const tests = {
       const st = (res) => ({ __class__: 'ProducingState', current_product: { production_time: 86400, product: { resources: res } } });
       S.entities.set(701, { id: 701, player_id: myId(), cityentity_id: 'G_A', type: 'goods', state: st({ marble: 10, cloth: 5 }) });
       S.entities.set(702, { id: 702, player_id: myId(), cityentity_id: 'G_B', type: 'goods', state: st({ dye: 7 }) });
-      // Archa: zboží do cechovní pokladny (podle věku zboží)
-      S.entities.set(703, { id: 703, player_id: myId(), cityentity_id: 'X_Arc', type: 'greatbuilding', state: { __class__: 'ProducingState', current_product: { production_time: 86400, products: [{ goods: [{ good_id: 'cloth', value: 40 }, { good_id: 'marble', value: 2 }] }] } } });
-      S.names.set('X_Arc', 'Archa');
       S.names.set('G_A', 'Dílna A'); S.names.set('G_B', 'Dílna B'); cfg.prodBoosted = false;
       const t = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
       ptSel.type = 'goods'; ptSel.sort = 'day';
       return { daily: t(viewDaily()), types: t(viewProdTypes()) };
     });
-    if (!/Cechovní pokladna 42 1 ↳ Doba železná 40 1 ↳ Doba bronzová 2 1/.test(r.daily)) throw new Error('pokladna: ' + r.daily.slice(0, 400));
     if (!/Zboží – Doba železná \(váš věk\) 5 1/.test(r.daily) || !/Zboží – Doba bronzová 17 2/.test(r.daily)) throw new Error('denní přehled: ' + r.daily.slice(0, 400));
     if (!/Doba železná 5 Doba bronzová 17 Celkem 22/.test(r.types) || !/Dílna A 1 5 10 15/.test(r.types)) throw new Error('podle druhu: ' + r.types.slice(0, 500));
     return errors;

@@ -309,6 +309,12 @@ function addGood(bag, id, v) {
   bag.res[key] = (bag.res[key] || 0) + v;
   if (/^g_(prev|cur|next|other)$/.test(key)) { const e = goodEra(id, key); if (e) (bag.ge ||= {})[e] = (bag.ge[e] || 0) + v; }
 }
+// Zboží do cechovní pokladny: res.guild a bag.gge (pokladna podle věku zboží).
+function addGuild(bag, id, v) {
+  bag.res.guild = (bag.res.guild || 0) + v;
+  const e = goodEra(id, GOOD_KEY[id]);
+  if (e) (bag.gge ||= {})[e] = (bag.gge[e] || 0) + v;
+}
 // Přičte jeden produkt (formát metadat i živého stavu) do denního souhrnu bag s násobkem k.
 function addProduct(bag, p, k) {
   if (!p) return;
@@ -316,7 +322,7 @@ function addProduct(bag, p, k) {
   const pr = p.playerResources?.resources;
   if (pr) for (const [id, v] of Object.entries(pr)) addGood(bag, id, v * k);
   const gr = p.guildResources?.resources;
-  if (gr) for (const v of Object.values(gr)) bag.res.guild = (bag.res.guild || 0) + v * k;
+  if (gr) for (const [id, v] of Object.entries(gr)) addGuild(bag, id, v * k);
   if (p.type === 'unit') bag.res.units = (bag.res.units || 0) + (p.amount || 0) * k;
   const rid = p.reward?.id;
   if (rid) {
@@ -346,27 +352,28 @@ function applyProdBoosts(bag, e, bs) {
   for (const k of ['g_prev', 'g_cur', 'g_next', 'g_other']) mul(k, bs.goods_production);
   if (bag.ge && bs.goods_production) for (const k of Object.keys(bag.ge)) bag.ge[k] = Math.round(bag.ge[k] * (1 + bs.goods_production / 100));
   mul('guild', bs.guild_goods_production);
+  if (bag.gge && bs.guild_goods_production) for (const k of Object.keys(bag.gge)) bag.gge[k] = Math.round(bag.gge[k] * (1 + bs.guild_goods_production / 100));
 }
 // Denní produkce budovy (vše za 24 h, s motivací – jako FoE Helper). Metadata podle věku budovy se slučují se živým stavem
 // (vyšší hodnota vyhrává): živý stav obsahuje bonusy sad a řetězů a u motivovaných budov dvojnásobné mince.
 // Velké budovy a budovy s volbou výroby (zboží, zásoby) podle toho, co právě vyrábějí. bs = bonusy k produkci (null = bez).
 function buildingDaily(e, era = S.player?.era, bs = null) {
-  const bag = { res: {}, frags: {}, other: {}, ge: {}, src: '' };
+  const bag = { res: {}, frags: {}, other: {}, ge: {}, gge: {}, src: '' };
   const st = e.state || {};
   const m = S.entProd.get(e.cityentity_id);
   const opts = m ? m[entEra(e, m, era)] || m.AllAge : null;
-  const live = { res: {}, frags: {}, other: {}, ge: {} };
+  const live = { res: {}, frags: {}, other: {}, ge: {}, gge: {} };
   if (st.productionOption?.products) for (const p of st.productionOption.products) addProduct(live, p, 86400 / (st.productionOption.time || 86400));
   if (e.type !== 'greatbuilding' && opts?.length === 1) {
     for (const p of opts[0].products) addProduct(bag, p, 86400 / (opts[0].time || 86400));
     bag.src = 'meta';
-    for (const part of ['res', 'frags', 'other', 'ge']) for (const [k, v] of Object.entries(live[part])) if (v > (bag[part][k] || 0)) bag[part][k] = v;
+    for (const part of ['res', 'frags', 'other', 'ge', 'gge']) for (const [k, v] of Object.entries(live[part])) if (v > (bag[part][k] || 0)) bag[part][k] = v;
   } else if (st.productionOption?.products) {
     Object.assign(bag, live); bag.src = 'live';
   } else if (st.current_product) {
     const cp = st.current_product, k = 86400 / (cp.production_time || 86400);
     for (const p of cp.products || [cp]) {
-      if (p.goods) bag.res.guild = (bag.res.guild || 0) + p.goods.reduce((a, g) => a + (g.value || 0), 0) * k;
+      if (p.goods) for (const g of p.goods) addGuild(bag, g.good_id, (g.value || 0) * k);
       const r = p.product?.resources || p.resources?.resources;
       if (r) for (const [id, v] of Object.entries(r)) addGood(bag, id, v * k);
     }
@@ -397,9 +404,9 @@ function dailyOverview() {
       const mp = (per[k] ||= new Map()), x = mp.get(name) || { n: 0, v: 0 };
       x.n++; x.v += v; mp.set(name, x);
     }
-    for (const [era, v] of Object.entries(b.ge || {})) {
+    for (const [era, v] of [...Object.entries(b.ge || {}).map(([a, x]) => ['ge:' + a, x]), ...Object.entries(b.gge || {}).map(([a, x]) => ['gge:' + a, x])]) {
       if (!v) continue;
-      const k = 'ge:' + era;
+      const k = era;
       tot[k] = (tot[k] || 0) + v;
       const mp = (per[k] ||= new Map()), x = mp.get(name) || { n: 0, v: 0 };
       x.n++; x.v += v; mp.set(name, x);
@@ -416,13 +423,15 @@ function viewDaily() {
   // zboží podle skutečného věku (od nejnovějšího) místo předchozí / aktuální / další / jiné věky
   const geCats = Object.keys(o.tot).filter((k) => k.startsWith('ge:')).sort((a, b) => ERAS.indexOf(b.slice(3)) - ERAS.indexOf(a.slice(3)))
     .map((k) => [k, `Zboží – ${esc(ERA[k.slice(3)] || k.slice(3))}${k.slice(3) === S.player?.era ? ' <span class="muted">(váš věk)</span>' : ''}`]);
-  const cats = PROD_CATS.flatMap((c) => (c[0] === 'g_prev' ? geCats : /^g_(cur|next|other)$/.test(c[0]) ? [] : [c]));
+  const ggeCats = Object.keys(o.tot).filter((k) => k.startsWith('gge:')).sort((a, b) => ERAS.indexOf(b.slice(4)) - ERAS.indexOf(a.slice(4)))
+    .map((k) => [k, `<span class="muted">↳</span> ${esc(ERA[k.slice(4)] || k.slice(4))}`]);
+  const cats = PROD_CATS.flatMap((c) => (c[0] === 'g_prev' ? geCats : /^g_(cur|next|other)$/.test(c[0]) ? [] : c[0] === 'guild' ? [c, ...ggeCats] : [c]));
   let h = `<table class="log"><thead><tr><th>Druh</th><th class="num">Za den</th><th class="num">Budov</th></tr></thead><tbody>${
     cats.filter(([k]) => o.tot[k]).map(([k, l]) => `<tr data-prodcat="${k}" class="${k === prodCat ? 'sel' : ''}"><td>${l}</td><td class="num"><b>${r1(o.tot[k])}</b></td>
       <td class="num">${[...o.per[k].values()].reduce((a, x) => a + x.n, 0)}</td></tr>`).join('')}</tbody></table>`;
   const list = o.per[prodCat];
   if (list) {
-    const lab = (prodCat.startsWith('ge:') ? `Zboží – ${ERA[prodCat.slice(3)] || prodCat.slice(3)}` : PROD_CATS.find(([k]) => k === prodCat)?.[1]) || prodCat;
+    const lab = (prodCat.startsWith('ge:') ? `Zboží – ${ERA[prodCat.slice(3)] || prodCat.slice(3)}` : prodCat.startsWith('gge:') ? `Cechovní pokladna – ${ERA[prodCat.slice(4)] || prodCat.slice(4)}` : PROD_CATS.find(([k]) => k === prodCat)?.[1]) || prodCat;
     h += `<h4>${esc(lab)} – podle budov</h4><table><thead><tr><th>Budova</th><th class="num">Počet</th><th class="num">1 budova</th><th class="num">Celkem</th></tr></thead><tbody>${
       [...list.entries()].sort((a, b) => b[1].v - a[1].v).map(([n, x]) => `<tr><td>${findLink(esc(n), n)}</td><td class="num">${x.n}</td><td class="num">${r1(x.v / x.n)}</td><td class="num">${r1(x.v)}</td></tr>`).join('')}</tbody></table>`;
     if (prodCat === 'frags' && Object.keys(o.frags).length) h += `<p class="muted">${Object.entries(o.frags).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(fragName(k))}: ${r1(v)}`).join(' · ')}</p>`;
@@ -639,7 +648,7 @@ function buildingCurrent(e, bs) {
   if (st.productionOption?.products) for (const p of st.productionOption.products) addProduct(bag, p, 1);
   else if (st.current_product) {
     for (const p of st.current_product.products || [st.current_product]) {
-      if (p.goods) bag.res.guild = (bag.res.guild || 0) + p.goods.reduce((a, g) => a + (g.value || 0), 0);
+      if (p.goods) for (const g of p.goods) addGuild(bag, g.good_id, g.value || 0);
       const r = p.product?.resources || p.resources?.resources;
       if (r) for (const [id, v] of Object.entries(r)) addGood(bag, id, v);
     }
@@ -663,6 +672,7 @@ function ptRows() {
     } else {
       const dd = buildingDaily(e, era, bs), d = dd.res, c = buildingCurrent(e, bs);
       if (ptSel.type === 'goods') { for (const [g, v] of Object.entries(dd.ge || {})) if (v) r['ge:' + g] = v; r.day = goodsSum(d); r.cur = goodsSum(c); }
+      else if (ptSel.type === 'guild') { for (const [g, v] of Object.entries(dd.gge || {})) if (v) r['ge:' + g] = v; r.day = d.guild || 0; r.cur = c.guild || 0; }
       else { r.day = d[ptSel.type] || 0; r.cur = c[ptSel.type] || 0; }
       if (!r.day && !r.cur) continue;
       // Server u řady budov obsah běžící výroby neposílá (prázdný seznam) – odhad podle denní produkce a délky cyklu.
@@ -703,7 +713,7 @@ function viewProdTypes() {
   if (ptSel.type === 'army') {
     head = `<tr>${th('name', 'Budova', '')}${ptSel.group ? th('n', 'Počet') : ''}${PT_FEAT.map(([f, l]) => th(f, `${l}<br><small>${fmt(sum(f))} %</small>`)).join('')}</tr>`;
     body = rows.map((r) => `<tr><td>${findLink(esc(r.name), r.id || r.name)}</td>${ptSel.group ? `<td class="num">${r.n}</td>` : ''}${PT_FEAT.map(([f]) => `<td class="num">${r[f] ? fmt(r[f]) + ' %' : '<span class="muted">–</span>'}</td>`).join('')}</tr>`).join('');
-  } else if (ptSel.type === 'goods') {
+  } else if (ptSel.type === 'goods' || ptSel.type === 'guild') {
     // sloupec pro každý věk, ve kterém město zboží vyrábí (od nejnovějšího); váš věk zvýrazněný
     const eras = [...new Set(all.flatMap((r) => Object.keys(r).filter((f) => f.startsWith('ge:'))))].sort((a, b) => ERAS.indexOf(b.slice(3)) - ERAS.indexOf(a.slice(3)));
     const eraLab = (g) => { const e = g.slice(3), n = ERA[e] || e; return `<span title="${esc(n)}"${e === S.player?.era ? ' style="color:#2e7d32"' : ''}>${esc(n.length > 18 ? n.replace(/^Doba |^Era /, '').slice(0, 16) + '…' : n)}</span>`; };

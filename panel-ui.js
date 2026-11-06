@@ -213,7 +213,7 @@ function onUiClick(ev) {
     if (rz) { rateSel.size = +rz.dataset.ratesize; render(); return; }
     if (ev.target.closest('[data-act="ratereset"]')) { cfg.ratingW = {}; saveCfg(); render(); return; }
     const ptt = ev.target.closest('[data-pttype]');
-    if (ptt) { ptSel.type = ptt.dataset.pttype; if (ptSel.type === 'army' && !PT_FEAT.some(([f]) => f === ptSel.sort)) { ptSel.sort = 'battleground'; ptSel.desc = true; } else if (ptSel.type === 'goods' && !String(ptSel.sort).startsWith('ge:') && !['day', 'done', 'name', 'n'].includes(ptSel.sort)) { ptSel.sort = 'day'; ptSel.desc = true; } else if (!['army', 'goods'].includes(ptSel.type) && !['day', 'cur', 'name', 'n', 'era', 'done'].includes(ptSel.sort)) { ptSel.sort = 'day'; ptSel.desc = true; } render(); return; }
+    if (ptt) { ptSel.type = ptt.dataset.pttype; if (ptSel.type === 'army' && !PT_FEAT.some(([f]) => f === ptSel.sort)) { ptSel.sort = 'battleground'; ptSel.desc = true; } else if (['goods', 'guild'].includes(ptSel.type) && !String(ptSel.sort).startsWith('ge:') && !['day', 'done', 'name', 'n'].includes(ptSel.sort)) { ptSel.sort = 'day'; ptSel.desc = true; } else if (!['army', 'goods', 'guild'].includes(ptSel.type) && !['day', 'cur', 'name', 'n', 'era', 'done'].includes(ptSel.sort)) { ptSel.sort = 'day'; ptSel.desc = true; } render(); return; }
     const pts = ev.target.closest('[data-psort]');
     if (pts) { const k = pts.dataset.psort; if (ptSel.sort === k) ptSel.desc = !ptSel.desc; else { ptSel.sort = k; ptSel.desc = !['name', 'era', 'done'].includes(k); } render(); return; }
     if (ev.target.closest('[data-ptgroup]')) { ptSel.group = !ptSel.group; render(); return; }

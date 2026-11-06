@@ -287,6 +287,8 @@ function onUiChange(ev) {
   if (bc) { bonusCode = bc.value; bonusUnlock(bonusCode).then((ok) => { if (ok) { bonusCode = ''; bonusMsg = ''; tab = 'stat'; render(); } }); }
   const ro = ev.target.closest('[data-rateopt]');
   if (ro) { rateSel[ro.dataset.rateopt] = ro.checked; render(); }
+  const ry = ev.target.closest('[data-rateyear]');
+  if (ry) { rateSel.maxYear = +ry.value || 0; render(); }
   const gp = ev.target.closest('[data-gbplan]');
   if (gp) { gbPlan = { id: +gp.value, target: null }; render(); }
   const gtg = ev.target.closest('[data-gbtarget]');

@@ -462,6 +462,18 @@ const RATE_TYPES = [
   ['guild_raids_supplies_start', 'QI zásoby – start', 5000, true],
   ['aa-guild_raids', 'Útok útočníka – QI', 0, false], ['ad-guild_raids', 'Obrana útočníka – QI', 0, false],
 ];
+// Stáří budovy podle ID (W_MultiAge_HAL22B3 = Halloween 2022): rok a událost, odkud budova je. Jen u budov z událostí a odměn.
+const EV_NAMES = { WIN: 'Zimní událost', SUM: 'Letní událost', HAL: 'Halloween', FALL: 'Podzimní událost', PAT: 'Sv. Patrik', ANNI: 'Výročí', HIS: 'Historické hrdiny',
+  GBG: 'Bojiště cechů (GBG)', GR: 'Kvantové invaze (QI)', Expedition: 'Cechovní expedice', ARTHUR: 'Artušovská událost', BOWL: 'Forge Bowl', ARCH: 'Archeologie', FELL: 'Společenství',
+  CARE: 'Péče o zvířata', COP: 'Pohár', SPR: 'Jarní událost', EAS: 'Velikonoce', WILD: 'Divočina', SOCCER: 'Fotbal', LTE: 'Časově omezená událost' };
+const yearsOf = (list) => [...new Set(list.map((b) => entYear(b.id)?.y).filter(Boolean))].sort((a, b) => a - b);
+function entYear(cid) {
+  const m = /^[A-Z]_(?:MultiAge|AllAge)_([A-Za-z]+?)(20\d{2}(?=[A-Za-z]|$)|\d{2})/.exec(cid || '');
+  if (!m) return null;
+  const y = m[2].length === 4 ? +m[2] : 2000 + +m[2];
+  // QI odměny nesou označení sezóny o rok napřed
+  return y >= 2012 && y <= new Date().getFullYear() + 1 ? { y, ev: m[1], evName: EV_NAMES[m[1]] || m[1] } : null;
+}
 // Ikony druhů v hlavičce Ratingu (sprite z FoE Helperu, AGPL – img/rating). Klíč → pozice v spritu (px při výšce 26 px).
 const imgUrl = (p) => (globalThis.chrome?.runtime?.getURL ? chrome.runtime.getURL(p) : p);
 const RATE_ICON = { strategy_points: 0, money: 26, supplies: 51, medals: 78, g_cur: 104, guild: 262, units: 287, aa: 312, da: 339, ad: 366, dd: 390,
@@ -599,24 +611,26 @@ function viewRating() {
     return h + `<p class="muted">Budovy z inventáře ohodnocené ve vašem věku a návrhy, které horší budovy ve městě by mohly nahradit (stejný půdorys, jedna budova nebo dvě vedle sebe; přínos = rozdíl skóre × počet polí).</p>
       <table><thead><tr><th>Budova v inventáři</th><th class="num">Polí</th><th class="num">Skóre</th><th>Místo čeho</th></tr></thead><tbody>${
       inv.sort((a, b) => b.score - a.score).map((b) => { const sw = swapSuggestions(b, city);
-        return `<tr><td>${findLink(esc(b.name), b.id)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td><td class="num">${b.w}×${b.l}${b.road ? `+${r2i(b.road)}` : ''}</td>
-          <td class="num"><b>${r2i(b.score)}</b></td><td style="font-size:11px">${sw.length ? sw.map((r) => `${r.parts.map((x) => esc(x.name)).join(' + ')} <span class="up">+${r2i(r.gain)}</span>`).join('<br>') : '<span class="muted">–</span>'}</td></tr>`; }).join('')}</tbody></table>
+        const ey = entYear(b.id);
+        return `<tr><td>${findLink(esc(b.name), b.id)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${ey ? ` <span class="muted" title="${esc(ey.evName)}">${ey.y}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td><td class="num">${b.w}×${b.l}${b.road ? `+${r2i(b.road)}` : ''}</td>
+          <td class="num"><b>${r2i(b.score)}</b></td><td style="font-size:11px">${sw.length ? sw.map((r) => `${r.parts.map((x) => esc(x.name) + (entYear(x.id) ? ` <span class="muted">${entYear(x.id).y}</span>` : '')).join(' + ')} <span class="up">+${r2i(r.gain)}</span>`).join('<br>') : '<span class="muted">–</span>'}</td></tr>`; }).join('')}</tbody></table>
       ${noMeta ? `<p class="muted">U ${noMeta} budov z inventáře hra ještě nenačetla popis (rozměry, produkci) – načte ho třeba při otevření inventáře nebo při stavbě.</p>` : ''}`;
   }
   // Tabulka jako ve FoE Helperu: sloupec za každý započítaný druh, řazení klikem na hlavičku, volitelně hodnoty na pole a budovy z inventáře.
-  let rows = list.map((b) => ({ ...b, inv: false }));
+  const yr = (b) => entYear(b.id)?.y ?? null;
+  let rows = list.map((b) => ({ ...b, inv: false, year: yr(b) })).filter((b) => !rateSel.maxYear || (b.year && b.year <= rateSel.maxYear));
   if (rateSel.withInv && S.invLoaded) {
     const city = all.filter((b) => !b.limited);
     for (const b of ratedInventory().list) {
       if ((rateSel.size && b.w * b.l !== rateSel.size) || (q && !b.name.toLowerCase().includes(q))) continue;
-      rows.push({ ...b, inv: true, swap: swapSuggestions(b, city)[0] || null });
+      rows.push({ ...b, inv: true, year: yr(b), swap: swapSuggestions(b, city)[0] || null });
     }
   }
   const W = rateW().filter((t) => t.on && t.per > 0);
   const cols = W.filter((t) => rows.some((b) => (b.v[t.k] || 0) > 0));
   const val = (b, k) => (rateSel.tile ? (b.v[k] || 0) / b.tiles : b.v[k] || 0);
   const sk = rateSel.sort || 'score', dir = rateSel.desc === false ? 1 : -1;
-  const keyOf = (b) => (sk === 'name' ? b.name : sk === 'tiles' ? b.tiles : sk === 'score' ? b.score : val(b, sk));
+  const keyOf = (b) => (sk === 'name' ? b.name : sk === 'tiles' ? b.tiles : sk === 'score' ? b.score : sk === 'year' ? b.year ?? (dir < 0 ? -1 : 9999) : val(b, sk));
   rows.sort((a, b) => (sk === 'name' ? a.name.localeCompare(b.name) * -dir : (keyOf(a) - keyOf(b)) * dir) || a.name.localeCompare(b.name));
   const th = (key, label, title = '') => `<th class="${key === 'name' ? '' : 'num '}sortable" data-rsort="${key}"${title ? ` title="${esc(title)}"` : ''}>${label}${sk === key ? (dir < 0 ? ' ▼' : ' ▲') : ''}</th>`;
   const cell = (b, k) => { const x = val(b, k); if (!x) return '<td class="num muted">·</td>'; const pts = (b.v[k] || 0) / b.tiles / (W.find((t) => t.k === k)?.per || 1);
@@ -625,11 +639,12 @@ function viewRating() {
       <input class="pname" data-input="rateQ" placeholder="Hledat budovu" value="${esc(rateSel.q)}">
       <span><button class="fbtn ${!rateSel.size ? 'on' : ''}" data-ratesize="0">vše</button>${sizes.map((z) => `<button class="fbtn ${rateSel.size === z ? 'on' : ''}" data-ratesize="${z}">${z}</button>`).join('')}</span>
       <label><input type="checkbox" data-rateopt="tile" ${rateSel.tile ? 'checked' : ''}> na pole</label>
-      <label><input type="checkbox" data-rateopt="withInv" ${rateSel.withInv ? 'checked' : ''}> 📦 z inventáře</label></div>
-    <div style="overflow-x:auto"><table class="pt rt"><thead><tr>${th('name', 'Budova')}${th('tiles', 'Polí')}${th('score', 'Skóre')}${cols.map((t) => th(t.k, rateIcon(t.k) || rateShort(t.k), t.l)).join('')}${rateSel.withInv ? '<th>Nahradí</th>' : ''}</tr></thead><tbody>${
+      <label><input type="checkbox" data-rateopt="withInv" ${rateSel.withInv ? 'checked' : ''}> 📦 z inventáře</label>
+      <label title="Jen budovy z událostí do zvoleného roku (stáří podle ID budovy) – kandidáti na výměnu">rok <select data-rateyear><option value="0">všechny</option>${yearsOf(all).map((y) => `<option value="${y}" ${rateSel.maxYear === y ? 'selected' : ''}>≤ ${y}</option>`).join('')}</select></label></div>
+    <div style="overflow-x:auto"><table class="pt rt"><thead><tr>${th('name', 'Budova')}${th('year', 'Rok', 'Rok události, ze které budova je (podle ID budovy)')}${th('tiles', 'Polí')}${th('score', 'Skóre')}${cols.map((t) => th(t.k, rateIcon(t.k) || rateShort(t.k), t.l)).join('')}${rateSel.withInv ? '<th>Nahradí</th>' : ''}</tr></thead><tbody>${
     rows.map((b) => `<tr class="${b.inv ? 'inv' : ''}" title="${esc(b.id)}"><td>${b.inv ? '📦 ' + esc(b.name) : findLink(esc(b.name), b.id)}${b.n > 1 ? ` <span class="muted">×${b.n}</span>` : ''}${b.src ? '' : ' <span class="muted">(bez dat)</span>'}</td>
-      <td class="num">${b.w}×${b.l}${b.road ? `+${r2(b.road)}` : ''}</td><td class="num"><b>${r2(b.score)}</b></td>${cols.map((t) => cell(b, t.k)).join('')}
-      ${rateSel.withInv ? `<td style="font-size:11px">${b.swap ? `${b.swap.parts.map((x) => esc(x.name)).join(' + ')} <span class="up">+${r2(b.swap.gain)}</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+      <td class="num muted" title="${esc(entYear(b.id)?.evName || '')}">${b.year || ''}</td><td class="num">${b.w}×${b.l}${b.road ? `+${r2(b.road)}` : ''}</td><td class="num"><b>${r2(b.score)}</b></td>${cols.map((t) => cell(b, t.k)).join('')}
+      ${rateSel.withInv ? `<td style="font-size:11px">${b.swap ? `${b.swap.parts.map((x) => esc(x.name) + (entYear(x.id) ? ` <span class="muted">${entYear(x.id).y}</span>` : '')).join(' + ')} <span class="up">+${r2(b.swap.gain)}</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>
     ${rateSel.withInv && !S.invLoaded ? '<p class="muted">Inventář ještě nebyl načten – otevřete ho ve hře.</p>' : ''}
     <p class="muted">Klik na hlavičku řadí (znovu = obráceně); najetí myší na hodnotu ukáže body za ni. Postup jako FoE Helper: hodnota na pole (plocha + podíl cesty) / očekávaná hodnota na pole, sečteno přes zapnuté druhy. Produkce za 24 h s motivací
       ${cfg.rateFH ? '<b>bez bonusů k produkci (jako FoE Helper), včetně Velkých budov</b>' : cfg.prodBoosted !== false ? 'a s vašimi bonusy k produkci FP a zboží (vypnete volbou „jako FoE Helper“)' : 'bez bonusů k produkci'}; bonusy armády přesně podle hry (včetně sad a řetězů). Stejné budovy stejného věku jsou v jednom řádku. Hodnoty si upravíte v „Nastavení hodnot“.</p>`;

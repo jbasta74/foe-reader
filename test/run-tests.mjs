@@ -683,6 +683,22 @@ const tests = {
     if (!/Doba železná 5 Doba bronzová 17 Celkem 22/.test(r.types) || !/Dílna A 1 5 10 15/.test(r.types)) throw new Error('podle druhu: ' + r.types.slice(0, 500));
     return errors;
   },
+  async 'Rating: rok budovy podle ID, řazení a filtr do roku'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      const ids = ['W_MultiAge_HAL19B3', 'W_MultiAge_GBG2023A', 'W_MultiAge_Expedition22eGold', 'W_MultiAge_WIN25A1', 'P_IronAge_Workshop1'];
+      const y = ids.map((i) => entYear(i)?.y ?? null);
+      const fp = { current_product: { production_time: 86400, product: { resources: { strategy_points: 5 } } } };
+      ids.forEach((c, i) => { S.ent.set(c, { w: 2, l: 2, road: 0, type: 'production' }); S.names.set(c, 'B' + i); S.entities.set(600 + i, { id: 600 + i, player_id: myId(), cityentity_id: c, type: 'production', state: fp }); });
+      rateSel.settings = false; rateSel.inv = false; rateSel.sort = 'year'; rateSel.desc = false; rateSel.maxYear = 2022;
+      const t = viewRating().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      rateSel.maxYear = 0; rateSel.sort = 'score';
+      return { y, t };
+    });
+    if (JSON.stringify(r.y) !== JSON.stringify([2019, 2023, 2022, 2025, null])) throw new Error('roky: ' + JSON.stringify(r.y));
+    if (!/B0 2019 .* B2 2022/.test(r.t) || /B1 |B3 |B4 /.test(r.t)) throw new Error('filtr/řazení: ' + r.t.slice(0, 600));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

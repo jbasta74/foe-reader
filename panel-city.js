@@ -726,7 +726,7 @@ function openCalcWin() {
   try { st = { ...st, ...JSON.parse(localStorage.getItem(CALCWIN_KEY) || '{}') }; } catch { /* ignore */ }
   const h = document.createElement('div');
   h.id = 'foe-reader-calc';
-  h.style.cssText = `position:fixed;z-index:2147483646;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w || 560}px;height:${st.h || 460}px;resize:both;overflow:hidden;min-width:360px;min-height:160px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45);display:flex;flex-direction:column`;
+  h.style.cssText = `position:fixed;z-index:2147483646;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w || 560}px;height:${st.h || 460}px;box-sizing:border-box;resize:both;overflow:hidden;min-width:360px;min-height:160px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45);display:flex;flex-direction:column`;
   const r = h.attachShadow({ mode: 'open' });
   const css = root.querySelector('style')?.textContent || '';
   r.innerHTML = L(`<style>${css}
@@ -744,7 +744,7 @@ function openCalcWin() {
   for (const t of ['keydown', 'keyup', 'keypress']) h.addEventListener(t, (e) => e.stopPropagation());
   calcWin = { host: h, root: r };
   // Po zavření okna hlásí ResizeObserver nulovou velikost – to neukládat (jinak se okno příště otevřelo vlevo nahoře).
-  const save = () => { if (!h.isConnected) return; const b = h.getBoundingClientRect(); if (!b.width || !b.height) return; try { localStorage.setItem(CALCWIN_KEY, JSON.stringify({ x: b.left, y: b.top, w: b.width, h: winFullH(h, 'calc') })); } catch { /* ignore */ } };
+  const save = (open = true) => { if (!h.isConnected) return; const b = h.getBoundingClientRect(); if (!b.width || !b.height) return; geoSave(CALCWIN_KEY, { x: b.left, y: b.top, w: b.width, h: winFullH(h, 'calc'), open }); };
   r.getElementById('whead').addEventListener('pointerdown', (ev) => {
     if (ev.target.closest('button,input,label')) return;
     const sx = ev.clientX, sy = ev.clientY, b = h.getBoundingClientRect();
@@ -752,7 +752,7 @@ function openCalcWin() {
     const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); save(); };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   });
-  r.getElementById('close').addEventListener('click', () => { save(); h.remove(); calcWin = null; });
+  r.getElementById('close').addEventListener('click', () => { save(false); h.remove(); calcWin = null; });
   const chead = r.getElementById('whead'), ctoggle = () => winSetCollapsed(h, 'calc', chead, !winCollapsed('calc'), 160);
   r.getElementById('min').addEventListener('click', ctoggle);
   chead.addEventListener('dblclick', (ev) => { if (!ev.target.closest('button,input,label')) ctoggle(); });
@@ -773,7 +773,10 @@ function openCalcWin() {
     const el = ev.target.closest('[data-cfg]');
     if (el) { cfg[el.dataset.cfg] = +el.value; saveCfg(); renderCalcWin(); render(); }
   });
-  new ResizeObserver(save).observe(h);
+  let roFirst = true; // první hlášení = otevření okna, neukládat
+  new ResizeObserver(() => { if (roFirst) { roFirst = false; return; } save(); }).observe(h);
+  if (localStorage.getItem(CALCWIN_KEY)) geoSave(CALCWIN_KEY, { ...st, open: true }); // jen příznak „otevřené“, uložené místo beze změny
+  else save();
   renderCalcWin();
 }
 function renderCalcWin() {
@@ -796,17 +799,18 @@ function mapWinState() {
   try { return { x: 80, y: 60, w: 900, h: 650, zoom: 12, ...JSON.parse(localStorage.getItem(MAPWIN_KEY) || '{}') }; }
   catch { return { x: 80, y: 60, w: 900, h: 650, zoom: 12 }; }
 }
-function saveMapWin() {
-  if (!mapWin) return;
+function saveMapWin(open = true) {
+  if (!mapWin || !mapWin.host.isConnected) return;
   const r = mapWin.host.getBoundingClientRect();
-  try { localStorage.setItem(MAPWIN_KEY, JSON.stringify({ x: r.left, y: r.top, w: r.width, h: winFullH(mapWin.host, 'map'), zoom: mapWin.zoom })); } catch { /* ignore */ }
+  if (!r.width || !r.height) return;
+  geoSave(MAPWIN_KEY, { x: r.left, y: r.top, w: r.width, h: winFullH(mapWin.host, 'map'), zoom: mapWin.zoom, open });
 }
 function openMapWin() {
   if (mapWin) { renderMapWin(); return; }
   const st = mapWinState();
   const h = document.createElement('div');
   h.id = 'foe-reader-map';
-  h.style.cssText = `position:fixed;z-index:2147483646;left:${Math.max(0, st.x)}px;top:${Math.max(0, st.y)}px;width:${st.w}px;height:${st.h}px;resize:both;overflow:hidden;min-width:320px;min-height:240px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45)`;
+  h.style.cssText = `position:fixed;z-index:2147483646;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w}px;height:${st.h}px;box-sizing:border-box;resize:both;overflow:hidden;min-width:320px;min-height:240px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45)`;
   const r = h.attachShadow({ mode: 'open' });
   r.innerHTML = `<style>
     *{box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;font-size:12px}
@@ -895,10 +899,14 @@ function openMapWin() {
     else if (b.dataset.z === 'out') { mapWin.zoom = Math.max(3, Math.round(mapWin.zoom / 1.25)); renderMapWin(); saveMapWin(); }
     else if (b.dataset.z === 'fit') { renderMapWin(true); saveMapWin(); }
     else if (b.dataset.z === 'min') winSetCollapsed(h, 'map', r.getElementById('head'), !winCollapsed('map'), 240);
-    else if (b.dataset.z === 'close') { saveMapWin(); h.remove(); mapWin = null; }
+    else if (b.dataset.z === 'close') { saveMapWin(false); h.remove(); mapWin = null; }
   });
-  new ResizeObserver(() => saveMapWin()).observe(h);
-  renderMapWin(!localStorage.getItem(MAPWIN_KEY));
+  let roFirst = true; // první hlášení = otevření okna, neukládat
+  new ResizeObserver(() => { if (roFirst) { roFirst = false; return; } saveMapWin(); }).observe(h);
+  const firstTime = !localStorage.getItem(MAPWIN_KEY);
+  renderMapWin(firstTime);
+  if (!firstTime) geoSave(MAPWIN_KEY, { ...st, zoom: mapWin.zoom, open: true }); // jen příznak „otevřené“
+  else saveMapWin();
   r.getElementById('head').addEventListener('dblclick', (ev) => { if (!ev.target.closest('button,select')) winSetCollapsed(h, 'map', r.getElementById('head'), !winCollapsed('map'), 240); });
   if (winCollapsed('map')) winSetCollapsed(h, 'map', r.getElementById('head'), true, 240);
 }

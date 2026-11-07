@@ -699,6 +699,34 @@ const tests = {
     if (!/B0 2019 .* B2 2022/.test(r.t) || /B1 |B3 |B4 /.test(r.t)) throw new Error('filtr/řazení: ' + r.t.slice(0, 600));
     return errors;
   },
+  async 'Okna: velikost se při znovuotevření nezvětšuje, mapa a kalkulačka se po F5 otevřou, pozice sdílené mezi světy'() {
+    const { pg, errors } = await page([startup()]);
+    const geo = (sel) => pg.evaluate((s) => { const el = [...document.querySelectorAll(s)].pop(); const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)].join(); }, sel);
+    await pg.evaluate(() => openTabWin('rate')); await pg.waitForTimeout(200);
+    await pg.evaluate(() => { const w = [...document.querySelectorAll('.foe-reader-win')].pop(); w.style.left = '300px'; w.style.top = '150px'; w.style.width = '640px'; w.style.height = '500px'; });
+    await pg.waitForTimeout(200);
+    for (let i = 0; i < 3; i++) { await pg.evaluate(() => { closeTabWin('rate'); openTabWin('rate'); }); await pg.waitForTimeout(150); }
+    const tab = await geo('.foe-reader-win');
+    await pg.evaluate(() => openMapWin()); await pg.waitForTimeout(200);
+    await pg.evaluate(() => { mapWin.host.style.width = '700px'; mapWin.host.style.height = '500px'; }); await pg.waitForTimeout(200);
+    await pg.evaluate(() => openCalcWin()); await pg.waitForTimeout(200);
+    await pg.reload(); await pg.waitForTimeout(2200);
+    const after = { tab: await geo('.foe-reader-win'), map: await pg.evaluate(() => !!mapWin && Math.round(mapWin.host.getBoundingClientRect().width)), calc: await pg.evaluate(() => !!calcWin) };
+    // sdílení mezi světy: z chrome.storage se převezme místo, otevřené okno zůstane podle tohoto světa
+    const merged = await pg.evaluate(async () => {
+      const store = { 'geo:foeReaderTabWins': { rate: { x: 10, y: 20, w: 500, h: 400 }, tech: { x: 50, y: 60, w: 450, h: 300 } } };
+      window.chrome.storage = { local: { get: async () => store, set: async (o) => Object.assign(store, o) } };
+      await geoLoad();
+      const c = JSON.parse(localStorage.getItem('foeReaderTabWins'));
+      geoSave('foeReaderTabWins', c);
+      delete window.chrome.storage;
+      return { c, shared: store['geo:foeReaderTabWins'] };
+    });
+    if (tab !== '300,150,640,500') throw new Error('velikost se mění: ' + tab);
+    if (after.tab !== '300,150,640,500' || after.map !== 700 || !after.calc) throw new Error('po F5: ' + JSON.stringify(after));
+    if (merged.c.rate.x !== 10 || merged.c.rate.open !== true || merged.c.tech.open !== false || 'open' in merged.shared.rate) throw new Error('sdílení: ' + JSON.stringify(merged));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

@@ -315,6 +315,34 @@ function onUiChange(ev) {
   if (inp) { attrTarget = +inp.value || null; render(); }
 }
 
+// ---------- Pozice a velikosti oken: sdílené pro všechny světy ----------
+// Hlavní kopie je v localStorage (každý svět zvlášť), navíc se ukládá do chrome.storage.local, aby okna měla stejné místo
+// a velikost na všech světech. Které okno je otevřené, zůstává pro každý svět zvlášť (jako nastavení lišty).
+const GEO_KEYS = ['foeReaderTabWins', 'foeReaderCalcWin', 'foeReaderMapWin', 'foeReaderCollapsed', 'foeReaderPanelSize', 'foeReaderFpBar'];
+const stripOpen = (k, v) => {
+  if (!v || typeof v !== 'object') return v;
+  if (k === 'foeReaderTabWins') return Object.fromEntries(Object.entries(v).map(([id, c]) => { const { open: _o, ...g } = c || {}; return [id, g]; }));
+  const { open: _o, ...g } = v; return g;
+};
+function geoSave(key, val) {
+  try { if (val == null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(val)); } catch { /* ignore */ }
+  try { chrome.storage.local.set({ ['geo:' + key]: val == null ? null : stripOpen(key, val) }); } catch { /* bez rozšíření */ }
+}
+// Při startu převezme pozice uložené na jiném světě (otevřená okna tohoto světa zůstanou).
+async function geoLoad() {
+  let g;
+  try { g = await chrome.storage.local.get(GEO_KEYS.map((k) => 'geo:' + k)); } catch { return; }
+  for (const k of GEO_KEYS) {
+    const v = g?.['geo:' + k];
+    if (v === undefined) continue;
+    let local = null;
+    try { local = JSON.parse(localStorage.getItem(k) || 'null'); } catch { /* ignore */ }
+    let merged = v;
+    if (v && k === 'foeReaderTabWins') merged = Object.fromEntries(Object.entries({ ...(local || {}), ...v }).map(([id, c]) => [id, { ...(v[id] || {}), open: !!local?.[id]?.open }]));
+    else if (v && (k === 'foeReaderCalcWin' || k === 'foeReaderMapWin')) merged = { ...v, open: !!local?.open };
+    try { if (merged == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(merged)); } catch { /* ignore */ }
+  }
+}
 // ---------- Sbalení okna na záhlaví (▁ nebo dvojklik na záhlaví) – pamatuje se i po F5 ----------
 const COLL_KEY = 'foeReaderCollapsed';
 const collLoad = () => { try { return JSON.parse(localStorage.getItem(COLL_KEY) || '{}'); } catch { return {}; } };
@@ -331,7 +359,7 @@ function winSetCollapsed(h, key, head, on, minH) {
     delete c[key];
     h.style.minHeight = minH + 'px'; if (fh) h.style.height = fh + 'px'; h.style.resize = 'both';
   }
-  try { localStorage.setItem(COLL_KEY, JSON.stringify(c)); } catch { /* ignore */ }
+  geoSave(COLL_KEY, c);
   const b = h.shadowRoot?.querySelector('[data-w="min"], #min, [data-z="min"]');
   if (b) { b.textContent = on ? '▢' : '▁'; b.title = on ? 'Rozbalit' : 'Sbalit na záhlaví'; }
 }
@@ -343,7 +371,7 @@ const tabWins = new Map(); // id záložky -> {host, root, body}
 let zTop = 2147400000; // panel (2147483647) zůstává vždy navrchu
 const toFront = (el) => { el.style.zIndex = String(++zTop); }; // okno, na které kliknete, jde dopředu
 const loadTabWinCfg = () => { try { return JSON.parse(localStorage.getItem(TABWIN_KEY) || '{}'); } catch { return {}; } };
-const saveTabWinCfg = (c) => { try { localStorage.setItem(TABWIN_KEY, JSON.stringify(c)); } catch { /* ignore */ } };
+const saveTabWinCfg = (c) => geoSave(TABWIN_KEY, c);
 function openTabWin(id, restore) {
   const def = TABS.find((t) => t[0] === id);
   if (!def || (BONUS_TABS.includes(id) && !bonusOn())) return;
@@ -352,7 +380,7 @@ function openTabWin(id, restore) {
   const st = { x: 140 + tabWins.size * 30, y: 80 + tabWins.size * 30, w: id === 'mg' ? 430 : 560, h: id === 'mg' ? 400 : 480, ...(all[id] || {}) };
   const h = document.createElement('div');
   h.className = 'foe-reader-win';
-  h.style.cssText = `position:fixed;z-index:2147483645;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w}px;height:${st.h}px;resize:both;overflow:hidden;min-width:280px;min-height:140px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45)`;
+  h.style.cssText = `position:fixed;z-index:2147483645;left:${Math.max(0, Math.min(st.x, innerWidth - 200))}px;top:${Math.max(0, Math.min(st.y, innerHeight - 80))}px;width:${st.w}px;height:${st.h}px;box-sizing:border-box;resize:both;overflow:hidden;min-width:280px;min-height:140px;background:#fbf6ec;border:1px solid #8a6a3a;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.45)`;
   const r = h.attachShadow({ mode: 'open' });
   r.innerHTML = L(`<style>${root.querySelector('style')?.textContent || ''}
     :host{all:initial}
@@ -372,7 +400,13 @@ function openTabWin(id, restore) {
   const save = (closed) => {
     const c = loadTabWinCfg();
     if (closed) { if (c[id]) c[id].open = false; }
-    else { const b = h.getBoundingClientRect(); c[id] = { x: b.left, y: b.top, w: b.width, h: winFullH(h, 'tab:' + id), open: true }; }
+    else {
+      // jen živé okno se skutečnou velikostí (zavřené okno hlásí nuly – dřív se tím přepsalo místo znovu otevřeného okna)
+      if (!h.isConnected || tabWins.get(id) !== w) return;
+      const b = h.getBoundingClientRect();
+      if (!b.width || !b.height) return;
+      c[id] = { x: b.left, y: b.top, w: b.width, h: winFullH(h, 'tab:' + id), open: true };
+    }
     saveTabWinCfg(c);
   };
   r.querySelector('.whead').addEventListener('pointerdown', (ev) => {
@@ -394,7 +428,9 @@ function openTabWin(id, restore) {
   r.addEventListener('input', onUiInput);
   r.addEventListener('change', onUiChange);
   attachTips(r, h);
-  new ResizeObserver(() => { if (tabWins.has(id)) save(); }).observe(h);
+  // první hlášení ResizeObserveru je jen otevření okna (případně posunutého do obrazovky) – neukládat, ať se neztratí uložené místo
+  let roFirst = true;
+  new ResizeObserver(() => { if (roFirst) { roFirst = false; return; } if (tabWins.get(id) === w) save(); }).observe(h);
   w.close = () => { save(true); h.remove(); tabWins.delete(id); renderIcons(); };
   if (!restore) save();
   renderTabWin(id);
@@ -449,7 +485,13 @@ function updateHtml() {
   return `<p class="muted">Máte nejnovější verzi${update?.t ? ` (ověřeno ${new Date(update.t).toLocaleTimeString(LOC(), { hour: '2-digit', minute: '2-digit' })})` : ''}. <button data-act="checkupd">Zkontrolovat teď</button></p>`;
 }
 function restoreTabWins() {
-  for (const [id, c] of Object.entries(loadTabWinCfg())) if (c?.open) openTabWin(id, true);
+  const go = () => {
+    for (const [id, c] of Object.entries(loadTabWinCfg())) if (c?.open) openTabWin(id, true);
+    // okno mapy a kalkulačky se po F5 otevře znovu, když bylo otevřené
+    try { if (JSON.parse(localStorage.getItem('foeReaderMapWin') || '{}').open) openMapWin(); } catch { /* ignore */ }
+    try { if (JSON.parse(localStorage.getItem('foeReaderCalcWin') || '{}').open) openCalcWin(); } catch { /* ignore */ }
+  };
+  Promise.race([geoLoad(), new Promise((r) => setTimeout(r, 1500))]).then(go, go);
 }
 // ---------- Přetahování ----------
 const POS_KEY = 'foeReaderPos';
@@ -493,7 +535,7 @@ function watchPanelSize() {
   new ResizeObserver(() => {
     if (!open || !panel.offsetWidth || placing) return;
     clearTimeout(t);
-    t = setTimeout(() => { try { localStorage.setItem(PSIZE_KEY, JSON.stringify({ w: panel.offsetWidth, h: panel.offsetHeight })); } catch { /* ignore */ } }, 300);
+    t = setTimeout(() => geoSave(PSIZE_KEY, { w: panel.offsetWidth, h: panel.offsetHeight }), 300);
   }).observe(panel);
 }
 let placing = false;
@@ -619,8 +661,8 @@ function renderFpBar() {
     let st = null;
     fpBar.addEventListener('pointerdown', (e) => { const b = fpBar.getBoundingClientRect(); st = { mx: e.clientX, my: e.clientY, x: b.left, y: b.top }; fpBar.setPointerCapture(e.pointerId); e.stopPropagation(); });
     fpBar.addEventListener('pointermove', (e) => { if (!st) return; fpBar.style.left = Math.max(0, st.x + e.clientX - st.mx) + 'px'; fpBar.style.top = Math.max(0, st.y + e.clientY - st.my) + 'px'; });
-    fpBar.addEventListener('pointerup', () => { if (!st) return; st = null; const b = fpBar.getBoundingClientRect(); try { localStorage.setItem(FPBAR_KEY, JSON.stringify({ x: b.left, y: b.top })); } catch { /* ignore */ } });
-    fpBar.addEventListener('dblclick', () => { try { localStorage.removeItem(FPBAR_KEY); } catch { /* ignore */ } fpBar.style.left = 'calc(50vw + 130px)'; fpBar.style.top = '2px'; });
+    fpBar.addEventListener('pointerup', () => { if (!st) return; st = null; const b = fpBar.getBoundingClientRect(); geoSave(FPBAR_KEY, { x: b.left, y: b.top }); });
+    fpBar.addEventListener('dblclick', () => { geoSave(FPBAR_KEY, null); fpBar.style.left = 'calc(50vw + 130px)'; fpBar.style.top = '2px'; });
     for (const t of ['mousedown', 'mouseup', 'click', 'wheel']) fpBar.addEventListener(t, (e) => e.stopPropagation());
     (document.body || document.documentElement).appendChild(fpBar);
   }

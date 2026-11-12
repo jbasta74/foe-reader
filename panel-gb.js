@@ -17,7 +17,8 @@ function nahozCalc(rows, entity, ownerName) {
     // Hra odměnu s bonusem Archy zaokrouhluje na pětky (175 × 1,99 = 348,25 → 350). Pevné koeficienty cechu na celá čísla.
     const val = arcMode ? roundReward((base * f1000) / 1000) : Math.round((base * f1000) / 1000);
     const holder = r.player?.player_id != null ? { name: r.player.name, fp: r.forge_points || 0 } : null;
-    return { rank: r.rank, base, val, holder, filled: !!holder && holder.fp >= val };
+    // Místo, na které už někdo vložil, je obsazené – i když vložil méně, než je nához („málo“); do textu do vlákna už nepatří.
+    return { rank: r.rank, base, val, holder, filled: !!holder && holder.fp > 0, short: !!holder && holder.fp > 0 && holder.fp < val };
   });
   // Zajištění míst: místo je jisté, když po vložení náhozů (v pořadí P1, P2, …) zbývá v budově tak málo FP,
   // že ho nikdo nepředběhne – ani nejsilnější dosavadní přispěvatel na nižších místech (remíza zůstává tomu, kdo vložil dřív).
@@ -26,12 +27,14 @@ function nahozCalc(rows, entity, ownerName) {
   if (total != null) {
     let left = total - invested;
     for (const x of places) {
-      if (x.filled) { x.safe = true; x.needOwner = 0; continue; }
-      left -= x.val - (x.holder?.fp || 0);
       const rival = Math.max(0, ...rows.filter((r) => r.player?.player_id != null && r.rank != null && r.rank > x.rank
         && r.player.player_id !== ownerRow?.player?.player_id).map((r) => r.forge_points || 0));
+      if (x.filled && !x.short) { x.safe = true; x.needOwner = 0; continue; }
+      // obsazené s menším vkladem: počítá se s tím, co hráč opravdu vložil (už je v „invested“)
+      const mine = x.short ? x.holder.fp : x.val;
+      if (!x.short) left -= x.val - (x.holder?.fp || 0);
       x.fits = left >= 0;
-      x.needOwner = Math.max(0, rival + left - x.val);
+      x.needOwner = Math.max(0, rival + left - mine);
       x.safe = x.fits && x.needOwner === 0;
     }
   }
@@ -66,9 +69,9 @@ function viewNahoz(c, title) {
   return `<div class="cfg"><div><b>${esc(title)}</b> · koeficient ${factorPicker(c.gold)}</div>
     <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>
     <table><thead><tr><th>Místo</th><th>Odměna</th><th>Nához</th><th>Stav</th><th>Zajištění</th></tr></thead><tbody>${
-      c.places.map((x) => `<tr class="${x.filled ? 'muted' : x.safe ? 'safe' : ''}"><td>P${x.rank}</td><td class="num">${fmt(x.base)}</td><td class="num"><b>${fmt(x.val)}</b></td>
-        <td>${x.holder ? `${esc(x.holder.name)} ${fmt(x.holder.fp)}${x.filled ? ' ✓' : ' (málo)'}` : 'volné'}</td>
-        <td>${x.filled ? '' : x.safe ? '🔒 zajištěno' : x.fits === false ? '<span class="muted">nevejde se</span>' : x.needOwner != null ? `vložte ještě <b>${fmt(x.needOwner)}</b>` : ''}</td></tr>`).join('')}
+      c.places.map((x) => `<tr class="${x.filled && !x.short ? 'muted' : x.short ? 'short' : x.safe ? 'safe' : ''}"><td>P${x.rank}</td><td class="num">${fmt(x.base)}</td><td class="num"><b>${fmt(x.val)}</b></td>
+        <td>${x.holder ? `${esc(x.holder.name)} ${fmt(x.holder.fp)}${x.short ? ` <span class="hi" title="Obsazeno, ale vloženo méně než nához">(o ${fmt(x.val - x.holder.fp)} méně)</span>` : ' ✓'}` : 'volné'}</td>
+        <td>${x.filled && !x.short ? '' : x.safe ? '🔒 zajištěno' : x.fits === false ? '<span class="muted">nevejde se</span>' : x.needOwner != null ? `vložte ještě <b>${fmt(x.needOwner)}</b>` : ''}</td></tr>`).join('')}
       <tr><td colspan="2">Vlastní podíl (celkem ${fmt(c.total)} − náhozy ${fmt(c.sumP)})</td><td class="num"><b>${fmt(c.ownShare)}</b></td>
         <td colspan="2">vloženo ${fmt(c.ownerFp)}, zbývá <b>${fmt(c.ownLeft)}</b></td></tr>
     </tbody></table>`;

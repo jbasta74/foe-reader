@@ -727,6 +727,41 @@ const tests = {
     if (merged.c.rate.x !== 10 || merged.c.rate.open !== true || merged.c.tech.open !== false || 'open' in merged.shared.rate) throw new Error('sdílení: ' + JSON.stringify(merged));
     return errors;
   },
+  async 'Nához: místo obsazené s menším vkladem je obsazené (ne v textu do vlákna)'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      cfg.arcFactor = 1.9;
+      const ent = { cityentity_id: 'X_BronzeAge_Landmark2', level: 10, state: { forge_points_for_level_up: 2000, invested_forge_points: 150 } };
+      const rows = [
+        { rank: 1, player: { player_id: 5, name: 'Jan' }, forge_points: 100, reward: { strategy_point_amount: 200 } },
+        { rank: 2, reward: { strategy_point_amount: 100 } },
+        { rank: null, player: { player_id: 9, name: 'Majitel' }, forge_points: 50 },
+      ];
+      const c = nahozCalc(rows, ent, 'Majitel');
+      return { text: c.text, p1: { filled: c.places[0].filled, short: c.places[0].short }, html: viewNahoz(c, 'x').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') };
+    });
+    if (/P1\(/.test(r.text) || !/P2\(190\)/.test(r.text)) throw new Error('text: ' + r.text);
+    if (!r.p1.filled || !r.p1.short || !/Jan 100 \(o 280 méně\)/.test(r.html)) throw new Error(JSON.stringify(r));
+    return errors;
+  },
+  async 'GBG: opotřebení klesne, až se dostaví budovy v sousední naší provincii'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      const now = nowServer();
+      S.gbg = { map: { id: 'volcano_archipelago', provinces: [
+        { id: 0, ownerId: 1, usedBuildingSlots: 2, totalBuildingSlots: 3 },
+        { id: 1, ownerId: 2, gainAttritionChance: 80, victoryPoints: 10 },
+      ] }, currentParticipantId: 1, endsAt: now + 86400, battlegroundParticipants: [{ participantId: 1, clan: { name: 'My' } }, { participantId: 2, clan: { name: 'Oni' } }] };
+      // A1 (0) sousedí s B1 (1); v A1 stojí strážní věž (hotová) a staví se obléhací tábor (−52 %) za 2 h
+      H['GuildBattlegroundBuildingService.getBuildings']({ provinceId: 0, placedBuildings: [{ id: 'watchtower' }, { id: 'guild_fieldcamp', readyAt: now + 7200 }] });
+      const plan = gbgAttritionPlan(S.gbg.map.provinces[1], now);
+      const html = viewProvinces(S.gbg.map.provinces, 1, (id) => (id === 2 ? 'Oni' : 'My'), now).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      return { plan, html };
+    });
+    if (r.plan.now !== 80 || r.plan.steps.length !== 1 || r.plan.steps[0].chance !== 28) throw new Error(JSON.stringify(r.plan));
+    if (!/80 % → 28 % za 2 h/.test(r.html)) throw new Error(r.html.slice(0, 600));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

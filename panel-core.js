@@ -180,6 +180,13 @@ const H = {
     S.gbg = d;
     if (d?.currentPlayerParticipant?.attrition) S.attrition = d.currentPlayerParticipant.attrition;
   },
+  // Budovy v provincii (obléhací tábory, …): chodí přes WebSocket, když cech staví, a při otevření stavění v provincii.
+  'GuildBattlegroundBuildingService.getBuildings'(d) {
+    if (!d || !Array.isArray(d.placedBuildings)) return;
+    gbgBldSet(d.provinceId || 0, d.placedBuildings.map((b) => ({ id: b.id, readyAt: b.readyAt || 0 })));
+    const p = S.gbg?.map?.provinces?.find((x) => (x.id ?? 0) === (d.provinceId || 0));
+    if (p) p.usedBuildingSlots = d.placedBuildings.length;
+  },
   // Průběžné změny provincií chodí přes WebSocket (chybějící id = provincie 0).
   'GuildBattlegroundService.getProvinces'(d) {
     const provs = S.gbg?.map?.provinces;
@@ -759,6 +766,46 @@ function parseGbgMaps(d) {
   if (Object.keys(out).length) S.gbgNames = out;
 }
 const gameProv = (id) => S.gbgNames?.[S.gbg?.map?.id || '']?.[id];
+// ---------- Budovy v provinciích GBG (pamatují se do konce kola) a jejich vliv na šanci opotřebení sousedů ----------
+const GBG_BLD_KEY = 'foeReaderGbgBuildings';
+const gbgRound = () => (S.gbg ? `${S.gbg.map?.id}|${S.gbg.endsAt}` : null);
+function gbgBldAll() { try { const x = JSON.parse(localStorage.getItem(GBG_BLD_KEY) || 'null'); return x && x.round === gbgRound() ? x : { round: gbgRound(), prov: {} }; } catch { return { round: gbgRound(), prov: {} }; } }
+function gbgBldSet(pid, list) {
+  if (!gbgRound()) return;
+  const x = gbgBldAll();
+  x.prov[pid] = list;
+  try { localStorage.setItem(GBG_BLD_KEY, JSON.stringify(x)); } catch { /* ignore */ }
+}
+// Budovy naší provincie, jen když seznam sedí s počtem obsazených slotů (jinak je zastaralý).
+function gbgBldOf(p) {
+  const l = gbgBldAll().prov[p.id ?? 0];
+  return l && l.length === (p.usedBuildingSlots || 0) ? l : null;
+}
+// Šance na opotřebení při útoku na cizí provincii teď a jak klesne, až se dostaví budovy v sousedních našich provinciích.
+// Vrací { now, steps: [{ at, chance }] } – steps jen pro budovy, které se ještě stavějí.
+function gbgAttritionPlan(p, now = nowServer()) {
+  const me = S.gbg?.currentParticipantId, provs = S.gbg?.map?.provinces || [];
+  const conn = gameProv(p.id ?? 0)?.conn || provData()[p.id ?? 0]?.[2] || [];
+  const B = globalThis.FOE_GBG_BLOCK || {};
+  let ready = 0, known = false;
+  const pending = [];
+  for (const n of conn) {
+    const q = provs.find((x) => (x.id ?? 0) === n);
+    if (!q || q.ownerId !== me) continue;
+    const l = gbgBldOf(q);
+    if (!l) continue;
+    known = true;
+    for (const b of l) { const v = B[b.id] || 0; if (!v) continue; if ((b.readyAt || 0) > now) pending.push({ at: b.readyAt, v }); else ready += v; }
+  }
+  const server = p.gainAttritionChance;
+  const cur = known ? Math.min(server ?? 100, Math.max(20, 100 - ready)) : server;
+  if (cur == null || !pending.length) return { now: cur, steps: [] };
+  pending.sort((a, b) => a.at - b.at);
+  const steps = [];
+  let c = cur;
+  for (const x of pending) { const nc = Math.max(20, c - x.v); if (nc < c) { c = nc; steps.push({ at: x.at, chance: c }); } }
+  return { now: cur, steps };
+}
 const provLabel = (id) => {
   const own = (() => { try { return JSON.parse(localStorage.getItem(NAMES_KEY) || '{}')[S.gbg?.map?.id || '']?.[id]; } catch { return null; } })();
   if (own) return own;

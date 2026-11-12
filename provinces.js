@@ -129,3 +129,17 @@ globalThis.FOE_PROVINCES = {
     60: ["F5D", "F5D: Gleoleaterra", [19, 36, 37, 59]],
   },
 };
+
+// Kolik % šance na opotřebení ubere budova v provincii všem sousedním provinciím (útok z ní). Minimum je 20 %.
+// Zdroj: FoE Helper (js/web/gbgbuildings/js/gbgbuildings.js, AGPL-3.0) – hodnoty z popisu budov v metadatech hry.
+globalThis.FOE_GBG_BLOCK = {
+  watchtower: 8, guild_command_post_improvised: 20, barracks_improvised: 20,
+  basic_field_outpost_diamond: 20, basic_field_outpost_platinum: 20, basic_field_outpost_gold: 20, basic_field_outpost_silver: 20, basic_field_outpost_copper: 20,
+  guild_fieldcamp_small: 26, basic_guild_fortress_diamond: 26, basic_guild_fortress_platinum: 26, basic_guild_fortress_gold: 26, basic_guild_fortress_silver: 26, basic_guild_fortress_copper: 26,
+  guild_command_post_forward: 40, barracks: 40,
+  regular_field_outpost_diamond: 40, regular_field_outpost_platinum: 40, regular_field_outpost_gold: 40, regular_field_outpost_silver: 40, regular_field_outpost_copper: 40,
+  guild_fieldcamp: 52, regular_guild_fortress_diamond: 52, regular_guild_fortress_platinum: 52, regular_guild_fortress_gold: 52, regular_guild_fortress_silver: 52, regular_guild_fortress_copper: 52,
+  guild_command_post_fortified: 60, barracks_reinforced: 60,
+  advanced_field_outpost_diamond: 60, advanced_field_outpost_platinum: 60, advanced_field_outpost_gold: 60, advanced_field_outpost_silver: 60, advanced_field_outpost_copper: 60,
+  guild_fieldcamp_fortified: 80, advanced_guild_fortress_diamond: 80, advanced_guild_fortress_platinum: 80, advanced_guild_fortress_gold: 80, advanced_guild_fortress_silver: 80, advanced_guild_fortress_copper: 80,
+};

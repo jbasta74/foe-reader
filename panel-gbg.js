@@ -135,6 +135,16 @@ function viewGbgMap(provs, me, pname, now) {
     <p class="muted">Schéma (ne přesná mapa ze hry): kruhy podle čísla v názvu provincie. Bledá = zamčená, ⌂ základna, ★ sledovaná, černý okraj = útočíme, žlutý = útočí na nás;
       tečka ⚔ červená / 🛡 modrá. Klik na provincii ji označí ★ ke sledování; po najetí myší podrobnosti.</p>`;
 }
+// Opotřebení: teď, a když se v sousedních našich provinciích stavějí budovy (obléhací tábory…), kdy a o kolik klesne.
+function attrCell(p, own, base, now) {
+  if (own || base) return p.gainAttritionChance != null ? p.gainAttritionChance + ' %' : '–';
+  const a = gbgAttritionPlan(p, now);
+  if (a.now == null) return '–';
+  if (!a.steps.length) return `${a.now} %`;
+  const last = a.steps[a.steps.length - 1];
+  const tip = a.steps.map((x) => `za ${dur(x.at - now)} → ${x.chance} %`).join('<br>');
+  return `${a.now} % <span class="ok" data-tip="${esc('Stavějí se budovy v sousedních našich provinciích:<br>' + tip)}">→ <b>${last.chance} %</b> za ${dur(last.at - now)}</span>`;
+}
 function viewProvinces(provs, me, pname, now) {
   const watch = loadWatch();
   const names = provNames();
@@ -155,8 +165,8 @@ function viewProvinces(provs, me, pname, now) {
       <td>${own ? '👤 náš cech' : esc(pname(p.ownerId))}</td>
       <td>${near ? '<span class="hi">s námi</span>' : ''}</td>
       <td class="num">${base ? 'základna' : left > 0 ? 'za ' + dur(left) : own ? '' : '<b>teď</b>'}</td>
-      <td class="num">${p.gainAttritionChance != null ? p.gainAttritionChance + ' %' : '–'}</td>
+      <td class="num">${attrCell(p, own, base, now)}</td>
       <td class="num">${fmt(p.victoryPoints)}</td></tr>`).join('')
   }</tbody></table>
-    <p class="muted"><span class="bt red">⚔</span> červená (útočná) · <span class="bt blue">🛡</span> modrá (obranná) provincie. „Sousedí s námi“ = hraničí s některou naší provincií, dá se na ni tedy útočit. Název lze přepsat (uloží se). Celý název a číslo se ukážou po najetí myší.</p>`;
+    <p class="muted"><span class="bt red">⚔</span> červená (útočná) · <span class="bt blue">🛡</span> modrá (obranná) provincie. „Sousedí s námi“ = hraničí s některou naší provincií, dá se na ni tedy útočit. Opotř. „→ 20 % za 1 h“ = šance na opotřebení klesne, až se dostaví budovy (obléhací tábory…) v sousedních našich provinciích – budovy se načtou, když je cech staví nebo když ve hře otevřete stavění v provincii. Název lze přepsat (uloží se). Celý název a číslo se ukážou po najetí myší.</p>`;
 }

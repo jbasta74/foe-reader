@@ -762,6 +762,29 @@ const tests = {
     if (!/80 % → 28 % za 2 h/.test(r.html)) throw new Error(r.html.slice(0, 600));
     return errors;
   },
+  async 'Kalkulačka cizí VB: obsazená místa jsou vidět (kdo drží, obsazeno / jisté)'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      const me = myId();
+      S.players.set(77, { name: 'Majitel' });
+      S.foreignGB = { player_id: 77, cityentity_id: 'X_SpaceAgeTitan_Landmark1', level: 76, state: { forge_points_for_level_up: 75032, invested_forge_points: 51941 } };
+      const rw = (fp) => ({ strategy_point_amount: fp, resources: {} });
+      S.gbRanking = { rankings: [
+        { rank: 1, player: { player_id: 101, name: 'Kelly' }, forge_points: 21745, reward: rw(10927) },
+        { player: { player_id: 77, name: 'Majitel' }, forge_points: 15269 },
+        { rank: 2, player: { player_id: 102, name: 'Wazari' }, forge_points: 10380, reward: rw(5463) },
+        { rank: 3, player: { player_id: 103, name: 'Vili' }, forge_points: 3642, reward: rw(1821) },
+        { rank: 4, player: { player_id: me, name: 'Já' }, forge_points: 905, reward: rw(455) },
+        { rank: 5, player: {}, reward: rw(91) },
+      ] };
+      const html = foreignCalcHtml();
+      const rows = [...html.matchAll(/<tr class="([^"]*)"[^>]*><td>(\d)\./g)].map((m) => `${m[2]}:${m[1]}`);
+      return { rows, txt: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') };
+    });
+    if (r.rows.slice(0, 3).join() !== '1:taken,2:taken,3:taken') throw new Error('obsazená: ' + r.rows.join());
+    if (!/Kelly 21 745/.test(r.txt) || !/obsazeno \(\+21 966\)/.test(r.txt) || !/volné/.test(r.txt)) throw new Error(r.txt.slice(0, 700));
+    return errors;
+  },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {
     const { pg, errors } = await page([startup()]);
     const none = await pg.evaluate(() => document.querySelector('#foe-reader-host').shadowRoot.querySelector('[data-ico="about"] .bdg'));

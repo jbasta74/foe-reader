@@ -124,9 +124,9 @@ function foreignCalcHtml() {
       const costOf = (i) => (remaining != null ? Math.max(0, Math.ceil((remaining + (others[i]?.forge_points || 0) - mine) / 2)) : null);
       const doneIdx = mine > 0 ? places.findIndex((p, i) => costOf(i) === 0) : -1;
       const myRank = (rk || []).find((r) => r.player?.player_id === myId())?.rank;
-      html += `<table><thead><tr><th>Místo</th><th>Drží (bez vás)</th><th>Odměna FP</th><th>Medaile</th><th title="Kolik na místo vložit při náhozu podle zvoleného koeficientu">Nához ×${dec(factorNow(gold))}</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
+      html += `<table><thead><tr><th>Místo</th><th title="Kdo místo drží (bez vás) a kolik vložil">Drží</th><th>Odměna FP</th><th>Medaile</th><th title="Kolik na místo vložit při náhozu podle zvoleného koeficientu">Nához ×${dec(factorNow(gold))}</th><th>Zajistit za</th><th>Zisk</th></tr></thead><tbody>${
         places.map((p, i) => {
-          const holder = others[i]?.forge_points || 0;
+          const holder = others[i]?.forge_points || 0, holderName = others[i]?.player?.name || '';
           const base = p.reward.strategy_point_amount || 0;
           const withArc = roundReward(base * (1 + arc / 100)); // stejně jako hra (prasátko)
           const medBase = p.reward.resources?.medals || 0;
@@ -135,16 +135,19 @@ function foreignCalcHtml() {
           const possible = cost != null && cost <= remaining;
           const profit = possible ? withArc - cost - mine : null; // celý vklad vč. již vloženého
           const done = i === doneIdx, gone = doneIdx >= 0 && i > doneIdx;
-          const cls = done ? 'done' : gone ? 'gone' : possible ? '' : 'muted';
-          const costTxt = done ? '✓ vaše' : !possible ? 'nelze' : mine > 0 && !gone ? `+${fmt(cost)}` : fmt(cost);
-          return `<tr class="${cls}"${done ? ' title="Místo máte jisté – nikdo vás už nepředběhne."' : gone ? ' title="Horší než místo, které už máte."' : mine > 0 && possible ? ` title="Přidat k vašim ${fmt(mine)} FP"` : ''}><td>${p.rank}.${p.rank === myRank ? ' 👤' : ''}</td><td class="num">${fmt(holder)}</td>
+          // Obsazené místo (drží ho jiný hráč): zajištěné = už ho nikdo nepředběhne; jinak by šlo převzít jen přeplacením.
+          const taken = !done && !gone && holder > 0, locked = taken && cost != null && cost + mine <= holder;
+          const cls = done ? 'done' : gone ? 'gone' : taken ? 'taken' : !possible ? 'muted' : profit >= 0 ? 'safe' : 'loss';
+          const costTxt = done ? '✓ vaše' : locked ? '🔒 obsazeno' : taken ? `<span class="muted" title="Místo drží ${esc(holderName)}; převzít ho jde jen přeplacením">obsazeno (+${fmt(cost)})</span>`
+            : !possible ? 'nelze' : mine > 0 && !gone ? `+${fmt(cost)}` : fmt(cost);
+          return `<tr class="${cls}"${done ? ' title="Místo máte jisté – nikdo vás už nepředběhne."' : gone ? ' title="Horší než místo, které už máte."' : locked ? ` title="Místo má jisté ${esc(holderName)} – nikdo ho už nepředběhne."` : mine > 0 && possible ? ` title="Přidat k vašim ${fmt(mine)} FP"` : ''}><td>${p.rank}.${p.rank === myRank ? ' 👤' : ''}</td><td>${holder ? `${esc(holderName)} <b>${fmt(holder)}</b>` : '<span class="muted">volné</span>'}</td>
             <td class="num">${fmt(base)} → <b>${fmt(withArc)}</b></td>
             <td class="num" title="${medBase ? `${fmt(medBase)} bez bonusu Archy` : ''}">${medBase ? fmt(medArc) : ''}</td>
             <td class="num"${nahozOf.has(p.rank) ? ` title="Při náhozu dostanete ${fmt(withArc)} FP: ${withArc - nahozOf.get(p.rank) >= 0 ? '+' : ''}${fmt(withArc - nahozOf.get(p.rank))}"` : ''}><b>${nahozOf.has(p.rank) ? fmt(nahozOf.get(p.rank)) : ''}</b></td>
             <td class="num">${costTxt}</td>
-            <td class="num ${profit > 0 ? 'hi' : ''}">${profit != null ? (profit > 0 ? '+' : '') + fmt(profit) : ''}</td></tr>`;
+            <td class="num ${profit > 0 ? 'ok' : profit < 0 ? 'hi' : ''}">${profit != null && !taken ? (profit > 0 ? '+' : '') + fmt(profit) : ''}</td></tr>`;
         }).join('')}</tbody></table>
-        <p class="muted">„Zajistit za“ = kolik FP ještě vložit, aby vás na daném místě už nikdo nepředběhl. Zisk počítá s celým vaším vkladem.${mine > 0 ? ' 👤 = vaše současné místo; zeleně ✓ místo, které máte jisté; přeškrtnutá místa jsou horší než to vaše.' : ''}</p>`;
+        <p class="muted">„Zajistit za“ = kolik FP ještě vložit, aby vás na daném místě už nikdo nepředběhl. Zisk počítá s celým vaším vkladem. Zeleně volné místo se ziskem, červeně se ztrátou; šedě obsazené jiným hráčem (🔒 = má ho jisté, jinak by šlo převzít jen přeplacením).${mine > 0 ? ' 👤 = vaše současné místo; ✓ místo, které máte jisté; přeškrtnutá místa jsou horší než to vaše.' : ''}</p>`;
     } else if (rk) {
       html += '<p class="muted">Pořadí přišlo, ale bez odměn – pošlete mi log, upravím čtení.</p>';
     }

@@ -77,7 +77,7 @@ function mount() {
     td.ng.ok{background:#d6efc7}td.ng.wp{background:#fbe3b4}td.ng.nn{background:#e6e0d6;color:#7a6f60}
     .fbtn.arc{border-color:#b5651d;color:#8a4a12;font-weight:700}
     .fbtn.arc.on{background:#b5651d;color:#fff;border-color:#b5651d}
-    tr.safe td{background:#d6efc7} tr.short td{background:#fde9cf}
+    tr.safe td{background:#d6efc7} tr.short td{background:#fde9cf} tr.loss td{background:#f8dcd6} tr.taken td{color:#8a7a60;background:#eee6d6}
     .ok{color:#2e7d32}
     tr.tot td{border-top:1px solid #c9b48c;font-weight:600}
     table.op td,table.op th{padding:2px 4px;white-space:nowrap}

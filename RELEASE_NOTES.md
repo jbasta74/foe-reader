@@ -1,0 +1,3 @@
+## Novinky
+- **📈 Úrovně VB** (nová záložka, odkaz i ze záložky VB): tabulka dalších úrovní vlastní VB jako „Další úroveň“ ve FoE Helperu – pro každou úroveň cena, nához na každé místo P1–P5 (P1–P7 u zlatých úrovní) podle zvoleného koeficientu, vlastní podíl, součet a za kolik dní ho zaplatíte; u světů s novou prestiží i cena odemčení úrovně (sady plánků, zboží, mince, zásoby, medaile) a nahoře souhrn Potřeba / Máte / Chybí za celý rozsah. Volba budovy a rozsahu úrovní „od – do“.
+  - Cena a odměny míst po přepracování prestiže podle křivky z FoE Helperu (ověřeno na jeho tabulce Archy), ceny odemčení podle jeho tabulky; cena, kterou ukáže hra v dialogu odemčení, má přednost. Počet sad plánků se načte, když ve hře otevřete inventář VB.

@@ -544,18 +544,16 @@ const tests = {
     if (!/1 hotovo k vybrání/.test(r.txt) || !/další za 1 h/.test(r.txt) || !/1 k návštěvě/.test(r.txt) || !/pokusy 4/.test(r.txt)) throw new Error(r.txt);
     return errors;
   },
-  async 'VB: plán úrovní (cena z metadat, kalibrace, dny)'() {
+  async 'VB: plán úrovní na starém světě (cena z metadat, kalibrace, dny)'() {
     const { pg, errors } = await page([startup([{ ...zeus, level: 12, max_level: 14, state: { invested_forge_points: 100, forge_points_for_level_up: 1000 } }])]);
     const r = await pg.evaluate(() => {
       (S.gbCost ||= new Map()).set('X_BronzeAge_Landmark2', [10, 20, 30, 40, 50, 60, 70, 80, 90, 400]);
       S.resources.strategy_points = 500; S.packageFP = 0;
-      gbPlan = { id: 11, target: 15 };
-      return viewGB().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      gbPlan = { id: 11, from: null, to: 15 };
+      return viewGbLevels().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
     });
-    // úr. 12 → 13: zbývá 900; formule 400 × 1,025^3 = 431 → kalibrace 1000/431; 13 → 14: ceil(400 × 1,025^4)=442 × k ≈ 1026
-    const m = r.match(/12 → 13 ([\d\s ]+) ([\d\s ]+)/);
-    if (!m || m[1].replace(/\D/g, '') !== '900') throw new Error('první úroveň: ' + r.slice(r.indexOf('Plán úrovní'), r.indexOf('Plán úrovní') + 300));
-    if (!/13 → 14 1\s?026/.test(r) || !/14 → 15 🔒/.test(r)) throw new Error('další úrovně: ' + r.slice(r.indexOf('Plán úrovní'), r.indexOf('Plán úrovní') + 400));
+    // úr. 12 → 13: cena 1000, zbývá 900; formule 400 × 1,025^3 = 431 → kalibrace 1000/431; 13 → 14: ceil(400 × 1,025^4)=442 × k ≈ 1026
+    if (!/12 → 13 1\s?000 900/.test(r) || !/13 → 14 1\s?026 1\s?026/.test(r)) throw new Error(r.slice(0, 600));
     return errors;
   },
   async 'Statistiky: graf produkce za den, FP ve skladu a úrovní VB'() {
@@ -783,6 +781,29 @@ const tests = {
     });
     if (r.rows.slice(0, 3).join() !== '1:taken,2:taken,3:taken') throw new Error('obsazená: ' + r.rows.join());
     if (!/Kelly 21 745/.test(r.txt) || !/obsazeno \(\+21 966\)/.test(r.txt) || !/volné/.test(r.txt)) throw new Error(r.txt.slice(0, 700));
+    return errors;
+  },
+  async 'Úrovně VB: cena a náhozy po přepracování prestiže (shoda s FoE Helperem), odemčení'() {
+    const { pg, errors } = await page([startup([{ ...arc, level: 184, max_level: 186, state: { invested_forge_points: 130000, forge_points_for_level_up: 130316 } }])]);
+    const r = await pg.evaluate(() => {
+      const cid = 'X_FutureEra_Landmark1';
+      (S.gbCost ||= new Map()).set(cid, [10, 20, 30, 40, 50, 60, 70, 80, 90, 840]);
+      (S.gbMeta ||= new Map()).set(cid, { rework: true, maxTier: 'gold', goods: ['g_a', 'g_b'] });
+      S.goodsEra.set('g_a', 'FutureEra'); S.goodsEra.set('g_b', 'FutureEra');
+      S.gbTiers = [{ tier: 'copper', from: 1, to: 200 }, { tier: 'gold', from: 101, to: null }];
+      cfg.arcFactor = 1.2;
+      const c = [184, 185, 186].map((L) => gbLevelCost(cid, L));
+      const p186 = gbRewards(cid, 185, c[1]).map((b) => gbNahoz(b, true));
+      gbPlan = { id: 10, from: 184, to: 188 };
+      const html = viewGbLevels().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      const u = gbUnlockCosts(cid, 187);
+      cfg.arcFactor = 1.9;
+      return { c, p186, html, u };
+    });
+    // FoE Helper (Archa, koeficient 1,2): 185→186 P1–P7 = 13 802 / 6 901 / 2 300 / 575 / 115 / 19 / 2, vlastní podíl 108 045; 186→187 vlastní 109 226
+    if (r.c.join() !== '130316,131759,133202' || r.p186.join() !== '13802,6901,2300,575,115,19,2') throw new Error(JSON.stringify(r.c) + ' ' + r.p186.join());
+    if (!/185 → 186 🥇 131 759 13 802 6 901 2 300 575 115 19 2 108 045/.test(r.html) || !/186 → 187 🥇 133 202 13 954 6 977 2 326 582 116 19 2 109 226/.test(r.html)) throw new Error(r.html.slice(0, 900));
+    if (!/184 → 185 .*✓/.test(r.html) || !(r.u.blueprint_gold > 0) || !(r.u.g_a > 0) || !(r.u.medals > 0)) throw new Error('odemčení: ' + JSON.stringify(r.u) + r.html.slice(0, 300));
     return errors;
   },
   async 'Nová verze: odznak u ℹ️ a odkaz ke stažení'() {

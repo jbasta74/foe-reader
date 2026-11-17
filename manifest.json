@@ -20,6 +20,7 @@
       ],
       "js": [
         "provinces.js",
+        "gbdata.js",
         "nego-solver-helper.js",
         "nego.js",
         "stats.js",

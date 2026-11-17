@@ -30,46 +30,157 @@ function viewGB() {
       <td>${esc(r.name)}</td><td>${r.level}${r.max ? ' / ' + r.max : ''} ${gbTier(r.level, r.id)}</td>
       <td class="num">${r.atMax ? 'max' : `${fmt(r.inv)} / ${fmt(r.need)}`}</td>
       <td class="num ${!r.atMax && r.left != null && r.left <= 100 ? 'hi' : ''}">${r.atMax ? '' : fmt(r.left)}</td></tr>`).join('')
-  }</tbody></table>` + gbPlanHtml(gbs) + (S.otherGBs?.list?.length ? otherGBsHtml() : '');
+  }</tbody></table>` + (tabVisible('lvl') ? '<p><button class="fbtn" data-goto="lvl">📈 Další úrovně VB – ceny, náhozy, odemčení</button></p>' : '') + (S.otherGBs?.list?.length ? otherGBsHtml() : '');
 }
-// ---------- Plán úrovní vlastní VB: kolik FP do cílové úrovně a za kolik dní ----------
-// Cena úrovně z metadat (strategy_points_for_upgrade, od 10. úrovně +2,5 % za úroveň jako FoE Helper), zkalibrovaná na skutečnou
-// cenu rozestavěné úrovně, kterou posílá hra. Odměny míst pro budoucí úrovně hra neposílá – počítá se celá cena.
-let gbPlan = { id: null, target: null };
-function gbLevelCost(cid, lvl) {
+// ---------- Další úrovně VB: cena, náhozy míst, vlastní podíl a ceny odemčení (jako „Další úroveň“ ve FoE Helperu) ----------
+// Po přepracování prestiže (2026) počítá cenu a odměny míst podle křivky z FoE Helperu (gbdata.js); na starých světech
+// cena z metadat (od 10. úrovně +2,5 % za úroveň) bez odměn míst. Ceny odemčení podle tabulky z FoE Helperu, hodnoty,
+// které ukáže hra (dialog odemčení), mají přednost.
+let gbPlan = { id: null, from: null, to: null };
+const GB_UNLOCK_KEY = 'foeReaderGbUnlock';
+const gbM = (cid) => S.gbMeta?.get(cid) || null;
+const gbTierDef = (t) => (S.gbTiers || []).find((x) => x.tier === t);
+function gbMaxLevel(cid) {
+  const m = gbM(cid);
+  if (!m?.rework) return Infinity;
+  return m.maxTier === 'copper' ? gbTierDef('copper')?.to || 200 : Infinity;
+}
+const gbGoldStart = () => gbTierDef('gold')?.from || 101;
+// Úroveň L → L+1 je zlatá (7 míst, zlatý bonus Archy), když jde o zlatou budovu a level-up dosáhne zlatého stupně.
+const gbIsGold = (cid, L) => !!gbM(cid)?.rework && gbM(cid).maxTier === 'gold' && L + 1 >= gbGoldStart();
+function gbLevelCost(cid, L) {
   const a = S.gbCost?.get(cid);
-  if (!a?.length) return null;
-  return lvl < a.length ? a[lvl] : Math.ceil(a[a.length - 1] * Math.pow(1.025, lvl - a.length + 1));
+  if (!a?.length || !(L >= 0)) return null;
+  if (!gbM(cid)?.rework) return L < a.length ? a[L] : Math.ceil(a[a.length - 1] * Math.pow(1.025, L - a.length + 1));
+  if (L >= gbMaxLevel(cid)) return null;
+  if (L < 10) return a[L];
+  const G = globalThis.FOE_GB;
+  if (G.linear.includes(cid)) { const n = Math.min(2, Math.floor(L / 100)), ex = L === 100 || L === 200 ? 1.5 : 0; return Math.round(a[0] * (L + 1 - n + ex)); }
+  const st = G.steps[cid];
+  if (!st) return null;
+  let cost = a[9], start = 9;
+  for (const [end, ix] of [[39, 0], [69, 1], [99, 2], [300, 3], [400, 4], [Infinity, 5]]) {
+    if (st[ix] === undefined) return null;
+    if (start === 99) { cost = Math.round((cost * 21) / 20); start = 100; }
+    if (L <= end) return cost + st[ix] * (L - start);
+    cost += st[ix] * (end - start); start = end;
+  }
+  return null;
 }
-function gbPlanHtml(gbs) {
-  const list = gbs.filter((e) => e.player_id == null || e.player_id === myId()).sort((a, b) => entName(a.cityentity_id).localeCompare(entName(b.cityentity_id)));
-  if (!list.length) return '';
-  let e = list.find((x) => x.id === gbPlan.id);
-  if (!e) { e = list.slice().sort((a, b) => (b.level || 0) - (a.level || 0))[0]; gbPlan = { id: e.id, target: null }; }
-  const lvl = e.level || 0, max = e.max_level ?? S.gbInfo.get(e.cityentity_id)?.max_level;
-  const target = Math.max(lvl + 1, Math.min(lvl + 100, gbPlan.target || lvl + 10));
+// Základní odměny míst (bez bonusu Archy): podíl mecenášů z ceny, místo n dostane 1/n! prvního; 1 a 3 FP hra zaokrouhlí na 2 a 4.
+function gbRewards(cid, L, cost) {
+  if (!gbM(cid)?.rework || !(cost >= 0)) return null;
+  const share = globalThis.FOE_GB.shares.find(([end]) => L + 1 <= end)[1], n = gbIsGold(cid, L) ? 7 : 5, w = [];
+  for (let i = n, x = 1; i >= 1; i--) { w[i - 1] = x; x *= i; }
+  const sum = w.reduce((a, b) => a + b, 0);
+  return w.map((x) => { const r = Math.round(((cost * share) / 100) * (x / sum)); return r === 1 || r === 3 ? r + 1 : r; });
+}
+// Nához = odměna × koeficient (stejně jako kalkulačka náhozů).
+function gbNahoz(base, gold) {
+  const f1000 = Math.round(factorNow(gold) * 1000);
+  return cfg.arcFactor === 'arc' ? roundReward((base * f1000) / 1000) : Math.round((base * f1000) / 1000);
+}
+// Ceny odemčení úrovně target (úroveň, která se odemyká).
+function gbUnlockSeen() { try { return JSON.parse(localStorage.getItem(GB_UNLOCK_KEY) || '{}'); } catch { return {}; } }
+function gbUnlockCosts(cid, target) {
+  const seen = gbUnlockSeen()[cid]?.[target];
+  if (seen) return seen;
+  const U = globalThis.FOE_GB.unlock, [bp, res, last] = U.buildings[cid] || [];
+  if (!bp || target > last) return null;
+  const seg = (list) => (list || []).filter(([f]) => f <= target).pop();
+  const out = {}, [, cu, au] = seg(U.blueprints[bp]) || [];
+  if (cu) out.blueprint_copper = cu;
+  if (au) out.blueprint_gold = au;
+  const goods = (gbM(cid)?.goods || []).filter((g) => S.goodsEra.has(g));
+  for (const [id, segs] of Object.entries(U.resources[res] || {})) {
+    const [f, amt, step] = seg(segs) || [];
+    if (f === undefined) continue;
+    for (const r of id === 'goods' ? (goods.length ? goods : ['goods']) : [id]) out[r] = amt + step * (target - f);
+  }
+  return out;
+}
+const gbStock = (cid, id) => (id.startsWith('blueprint_') ? S.gbBlueprints?.get(cid)?.[id] : id === 'goods' ? undefined : S.resources[id] || 0);
+const UNLOCK_ORDER = (k) => (k === 'blueprint_copper' ? 0 : k === 'blueprint_gold' ? 1 : k === 'money' ? 8 : k === 'supplies' ? 9 : k === 'medals' ? 10 : 5);
+const UNLOCK_NAMES = { money: '🪙 Mince', supplies: '🔨 Zásoby', medals: '🏅 Medaile' };
+function unlockLabel(k) {
+  if (k === 'blueprint_copper') return '<span title="Sady plánků (měděné)">📜 měď</span>';
+  if (k === 'blueprint_gold') return '<span title="Sady plánků (zlaté)">📜 zlato</span>';
+  if (k === 'goods') return 'zboží';
+  if (UNLOCK_NAMES[k]) return UNLOCK_NAMES[k];
+  return S.goodsEra.has(k) ? `<span title="${esc(resLabel(k))}">${goodIcon(k, 18)}</span>` : esc(resLabel(k));
+}
+// Krátký zápis velkých čísel (2,7 mil.)
+const fmtShort = (v) => (v >= 1e9 ? `${dec((v / 1e9).toFixed(2))} mld.` : v >= 1e6 ? `${dec((v / 1e6).toFixed(2))} mil.` : fmt(v));
+function viewGbLevels() {
+  const gbs = [...S.entities.values()].filter((e) => e.type === 'greatbuilding' && (e.player_id == null || e.player_id === myId()))
+    .sort((a, b) => entName(a.cityentity_id).localeCompare(entName(b.cityentity_id)));
+  if (!gbs.length) return '<p class="muted">Načtěte hru (F5) – seznam vašich VB přichází při načtení.</p>';
+  let e = gbs.find((x) => x.id === gbPlan.id);
+  if (!e) { e = gbs.slice().sort((a, b) => (b.level || 0) - (a.level || 0))[0]; gbPlan = { id: e.id, from: null, to: null }; }
+  const cid = e.cityentity_id, lvl = e.level || 0, rework = !!gbM(cid)?.rework, maxL = gbMaxLevel(cid);
+  const unlocked = Math.max(lvl, e.max_level ?? S.gbInfo.get(cid)?.max_level ?? 0);
+  const from = Math.max(0, Math.min(gbPlan.from ?? lvl, maxL === Infinity ? 1e6 : maxL - 1));
+  let to = Math.max(from + 1, gbPlan.to ?? Math.min(from + 20, maxL === Infinity ? from + 20 : maxL));
+  if (maxL !== Infinity) to = Math.min(to, maxL);
+  to = Math.min(to, from + 400); // rozumná délka tabulky
   const inv = e.state?.invested_forge_points || 0, need = e.state?.forge_points_for_level_up;
-  const base = gbLevelCost(e.cityentity_id, lvl), k = need && base ? need / base : 1;
+  // u starých světů kalibrace na skutečnou cenu rozestavěné úrovně
+  const base = gbLevelCost(cid, lvl), k = !rework && need && base ? need / base : 1;
   const fpDay = (() => { try { return dailyOverview().tot.strategy_points || 0; } catch { return 0; } })();
   const stock = (S.resources.strategy_points || 0) + (S.packageFP || 0);
-  const rows = [];
-  let cum = 0, unknown = false;
-  for (let L = lvl; L < target; L++) {
-    const c = L === lvl && need != null ? need - inv : (() => { const b = gbLevelCost(e.cityentity_id, L); return b == null ? null : Math.round(b * k); })();
-    if (c == null) { unknown = true; break; }
-    cum += c;
+  const rows = [], sums = {};
+  let cum = 0, maxPlaces = 5, unknown = 0, stop = null;
+  for (let L = from; L < to; L++) {
+    const raw = L === lvl && need != null ? need : (() => { const b = gbLevelCost(cid, L); return b == null ? null : Math.round(b * k); })();
+    if (raw == null) { stop = L; break; }
+    const gold = rework ? gbIsGold(cid, L) : isGoldLevel(e, []);
+    const rw = gbRewards(cid, L, raw);
+    const places = rw ? rw.map((b) => gbNahoz(b, gold)) : null;
+    if (places) maxPlaces = Math.max(maxPlaces, places.length);
+    const own = places ? Math.max(0, raw - places.reduce((a, b) => a + b, 0)) : raw;
+    // rozestavěná úroveň: nejvýš to, co v budově ještě zbývá
+    const left = L === lvl && need != null ? Math.min(own, Math.max(0, need - inv)) : own;
+    cum += left;
     const miss = Math.max(0, cum - stock);
-    rows.push(`<tr class="${max != null && L >= max ? 'muted' : ''}"><td>${L} → ${L + 1}${max != null && L >= max ? ' 🔒' : ''}</td><td class="num">${fmt(c)}</td><td class="num"><b>${fmt(cum)}</b></td>
-      <td class="num">${miss ? (fpDay > 0 ? `~${fmt(Math.ceil(miss / fpDay))}` : '–') : '<span class="ok">✓</span>'}</td></tr>`);
+    // odemčení: úroveň L+1, pokud ještě není odemčená
+    const done = L < unlocked, uc = done || !rework ? {} : gbUnlockCosts(cid, L + 1);
+    if (!done && rework && !uc) unknown++;
+    for (const [id, v] of Object.entries(uc || {})) sums[id] = (sums[id] || 0) + v;
+    rows.push({ L, raw, gold, places, own, left, cum, miss, done, uc });
   }
-  return `<h4>Plán úrovní</h4><div class="cfg"><div><select data-gbplan>${list.map((x) => `<option value="${x.id}" ${x.id === e.id ? 'selected' : ''}>${esc(entName(x.cityentity_id))} (${x.level})</option>`).join('')}</select>
-      cílová úroveň <input type="number" min="${lvl + 1}" max="${lvl + 100}" value="${target}" data-gbtarget style="width:60px"></div>
-    <div class="muted">FP k dispozici ${fmt(stock)} (lišta + balíčky) · produkce ${fmt(Math.round(fpDay))} FP/den${max != null ? ` · odemčeno do úr. ${max}` : ''}</div></div>
-    ${rows.length ? `<table><thead><tr><th>Úroveň</th><th class="num">FP</th><th class="num">Celkem</th><th class="num" title="Kolik dní při denní produkci FP, když všechno zaplatíte sám (bez náhozů ostatních)">Dní</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : ''}
-    ${unknown ? '<p class="muted">Ceny dalších úrovní zatím nejsou – přijdou s metadaty hry (obnovte hru).</p>' : ''}
-    <p class="muted">Cena celé úrovně, kterou zaplatíte sám; když místa nabídnete ostatním, část vám vrátí jejich náhozy (kalkulačka výše). 🔒 = úroveň je potřeba nejdřív odemknout plánky. Od 10. úrovně odhad +2,5 % za úroveň (jako FoE Helper), zkalibrovaný na cenu rozestavěné úrovně.</p>`;
+  const pc = maxPlaces;
+  const ucCell = (r) => {
+    if (r.done) return '<span class="ok">✓</span>';
+    if (!rework) return '';
+    if (!r.uc) return '<span class="muted">?</span>';
+    const g = Object.entries(r.uc).filter(([k2]) => S.goodsEra.has(k2) || k2 === 'goods');
+    const tip = Object.entries(r.uc).sort((a, b) => UNLOCK_ORDER(a[0]) - UNLOCK_ORDER(b[0])).map(([k2, v]) => `${k2.startsWith('blueprint_') ? (k2 === 'blueprint_gold' ? 'plánky zlaté (sady)' : 'plánky měděné (sady)') : UNLOCK_NAMES[k2] || resLabel(k2)}: ${fmt(v)}`).join('<br>');
+    return `<span data-tip="${esc(tip)}">` + Object.entries(r.uc).sort((a, b) => UNLOCK_ORDER(a[0]) - UNLOCK_ORDER(b[0]))
+      .filter(([k2]) => !S.goodsEra.has(k2) && k2 !== 'goods')
+      .map(([k2, v]) => (k2.startsWith('blueprint_') ? `📜${k2 === 'blueprint_gold' ? '🥇' : ''}${fmt(v)}` : `${(UNLOCK_NAMES[k2] || k2).split(' ')[0]}${fmtShort(v)}`))
+      .concat(g.length ? [`📦${fmt(g[0][1])}×${g.length}`] : []).join(' ') + '</span>';
+  };
+  const sumKeys = Object.keys(sums).sort((a, b) => UNLOCK_ORDER(a) - UNLOCK_ORDER(b));
+  const summary = rework && sumKeys.length ? `<table class="ulk"><thead><tr><th>${from} → ${rows.length ? rows[rows.length - 1].L + 1 : to}</th>${sumKeys.map((k2) => `<th class="num">${unlockLabel(k2)}</th>`).join('')}</tr></thead><tbody>
+    <tr><td>Potřeba</td>${sumKeys.map((k2) => `<td class="num">${fmt(sums[k2])}</td>`).join('')}</tr>
+    <tr><td>Máte</td>${sumKeys.map((k2) => { const v = gbStock(cid, k2); return `<td class="num">${v == null ? '<span class="muted" title="Otevřete ve hře inventář VB (plánky)">?</span>' : fmt(v)}</td>`; }).join('')}</tr>
+    <tr><td>Chybí</td>${sumKeys.map((k2) => { const v = gbStock(cid, k2); return `<td class="num">${v == null ? '' : sums[k2] > v ? `<b class="hi">${fmt(sums[k2] - v)}</b>` : '<span class="ok">✓</span>'}</td>`; }).join('')}</tr></tbody></table>` : '';
+  return `<div class="cfg"><div><select data-gbplan>${gbs.map((x) => `<option value="${x.id}" ${x.id === e.id ? 'selected' : ''}>${esc(entName(x.cityentity_id))} (${x.level})</option>`).join('')}</select>
+      od úrovně <input type="number" min="0" value="${from}" data-gbfrom style="width:60px"> do <input type="number" min="${from + 1}" value="${to}" data-gbtarget style="width:60px">
+      koeficient ${factorPicker(rework && gbIsGold(cid, from))}</div>
+    <div class="muted">FP k dispozici ${fmt(stock)} (lišta + balíčky) · produkce ${fmt(Math.round(fpDay))} FP/den · odemčeno do úr. ${fmt(unlocked)}${maxL !== Infinity ? ` · nejvyšší úroveň ${maxL}` : ''}${rework ? '' : ' · starý svět: odměny míst budoucích úrovní nejsou známé'}</div></div>
+    ${summary}
+    ${rows.length ? `<table class="lvl"><thead><tr><th>Úroveň</th><th class="num">Cena</th>${rework ? Array.from({ length: pc }, (_, i) => `<th class="num">P${i + 1}</th>`).join('') : ''}<th class="num" title="Cena úrovně minus náhozy všech míst (u rozestavěné úrovně jen to, co ještě zbývá)">Vlastní podíl</th>
+      <th class="num" title="Součet vlastních podílů od první úrovně tabulky">Celkem</th><th class="num" title="Kolik dní při denní produkci FP (s FP, které máte)">Dní</th>${rework ? '<th>Odemčení</th>' : ''}</tr></thead><tbody>${rows.map((r) =>
+      `<tr class="${r.L === lvl ? 'me' : ''}"><td><b>${r.L} → ${r.L + 1}</b>${r.gold ? ' <span title="Zlatý stupeň">🥇</span>' : ''}</td><td class="num">${fmt(r.raw)}</td>
+        ${rework ? Array.from({ length: pc }, (_, i) => `<td class="num">${r.places?.[i] != null ? fmt(r.places[i]) : ''}</td>`).join('') : ''}
+        <td class="num"><b>${fmt(r.left)}</b></td><td class="num">${fmt(r.cum)}</td>
+        <td class="num">${r.miss ? (fpDay > 0 ? `~${fmt(Math.ceil(r.miss / fpDay))}` : '–') : '<span class="ok">✓</span>'}</td>
+        ${rework ? `<td>${ucCell(r)}</td>` : ''}</tr>`).join('')}</tbody></table>` : ''}
+    ${stop != null && stop < to ? `<p class="muted">Od úrovně ${stop} cena není známá${rework ? '' : ' – přijde s metadaty hry (obnovte hru)'}.</p>` : ''}
+    ${unknown ? `<p class="muted">Cena odemčení zatím není známá (úrovní: ${unknown}) – ukáže se, až ve hře otevřete odemčení další úrovně.</p>` : ''}
+    <p class="muted">P1–P${pc} = nához na místo (odměna × koeficient, jako kalkulačka náhozů). Vlastní podíl = cena úrovně minus náhozy; u rozestavěné úrovně jen to, co ještě zbývá. „Odemčení“ = cena odemčení úrovně (📜 sady plánků, 📜🥇 zlaté, 🪙 mince, 🔨 zásoby, 🏅 medaile, 📦 každé zboží budovy × počet druhů; podrobně po najetí myší); ✓ = odemčeno.${rework ? ' Křivka cen a odemčení z FoE Helperu; ceny, které ukáže hra v dialogu odemčení, mají přednost.' : ''}</p>`;
 }
-
 function viewTaverns() {
   if (!S.taverns.length) return '<p class="muted">Zatím žádná data o hospodách.</p>';
   // Stav bez "state" = volná židle; isSitting = už tam sedíte.

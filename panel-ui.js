@@ -56,6 +56,8 @@ function mount() {
     .riw{position:relative;display:inline-block;vertical-align:middle;line-height:0;white-space:nowrap} .ri{display:inline-block;background-repeat:no-repeat;vertical-align:middle}
     .ri.ov{position:absolute;left:0;top:0} .rictx{position:absolute;right:-6px;bottom:-4px;height:13px} .ritx{font-size:9px;line-height:1;position:absolute;left:0;bottom:-2px;background:#fff8;border-radius:2px;padding:0 1px}
     .findb{cursor:pointer;border-bottom:1px dotted #8a6a3a} .findb:hover{color:#b0410f;border-bottom-style:solid}
+    table.lvl td,table.lvl th{padding:2px 5px;white-space:nowrap} table.lvl tr.me td{background:#efe3c8}
+    table.ulk{margin:4px 0 8px} table.ulk td,table.ulk th{padding:2px 6px;white-space:nowrap}
     table.day td{padding:3px 6px;vertical-align:top} table.day td:first-child{font-size:15px;width:22px} table.day tr.muted td{color:#9a8a70}
     ol.steps{margin:3px 0 3px 18px;padding:0} ol.steps a{color:inherit;text-decoration:none} ol.steps a.on{background:#c2185b;color:#fff;border-radius:3px;padding:0 3px}
     .copyrow{display:flex;gap:6px}
@@ -290,9 +292,11 @@ function onUiChange(ev) {
   const ry = ev.target.closest('[data-rateyear]');
   if (ry) { rateSel.maxYear = +ry.value || 0; render(); }
   const gp = ev.target.closest('[data-gbplan]');
-  if (gp) { gbPlan = { id: +gp.value, target: null }; render(); }
+  if (gp) { gbPlan = { id: +gp.value, from: null, to: null }; render(); }
   const gtg = ev.target.closest('[data-gbtarget]');
-  if (gtg) { gbPlan.target = +gtg.value; render(); }
+  if (gtg) { gbPlan.to = +gtg.value; render(); }
+  const gfr = ev.target.closest('[data-gbfrom]');
+  if (gfr) { gbPlan.from = +gfr.value; gbPlan.to = null; render(); }
   const mkg = ev.target.closest('[data-mkgood]');
   if (mkg) { mkGood = mkg.value; render(); }
   const ptq = ev.target.closest('[data-input="ptQ"]');

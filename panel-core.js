@@ -157,6 +157,21 @@ const H = {
     S.players.set(pid, { ...prev, name: op.name ?? prev.name });
   },
   // --- VB jiných hráčů (struktura podle FoE Helperu, ověřit na logu) ---
+  // Cena odemčení další úrovně vlastní VB (hra ji posílá při otevření dialogu odemčení) – má přednost před tabulkou.
+  'GreatBuildingsService.getUnlockCosts'(d) {
+    const cid = d?.cityEntityId;
+    const e = cid && [...S.entities.values()].find((x) => x.cityentity_id === cid && (x.player_id == null || x.player_id === myId()));
+    if (!e) return;
+    const target = Math.max(e.level || 0, e.max_level || 0) + 1;
+    const costs = Object.fromEntries([
+      ...(d.blueprintCosts || []).map((b) => [`blueprint_${b.tier?.value || b.tier || 'copper'}`, b.blueprintSetAmount]),
+      ...Object.entries(d.resourceCosts?.resources || d.resourceCosts || {}),
+    ].filter(([k, v]) => k !== '__class__' && v > 0));
+    try { const all = JSON.parse(localStorage.getItem('foeReaderGbUnlock') || '{}'); (all[cid] ||= {})[target] = costs; localStorage.setItem('foeReaderGbUnlock', JSON.stringify(all)); } catch { /* ignore */ }
+  },
+  // Plánky VB v inventáři: kolik celých sad (všech 9 dílů) máte pro každou budovu a stupeň.
+  'InventoryService.getGreatBuildings'(d) { gbBlueprintSets(d); },
+  'BlueprintService.getGreatBuildingInventoryForGreatBuilding'(d) { gbBlueprintSets(d); },
   'GreatBuildingsService.getConstruction'(d) {
     // Pořadí třídí genericScan (moje vs. cizí VB) – tady ho nepřepisovat.
     // Stupeň VB přímo z odměn (plánky mají tier); platí pro budovu z právě odeslaného dotazu.
@@ -585,6 +600,15 @@ function handleRequest(r) {
   }
 }
 
+function gbBlueprintSets(d) {
+  for (const b of [].concat(d || [])) {
+    if (!b?.cityentity_id || !Array.isArray(b.blueprints)) continue;
+    const P = { blueprint_copper: Array(9).fill(0), blueprint_gold: Array(9).fill(0) };
+    // server vynechává nuly: první díl bez piece_number, chybějící díl bez amount
+    for (const x of b.blueprints) { const t = P[`blueprint_${x?.tier?.value || x?.tier || 'copper'}`]; if (t) t[x.piece_number || 0] = x.amount || 0; }
+    (S.gbBlueprints ||= new Map()).set(b.cityentity_id, { blueprint_copper: Math.min(...P.blueprint_copper), blueprint_gold: Math.min(...P.blueprint_gold) });
+  }
+}
 // Rozpracovaná technologie po vložení FP (odpověď nese technology.progress).
 function qiPassPreview(d) {
   if (!/guild_raids/.test(d?.context || '')) return;
@@ -612,6 +636,12 @@ function handleMetadata(m) {
     if (o.id && o.name) S.names.set(o.id, o.name);
     // Cena úrovní VB (prvních 10; dál +2,5 % za úroveň – jako FoE Helper)
     if (o.id && Array.isArray(o.strategy_points_for_upgrade)) (S.gbCost ||= new Map()).set(o.id, o.strategy_points_for_upgrade);
+    // VB po přepracování prestiže: má stupňové bonusy (bonuses), nejvyšší stupeň a zboží, ve kterém platí odemčení úrovní
+    if (o.id && /^X_/.test(o.id) && (Array.isArray(o.bonuses) || o.maxTier)) {
+      const cost = o.requirements?.cost?.resources || {};
+      (S.gbMeta ||= new Map()).set(o.id, { rework: Array.isArray(o.bonuses) && o.bonuses.length > 0, maxTier: o.maxTier?.value || o.maxTier || 'copper',
+        goods: Object.entries(cost).filter(([k, v]) => v > 0 && !['money', 'supplies', 'population', 'premium', 'medals', 'strategy_points', '__class__'].includes(k)).map(([k]) => k) });
+    }
     // Výrobny zboží: které zboží umí vyrábět (pro Výzkum – co si vyrobíte sám a co musíte sehnat).
     if (o.id && o.staticResources?.resources?.diplomacy) S.entDipl.set(o.id, o.staticResources.resources.diplomacy);
     if (o.id && Array.isArray(o.available_products)) S.entGoodsOpt.set(o.id, o.available_products.map((p) => ({ product: { ...(p.product?.resources || {}) }, cost: { ...(p.requirements?.cost?.resources || {}) } })));

@@ -1,2 +1,0 @@
-- Polština: panel lze v ℹ️ → Jazyk přepnout do polštiny (Polski); čísla a data v polském formátu.
-- Podklady pro překlad: `tools/i18n-export.mjs` / `tools/i18n-import.mjs` (CSV cs / en / pl, další jazyky jako nový sloupec).

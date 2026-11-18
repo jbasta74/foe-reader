@@ -23,7 +23,8 @@ Každá změna verze v `manifest.json` na větvi `main` automaticky vytvoří vy
 - `nego-solver-helper.js`, `nego.js`: pomocník vyjednávání (přesný řešič z FoE Helperu, AGPL-3.0, a vlastní odhad).
 - `stats.js`: úložiště statistik a nastavení (chrome.storage, vybraná složka, synchronizace).
 - `panel-outpost.js`: kulturní osada a pomocník minihry obchodníka.
-- `i18n.js`: anglický překlad panelu (ℹ️ → Jazyk / Language).
+- `i18n.js`: anglický překlad panelu (ℹ️ → Jazyk / Language); `i18n-pl.js`: polský překlad (chybějící fráze se ukážou anglicky).
+- `tools/`: podklady pro překladatele – `node tools/i18n-export.mjs translations.csv [de]` vyexportuje všechny texty (sloupce cs; en; pl; …, CSV se středníkem pro Excel), `node tools/i18n-import.mjs translations.csv pl` z vyplněného sloupce vytvoří `i18n-pl.js`. Nový jazyk se pak přidá do `manifest.json` (za `i18n.js`), `test/harness.html` a přepínače jazyka v ℹ️.
 - `panel-*.js`: panel, běží v izolovaném světě a sdílí jeden globální rozsah (načítají se v pořadí z manifestu):
   `panel-core.js` (stav, třídění zpráv podle `requestClass.requestMethod` v objektu `H`, vyjednávání, příhody, upozornění, oznámení Chromu),
   `panel-city.js` (mapa města, okna kalkulačky a mapy), `panel-production.js` (bonusy, produkce, denní přehled, rating),

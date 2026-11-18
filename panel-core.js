@@ -701,7 +701,7 @@ const CFG_DEFAULT = {
   rateFH: false, // Rating jako FoE Helper (bez bonusů k produkci, s VB)
   fpBar: true, // okénko FP ve skladu u lišty FP ve hře
   techOpt: true, // výzkum: vynechat volitelné technologie
-  lang: 'cs', // jazyk panelu: 'cs' | 'en'
+  lang: 'cs', // jazyk panelu: 'cs' | 'en' | 'pl'
   negoPopup: true, // okno Vyjednávání se otevře samo při zahájení vyjednávání // okno kalkulačky VB se otevře samo s otevřením budovy
 };
 const cfg = (() => {
@@ -711,7 +711,7 @@ const cfg = (() => {
 if (typeof cfg.arcFactor === 'number' && !cfg.arcMigrated && ![1.8, 1.85, 1.9, 1.92, 1.95, 2].includes(cfg.arcFactor)) cfg.arcFactor = 'arc';
 cfg.arcMigrated = true;
 // Jazyk panelu: texty jsou v kódu česky, při angličtině se hotové HTML přeloží (i18n.js).
-const L = (h) => (cfg.lang === 'en' && globalThis.FOE_I18N?.tr ? globalThis.FOE_I18N.tr(h) : h);
+const L = (h) => (cfg.lang && cfg.lang !== 'cs' && globalThis.FOE_I18N?.tr ? globalThis.FOE_I18N.tr(h, cfg.lang) : h);
 const saveCfgLocal = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } };
 // Nastavení se navíc synchronizuje přes účet prohlížeče a do složky se statistikami (viz stats.js).
 // Každá položka má čas poslední změny (cfg._kt), synchronizace pak slučuje po položkách:
@@ -1157,9 +1157,9 @@ function gbNewRules() {
 const roundReward = (x) => (gbNewRules() ? round5(x) : Math.round(x));
 const entBonuses = (e) => [...(e.bonuses || []), ...(e.bonus && typeof e.bonus === 'object' ? [e.bonus] : [])];
 // Čísla a data podle jazyka panelu (čeština: 1 234,5 · angličtina: 1,234.5).
-const LOC = () => (cfg.lang === 'en' ? 'en-GB' : 'cs-CZ');
-const nfCs = new Intl.NumberFormat('cs-CZ'), nfEn = new Intl.NumberFormat('en-GB');
-const fmt = (n) => (n == null ? '–' : (cfg.lang === 'en' ? nfEn : nfCs).format(n));
+const LOC = () => ({ en: 'en-GB', pl: 'pl-PL' })[cfg.lang] || 'cs-CZ';
+const nfCs = new Intl.NumberFormat('cs-CZ'), nfEn = new Intl.NumberFormat('en-GB'), nfPl = new Intl.NumberFormat('pl-PL', { useGrouping: 'always' });
+const fmt = (n) => (n == null ? '–' : (cfg.lang === 'en' ? nfEn : cfg.lang === 'pl' ? nfPl : nfCs).format(n));
 const dec = (s) => (cfg.lang === 'en' ? String(s) : String(s).replace('.', ','));
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const nowServer = () => Date.now() / 1000 + S.serverOffset;

@@ -35,7 +35,7 @@ async function page(messages, cfg) {
 }
 const winText = (pg, title) => pg.evaluate((t) => [...document.querySelectorAll('.foe-reader-win')]
   .map((w) => w.shadowRoot).find((r) => r.querySelector('.whead b')?.textContent.includes(t))?.querySelector('.wbody')?.innerText || '', title);
-const calcText = (pg) => pg.evaluate(() => [...document.querySelectorAll('div')].map((d) => d.shadowRoot).find((r) => /Kalkulačka VB|GB calculator/.test(r?.querySelector('.whead b')?.textContent || ''))?.textContent || '');
+const calcText = (pg) => pg.evaluate(() => [...document.querySelectorAll('div')].map((d) => d.shadowRoot).find((r) => /Kalkulačka VB|GB calculator|Kalkulator WB/.test(r?.querySelector('.whead b')?.textContent || ''))?.textContent || '');
 async function openTab(pg, id) { await pg.locator(`#foe-reader-host [data-ico="${id}"]`).click(); await pg.waitForTimeout(400); }
 
 // --- syntetická data ---
@@ -53,6 +53,35 @@ const rankings = (goldRanks, medals = 0) => [
     reward: { strategy_point_amount: fp, blueprintRewards: bp('copper', ...(goldRanks.includes(rank) ? ['gold'] : [])), resources: { medals: rank === 1 ? medals : 0 } } }))];
 const foreignGb = (level) => msg('OtherPlayerService.getOtherPlayerCityMapEntity', { id: 817, player_id: OTHER, cityentity_id: 'X_FutureEra_Landmark1', type: 'greatbuilding', level,
   state: { invested_forge_points: 1000, forge_points_for_level_up: 9000 }, __class__: 'CityMapEntity' });
+
+async function noCzech(lang) {
+  const { pg, errors } = await page([startup([arc, zeus]), msg('ResourceService.getPlayerResources', { resources: { strategy_points: 50, money: 5000, guild_expedition_attempt: 3 } }),
+    msg('GuildBattlegroundService.getPlayerLeaderboard', [{ player: { player_id: ME, name: 'Tester' }, battlesWon: 10 }]),
+    foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'), msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })], { lang });
+  const CZ = /[ěščřžýáíéůúťďňĚŠČŘŽÝÁÍÉŮÚŤĎŇ]/;
+  const ids = await pg.evaluate(() => [...document.querySelector('#foe-reader-host').shadowRoot.querySelectorAll('[data-ico]')].map((b) => b.dataset.ico));
+  const bad = new Set();
+  const collect = () => pg.evaluate((re) => {
+    const R = new RegExp(re), out = [];
+    for (const h of [document.querySelector('#foe-reader-host'), ...document.querySelectorAll('.foe-reader-win, #foe-reader-calc')]) {
+      const r = h?.shadowRoot; if (!r) continue;
+      const w = document.createTreeWalker(r, NodeFilter.SHOW_TEXT); let n;
+      while ((n = w.nextNode())) if (!n.parentElement?.closest('style') && R.test(n.textContent)) out.push(n.textContent.trim());
+      r.querySelectorAll('[title],[placeholder]').forEach((e) => { for (const a of [e.title, e.placeholder]) if (a && R.test(a)) out.push(a); });
+    }
+    return out;
+  }, CZ.source);
+  for (const id of ids) {
+    await openTab(pg, id);
+    if (id === 'alerts') await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].forEach((w) => w.shadowRoot.querySelector('[data-act="alertcfg"]')?.click()));
+    await pg.waitForTimeout(250);
+    for (const t of await collect()) bad.add(`[${id}] ${t}`);
+    await openTab(pg, id);
+  }
+  const left = [...bad].filter((t) => !/Čeština|Názvy z hry/.test(t));
+  if (left.length) throw new Error('nepřeložené texty (doplňte do i18n.js):\n      ' + left.slice(0, 30).join('\n      '));
+  return errors;
+}
 
 const tests = {
   async 'VB úroveň 100: měděná (zlatý plánek jen P1), bonus Archy 99 %'() {
@@ -149,32 +178,20 @@ const tests = {
     if (!me.includes('Tester')) throw new Error('řádek vlastního hráče není zvýrazněný');
     return errors;
   },
-  async 'Angličtina: žádný český text v záložkách (kontrola slovníku)'() {
-    const { pg, errors } = await page([startup([arc, zeus]), msg('ResourceService.getPlayerResources', { resources: { strategy_points: 50, money: 5000, guild_expedition_attempt: 3 } }),
-      msg('GuildBattlegroundService.getPlayerLeaderboard', [{ player: { player_id: ME, name: 'Tester' }, battlesWon: 10 }]),
-      foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'), msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })], { lang: 'en' });
-    const CZ = /[ěščřžýáíéůúťďňĚŠČŘŽÝÁÍÉŮÚŤĎŇ]/;
-    const ids = await pg.evaluate(() => [...document.querySelector('#foe-reader-host').shadowRoot.querySelectorAll('[data-ico]')].map((b) => b.dataset.ico));
-    const bad = new Set();
-    const collect = () => pg.evaluate((re) => {
-      const R = new RegExp(re), out = [];
-      for (const h of [document.querySelector('#foe-reader-host'), ...document.querySelectorAll('.foe-reader-win, #foe-reader-calc')]) {
-        const r = h?.shadowRoot; if (!r) continue;
-        const w = document.createTreeWalker(r, NodeFilter.SHOW_TEXT); let n;
-        while ((n = w.nextNode())) if (!n.parentElement?.closest('style') && R.test(n.textContent)) out.push(n.textContent.trim());
-        r.querySelectorAll('[title],[placeholder]').forEach((e) => { for (const a of [e.title, e.placeholder]) if (a && R.test(a)) out.push(a); });
-      }
-      return out;
-    }, CZ.source);
-    for (const id of ids) {
-      await openTab(pg, id);
-      if (id === 'alerts') await pg.evaluate(() => [...document.querySelectorAll('.foe-reader-win')].forEach((w) => w.shadowRoot.querySelector('[data-act="alertcfg"]')?.click()));
-      await pg.waitForTimeout(250);
-      for (const t of await collect()) bad.add(`[${id}] ${t}`);
-      await openTab(pg, id);
-    }
-    const left = [...bad].filter((t) => !/Čeština|Názvy z hry/.test(t));
-    if (left.length) throw new Error('nepřeložené texty (doplňte do i18n.js):\n      ' + left.slice(0, 30).join('\n      '));
+  async 'Angličtina: žádný český text v záložkách (kontrola slovníku)'() { return noCzech('en'); },
+  async 'Polština: žádný český text v záložkách (kontrola slovníku)'() { return noCzech('pl'); },
+  async 'Polština: slovník pokrývá všechny fráze a kalkulačka je polsky'() {
+    const { pg, errors } = await page([startup([arc]), foreignGb(100), msg('GreatBuildingsService.getConstruction', [817, OTHER], 'req'),
+      msg('GreatBuildingsService.getConstruction', { rankings: rankings([1]) })], { lang: 'pl' });
+    const cov = await pg.evaluate(() => {
+      const pl = new Map(globalThis.FOE_I18N.pl), en = new Map(globalThis.FOE_I18N.en);
+      return { miss: [...en.keys()].filter((k) => !pl.get(k)), orphan: [...pl.keys()].filter((k) => !en.has(k)) };
+    });
+    if (cov.miss.length) throw new Error('chybí polský překlad (node tools/i18n-export.mjs → doplnit → i18n-import.mjs): ' + cov.miss.slice(0, 10).join(' | '));
+    if (cov.orphan.length) throw new Error('polské fráze, které nejsou v i18n.js: ' + cov.orphan.slice(0, 10).join(' | '));
+    await pg.waitForTimeout(500);
+    const t = (await calcText(pg)).replace(/\u00a0/g, ' ');
+    if (!t.includes('Kalkulator WB') || !t.includes('(miedziany)')) throw new Error('kalkulačka není polsky: ' + t.slice(0, 300));
     return errors;
   },
   async 'Konec expedice: upozornění na nevyužité pokusy'() {

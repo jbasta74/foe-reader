@@ -1,5 +1,5 @@
 // FoE Reader – i18n.js
-// English translation of the panel (ℹ️ → Jazyk / Language). Panel texts are written in Czech in the code;
+// English translation of the panel (ℹ️ → Jazyk / Language); other languages in i18n-<lang>.js (tools/i18n-export.mjs / i18n-import.mjs). Panel texts are written in Czech in the code;
 // when English is selected, rendered text and tooltips are translated with this phrase list (longest phrase first,
 // whole words only). Player, guild and building names come from the game and are left as they are.
 globalThis.FOE_I18N = {
@@ -660,27 +660,30 @@ globalThis.FOE_I18N = {
   ],
 };
 
-// Překlad HTML řetězce (text i atributy title / placeholder). Fráze se nahrazují jako celá slova, nejdelší první.
+// Překlad HTML řetězce (text i atributy title / placeholder) do jazyka lang ('en', 'pl', …).
+// Fráze se nahrazují jako celá slova, nejdelší první. Chybí-li fráze v daném jazyce (i18n-<jazyk>.js), použije se angličtina.
 (() => {
   'use strict';
-  let re = null, map = null;
-  const cache = new Map();
+  const st = new Map();
   const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  function build() {
-    map = new Map(globalThis.FOE_I18N.en);
+  function build(lang) {
+    const map = new Map(globalThis.FOE_I18N.en);
+    if (lang !== 'en') for (const [k, v] of globalThis.FOE_I18N[lang] || []) if (v) map.set(k, v);
     const w = /[\p{L}\p{N}]/u;
     const keys = [...map.keys()].sort((a, b) => b.length - a.length)
       .map((k) => (w.test(k[0]) ? '(?<![\\p{L}\\p{N}])' : '') + esc(k) + (w.test(k.at(-1)) ? '(?![\\p{L}\\p{N}])' : ''));
-    re = new RegExp(keys.join('|'), 'gu');
+    const s = { map, re: new RegExp(keys.join('|'), 'gu'), cache: new Map() };
+    st.set(lang, s);
+    return s;
   }
-  globalThis.FOE_I18N.tr = (html) => {
+  globalThis.FOE_I18N.tr = (html, lang = 'en') => {
     if (!html || typeof html !== 'string') return html;
-    const hit = cache.get(html);
+    const s = st.get(lang) || build(lang);
+    const hit = s.cache.get(html);
     if (hit !== undefined) return hit;
-    if (!re) build();
-    const out = html.replace(re, (m) => map.get(m) ?? m);
-    if (cache.size > 300) cache.clear();
-    cache.set(html, out);
+    const out = html.replace(s.re, (m) => s.map.get(m) ?? m);
+    if (s.cache.size > 300) s.cache.clear();
+    s.cache.set(html, out);
     return out;
   };
 })();

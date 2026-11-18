@@ -285,7 +285,7 @@ function viewAbout() {
       <tr><td>Zachyceno zpráv</td><td>${fmt([...S.log.values()].reduce((a, l) => a + l.count, 0))} (${S.log.size} druhů)</td></tr>
     </tbody></table>
     <h4>Jazyk / Language</h4>
-    <div class="cfg"><div>${[['cs', 'Čeština'], ['en', 'English']].map(([k, l]) => `<button data-lang="${k}" class="fbtn${(cfg.lang || 'cs') === k ? ' on' : ''}">${l}</button>`).join(' ')}</div>
+    <div class="cfg"><div>${[['cs', 'Čeština'], ['en', 'English'], ['pl', 'Polski']].map(([k, l]) => `<button data-lang="${k}" class="fbtn${(cfg.lang || 'cs') === k ? ' on' : ''}">${l}</button>`).join(' ')}</div>
       <div class="muted">Názvy z hry (budovy, zboží, hráči) zůstávají v jazyce hry. / Names from the game stay in the game's language.</div></div>
     <h4>Nastavení – zobrazené záložky</h4>
     <div class="cfg"><div>${TABS.filter(([id]) => !FIXED_TABS.includes(id) && id !== 'mg' && (!BONUS_TABS.includes(id) || bonusOn())).map(([id, l]) =>

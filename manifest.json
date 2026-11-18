@@ -25,6 +25,7 @@
         "nego.js",
         "stats.js",
         "i18n.js",
+        "i18n-pl.js",
         "panel-core.js",
         "panel-city.js",
         "panel-production.js",

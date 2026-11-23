@@ -1,0 +1,1 @@
+- Kalkulačka náhozů: hráč, který na místo vložil tak málo, že ho přeplatí už nához na další místo (např. 1 FP na P1), místo nedrží – místo zůstává volné a v textu do vlákna, kalkulačka už nechce „zajistit“ jeho 1 FP dorovnáním celé budovy; dole je vidět, kolik FP chybí do dokončení.

@@ -746,9 +746,9 @@ const tests = {
     const { pg, errors } = await page([startup()]);
     const r = await pg.evaluate(() => {
       cfg.arcFactor = 1.9;
-      const ent = { cityentity_id: 'X_BronzeAge_Landmark2', level: 10, state: { forge_points_for_level_up: 2000, invested_forge_points: 150 } };
+      const ent = { cityentity_id: 'X_BronzeAge_Landmark2', level: 10, state: { forge_points_for_level_up: 2000, invested_forge_points: 250 } };
       const rows = [
-        { rank: 1, player: { player_id: 5, name: 'Jan' }, forge_points: 100, reward: { strategy_point_amount: 200 } },
+        { rank: 1, player: { player_id: 5, name: 'Jan' }, forge_points: 200, reward: { strategy_point_amount: 200 } },
         { rank: 2, reward: { strategy_point_amount: 100 } },
         { rank: null, player: { player_id: 9, name: 'Majitel' }, forge_points: 50 },
       ];
@@ -756,7 +756,29 @@ const tests = {
       return { text: c.text, p1: { filled: c.places[0].filled, short: c.places[0].short }, html: viewNahoz(c, 'x').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') };
     });
     if (/P1\(/.test(r.text) || !/P2\(190\)/.test(r.text)) throw new Error('text: ' + r.text);
-    if (!r.p1.filled || !r.p1.short || !/Jan 100 \(o 280 méně\)/.test(r.html)) throw new Error(JSON.stringify(r));
+    if (!r.p1.filled || !r.p1.short || !/Jan 200 \(o 180 méně\)/.test(r.html)) throw new Error(JSON.stringify(r));
+    return errors;
+  },
+  async 'Nához: 1 FP na P1 místo nedrží (volné, v textu), po zaplnění budovy je jisté'() {
+    const { pg, errors } = await page([startup()]);
+    const r = await pg.evaluate(() => {
+      cfg.arcFactor = 1.2;
+      const rw = [1612, 806, 269, 67, 13, 2];
+      const calc = (invested, ownerFp) => {
+        const ent = { cityentity_id: 'X_BronzeAge_Landmark2', level: 105, state: { forge_points_for_level_up: 18461, invested_forge_points: invested } };
+        const rows = rw.map((a, i) => ({ rank: i + 1, reward: { strategy_point_amount: a }, ...(i ? {} : { player: { player_id: 5, name: 'Ada' }, forge_points: 1 }) }));
+        if (ownerFp) rows.push({ rank: null, player: { player_id: 9, name: 'Majitel' }, forge_points: ownerFp });
+        const c = nahozCalc(rows, ent, 'Majitel');
+        return { c, html: viewNahoz(c, 'x').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') };
+      };
+      const a = calc(1, 0), b = calc(18460, 18459);
+      return { aText: a.c.text, aP1: a.c.places[0], aHtml: a.html, aOwn: a.c.ownShare, bP1: b.c.places[0], bHtml: b.html };
+    });
+    if (!/P1\(1934\) P2\(967\)/.test(r.aText)) throw new Error('text: ' + r.aText);
+    if (r.aP1.filled || !r.aP1.weak || r.aP1.needOwner !== 14593) throw new Error('P1 před: ' + JSON.stringify(r.aP1));
+    if (!/volné \(Ada 1 – nához ho přeplatí\)/.test(r.aHtml) || /vložte ještě 18/.test(r.aHtml)) throw new Error(r.aHtml.slice(0, 500));
+    if (r.aOwn !== 18461 - (1934 + 967 + 323 + 80 + 16 + 2) - 1) throw new Error('vlastní podíl ' + r.aOwn);
+    if (!r.bP1.short || !r.bP1.safe || !/do dokončení chybí 1 FP/.test(r.bHtml)) throw new Error('po zaplnění: ' + JSON.stringify(r.bP1) + r.bHtml.slice(-200));
     return errors;
   },
   async 'GBG: opotřebení klesne, až se dostaví budovy v sousední naší provincii'() {

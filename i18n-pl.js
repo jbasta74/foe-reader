@@ -1015,4 +1015,7 @@ globalThis.FOE_I18N.pl = [
   ['příroda', 'przyroda'],
   ['pobřeží', 'wybrzeże'],
   ['voda', 'woda'],
+  ['Vložil tak málo, že ho nához přeplatí a posune níž – místo nedrží', 'Wpłacił tak mało, że wpłata go przebije i przesunie niżej – nie trzyma miejsca'],
+  ['– nához ho přeplatí', '– wpłata go przebije'],
+  ['do dokončení chybí', 'do ukończenia brakuje'],
 ];

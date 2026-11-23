@@ -17,32 +17,46 @@ function nahozCalc(rows, entity, ownerName) {
     // Hra odměnu s bonusem Archy zaokrouhluje na pětky (175 × 1,99 = 348,25 → 350). Pevné koeficienty cechu na celá čísla.
     const val = arcMode ? roundReward((base * f1000) / 1000) : Math.round((base * f1000) / 1000);
     const holder = r.player?.player_id != null ? { name: r.player.name, fp: r.forge_points || 0 } : null;
-    // Místo, na které už někdo vložil, je obsazené – i když vložil méně, než je nához („málo“); do textu do vlákna už nepatří.
-    return { rank: r.rank, base, val, holder, filled: !!holder && holder.fp > 0, short: !!holder && holder.fp > 0 && holder.fp < val };
+    return { rank: r.rank, base, val, holder };
   });
+  const invested = Math.max(entity.state?.invested_forge_points || 0, rows.reduce((a, r) => a + (r.forge_points || 0), 0));
+  const remaining = total != null ? Math.max(0, total - invested) : Infinity;
+  // Místo, na které už někdo vložil, je obsazené – i když vložil méně, než je nához („málo“); do textu do vlákna už nepatří.
+  // Výjimka: vložil tak málo, že ho přeplatí už nához na další místo (nebo ho přeplatí, kdo dorovná zbytek budovy) –
+  // takové místo nedrží (např. 1 FP na P1), počítá se jako volné a jeho vklad jen jako soupeř, kterého náhozy odsunou níž.
+  places.forEach((x, i) => {
+    const h = x.holder;
+    if (!h || h.fp <= 0) { x.holder = null; return; }
+    if (h.fp >= x.val) { x.filled = true; return; }
+    const nextVal = places[i + 1]?.val || 0;
+    if (h.fp >= Math.min(nextVal, remaining)) { x.filled = true; x.short = true; return; }
+    x.weak = h; x.holder = null;
+  });
+  const weakMax = Math.max(0, ...places.filter((x) => x.weak).map((x) => x.weak.fp));
   // Zajištění míst: místo je jisté, když po vložení náhozů (v pořadí P1, P2, …) zbývá v budově tak málo FP,
   // že ho nikdo nepředběhne – ani nejsilnější dosavadní přispěvatel na nižších místech (remíza zůstává tomu, kdo vložil dřív).
   // Majitel zajišťuje vlastním vkladem: needOwner = kolik FP ještě musí vložit, aby místo zezelenalo.
-  const invested = Math.max(entity.state?.invested_forge_points || 0, rows.reduce((a, r) => a + (r.forge_points || 0), 0));
   if (total != null) {
     let left = total - invested;
     for (const x of places) {
-      const rival = Math.max(0, ...rows.filter((r) => r.player?.player_id != null && r.rank != null && r.rank > x.rank
-        && r.player.player_id !== ownerRow?.player?.player_id).map((r) => r.forge_points || 0));
+      const rival = Math.max(weakMax, ...rows.filter((r) => r.player?.player_id != null && r.rank != null && r.rank > x.rank
+        && r.player.player_id !== ownerRow?.player?.player_id && !places.some((p) => p.rank === r.rank && p.weak)).map((r) => r.forge_points || 0));
       if (x.filled && !x.short) { x.safe = true; x.needOwner = 0; continue; }
       // obsazené s menším vkladem: počítá se s tím, co hráč opravdu vložil (už je v „invested“)
       const mine = x.short ? x.holder.fp : x.val;
-      if (!x.short) left -= x.val - (x.holder?.fp || 0);
+      if (!x.short) left -= x.val;
       x.fits = left >= 0;
       x.needOwner = Math.max(0, rival + left - mine);
       x.safe = x.fits && x.needOwner === 0;
     }
   }
   const sumP = places.reduce((a, x) => a + x.val, 0);
-  const ownShare = total != null ? Math.max(0, total - sumP) : null;
+  // vklady hráčů, kteří místo nedrží (odsunou je náhozy), v budově zůstávají a majiteli ubírají z vlastního podílu
+  const weakSum = places.reduce((a, x) => a + (x.weak?.fp || 0), 0);
+  const ownShare = total != null ? Math.max(0, total - sumP - weakSum) : null;
   const free = places.filter((x) => !x.filled && x.val > 0);
   const text = `${ownerName} ${entName(entity.cityentity_id)} ${entity.level}→${entity.level + 1} ` + free.map((x) => `P${x.rank}(${x.val})`).join(' ');
-  return { gold, total, ownerFp, places, sumP, ownShare, ownLeft: ownShare != null ? Math.max(0, ownShare - ownerFp) : null, text: text.trim() };
+  return { gold, total, ownerFp, places, sumP, ownShare, remaining: total != null ? remaining : null, ownLeft: ownShare != null ? Math.max(0, ownShare - ownerFp) : null, text: text.trim() };
 }
 
 // Volba koeficientu: rychlé předvolby + vlastní hodnota (pamatuje se).
@@ -70,10 +84,10 @@ function viewNahoz(c, title) {
     <div class="copyrow"><input type="text" class="copytext" readonly value="${esc(c.text)}"><button data-act="copy" data-text="${esc(c.text)}">Kopírovat</button></div></div>
     <table><thead><tr><th>Místo</th><th>Odměna</th><th>Nához</th><th>Stav</th><th>Zajištění</th></tr></thead><tbody>${
       c.places.map((x) => `<tr class="${x.filled && !x.short ? 'muted' : x.short ? 'short' : x.safe ? 'safe' : ''}"><td>P${x.rank}</td><td class="num">${fmt(x.base)}</td><td class="num"><b>${fmt(x.val)}</b></td>
-        <td>${x.holder ? `${esc(x.holder.name)} ${fmt(x.holder.fp)}${x.short ? ` <span class="hi" title="Obsazeno, ale vloženo méně než nához">(o ${fmt(x.val - x.holder.fp)} méně)</span>` : ' ✓'}` : 'volné'}</td>
+        <td>${x.holder ? `${esc(x.holder.name)} ${fmt(x.holder.fp)}${x.short ? ` <span class="hi" title="Obsazeno, ale vloženo méně než nához">(o ${fmt(x.val - x.holder.fp)} méně)</span>` : ' ✓'}` : x.weak ? `volné <span class="muted" title="Vložil tak málo, že ho nához přeplatí a posune níž – místo nedrží">(${esc(x.weak.name)} ${fmt(x.weak.fp)} – nához ho přeplatí)</span>` : 'volné'}</td>
         <td>${x.filled && !x.short ? '' : x.safe ? '🔒 zajištěno' : x.fits === false ? '<span class="muted">nevejde se</span>' : x.needOwner != null ? `vložte ještě <b>${fmt(x.needOwner)}</b>` : ''}</td></tr>`).join('')}
       <tr><td colspan="2">Vlastní podíl (celkem ${fmt(c.total)} − náhozy ${fmt(c.sumP)})</td><td class="num"><b>${fmt(c.ownShare)}</b></td>
-        <td colspan="2">vloženo ${fmt(c.ownerFp)}, zbývá <b>${fmt(c.ownLeft)}</b></td></tr>
+        <td colspan="2">vloženo ${fmt(c.ownerFp)}, zbývá <b>${fmt(c.ownLeft)}</b>${c.remaining ? ` · do dokončení chybí <b>${fmt(c.remaining)}</b> FP` : ''}</td></tr>
     </tbody></table>`;
 }
 
